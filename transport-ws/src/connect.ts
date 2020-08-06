@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 import {
+  NatsConnectionImpl,
   NatsConnection,
   ConnectionOptions,
   setTransportFactory,
@@ -26,5 +27,5 @@ export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
     return new WsTransport();
   });
 
-  return NatsConnection.connect(opts);
+  return NatsConnectionImpl.connect(opts);
 }
