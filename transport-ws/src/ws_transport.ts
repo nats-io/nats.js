@@ -19,11 +19,11 @@ import {
   Transport,
   Deferred,
   deferred,
-} from "https://deno.land/x/nats@v0.1.1-19/nats-base-client/internal_mod.ts";
+} from "./nats-base-client.ts";
 
 import { ConnectionOptions } from "./nats-base-client.ts";
 
-const VERSION = "1.0.0-50";
+const VERSION = "1.0.0-90";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
