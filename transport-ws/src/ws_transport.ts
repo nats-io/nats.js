@@ -19,6 +19,7 @@ import {
   Transport,
   Deferred,
   deferred,
+  delay,
 } from "./nats-base-client.ts";
 
 import { ConnectionOptions } from "./nats-base-client.ts";
@@ -34,15 +35,11 @@ export class WsTransport implements Transport {
   // @ts-ignore
   private socket: WebSocket;
   private options!: ConnectionOptions;
+  socketClosed = false;
 
   yields: Uint8Array[] = [];
   signal: Deferred<void> = deferred<void>();
   private closedNotification: Deferred<void | Error> = deferred();
-
-  private sendQueue: Array<{
-    frame: Uint8Array;
-    d: Deferred<void>;
-  }> = [];
 
   constructor() {
   }
@@ -73,6 +70,7 @@ export class WsTransport implements Transport {
 
     //@ts-ignore
     this.socket.onclose = (evt: CloseEvent) => {
+      this.socketClosed = true;
       let reason: Error | undefined;
       if (this.done) return;
       if (!evt.wasClean) {
@@ -92,40 +90,6 @@ export class WsTransport implements Transport {
     return connLock;
   }
 
-  private enqueue(frame: Uint8Array): Promise<void> {
-    if (this.done) {
-      return Promise.resolve();
-    }
-    const d = deferred<void>();
-    this.sendQueue.push({ frame, d });
-    if (this.sendQueue.length === 1) {
-      this.dequeue();
-    }
-    return d;
-  }
-
-  private dequeue(): void {
-    const [entry] = this.sendQueue;
-    if (!entry) return;
-    if (this.done) return;
-    const { frame, d } = entry;
-    try {
-      this.socket.send(frame.buffer);
-      if (this.options.debug) {
-        console.info(`< ${render(frame)}`);
-      }
-      d.resolve();
-    } catch (err) {
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
-      d.reject(err);
-    } finally {
-      this.sendQueue.shift();
-      this.dequeue();
-    }
-  }
-
   disconnect(): void {
     this._closed(undefined, true);
   }
@@ -134,7 +98,10 @@ export class WsTransport implements Transport {
     if (this.done) return;
     this.closeError = err;
     if (!err) {
-      await this.enqueue(new TextEncoder().encode("+OK\r\n"));
+      while (!this.socketClosed && this.socket.bufferedAmount > 0) {
+        console.log(this.socket.bufferedAmount);
+        await delay(100);
+      }
     }
     this.done = true;
     try {
@@ -157,19 +124,25 @@ export class WsTransport implements Transport {
 
   async *iterate(): AsyncIterableIterator<Uint8Array> {
     while (true) {
-      await this.signal;
-      while (this.yields.length > 0) {
-        const frame = this.yields.shift();
-        if (frame) {
-          if (this.options.debug) {
-            console.info(`> ${render(frame)}`);
-          }
-          yield frame;
-        }
+      if (this.yields.length === 0) {
+        await this.signal;
       }
+      const yields = this.yields;
+      this.yields = [];
+      for (let i = 0; i < yields.length; i++) {
+        if (this.options.debug) {
+          console.info(`> ${render(yields[i])}`);
+        }
+        yield yields[i];
+      }
+      // yielding could have paused and microtask
+      // could have added messages. Prevent allocations
+      // if possible
       if (this.done) {
         break;
-      } else {
+      } else if (this.yields.length === 0) {
+        yields.length = 0;
+        this.yields = yields;
         this.signal = deferred();
       }
     }
@@ -181,7 +154,21 @@ export class WsTransport implements Transport {
   }
 
   send(frame: Uint8Array): Promise<void> {
-    return this.enqueue(frame);
+    if (this.done) {
+      return Promise.resolve();
+    }
+    try {
+      this.socket.send(frame.buffer);
+      if (this.options.debug) {
+        console.info(`< ${render(frame)}`);
+      }
+      return Promise.resolve();
+    } catch (err) {
+      if (this.options.debug) {
+        console.error(`!!! ${render(frame)}: ${err}`);
+      }
+      return Promise.reject(err);
+    }
   }
 
   close(err?: Error | undefined): Promise<void> {
