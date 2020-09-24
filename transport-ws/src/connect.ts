@@ -17,12 +17,48 @@ import {
   NatsConnection,
   ConnectionOptions,
   setTransportFactory,
+  setUrlParseFn,
   Transport,
 } from "./nats-base-client.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
+export function urlParseFn(u: string): string {
+  const ut = /^(.*:\/\/)(.*)/;
+  if (!ut.test(u)) {
+    u = `https://${u}`;
+  }
+  let url = new URL(u);
+  const srcProto = url.protocol.toLowerCase();
+  if (srcProto !== "https:" && srcProto !== "http") {
+    u = u.replace(/^(.*:\/\/)(.*)/gm, "$2");
+    url = new URL(`http://${u}`);
+  }
+
+  let protocol;
+  let port;
+  let host = url.hostname;
+  let path = url.pathname;
+  let search = url.search || "";
+
+  switch (srcProto) {
+    case "http:":
+    case "ws:":
+    case "nats:":
+      port = url.port || "80";
+      protocol = "ws:";
+      break;
+    default:
+      port = url.port || "443";
+      protocol = "wss:";
+      break;
+  }
+  return `${protocol}//${host}:${port}${path}${search}`;
+}
+
 export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
+  setUrlParseFn(urlParseFn);
+
   setTransportFactory((): Transport => {
     return new WsTransport();
   });

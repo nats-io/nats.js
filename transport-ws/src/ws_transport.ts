@@ -13,8 +13,10 @@
  * limitations under the License.
  */
 import type {
+  ConnectionOptions,
   Transport,
   Deferred,
+  Server,
 } from "./nats-base-client.ts";
 import {
   ErrorCode,
@@ -24,9 +26,7 @@ import {
   delay,
 } from "./nats-base-client.ts";
 
-import type { ConnectionOptions } from "./nats-base-client.ts";
-
-const VERSION = "1.0.0-108";
+const VERSION = "1.0.0-110";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
@@ -39,6 +39,7 @@ export class WsTransport implements Transport {
   private socket: WebSocket;
   private options!: ConnectionOptions;
   socketClosed = false;
+  encrypted = false;
 
   yields: Uint8Array[] = [];
   signal: Deferred<void> = deferred<void>();
@@ -48,18 +49,16 @@ export class WsTransport implements Transport {
   }
 
   async connect(
-    hp: { hostname: string; port: number },
+    server: Server,
     options: ConnectionOptions,
   ): Promise<void> {
     const connected = false;
     const connLock = deferred<void>();
 
     this.options = options;
-    const proto = this.options.ws ? "ws" : "wss";
-    // @ts-ignore
-    this.socket = new WebSocket(
-      `${proto}://${hp.hostname}:${hp.port}`,
-    );
+    const u = server.src;
+    this.encrypted = u.indexOf("wss://") === 0;
+    this.socket = new WebSocket(u);
     this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
@@ -155,8 +154,7 @@ export class WsTransport implements Transport {
   }
 
   isEncrypted(): boolean {
-    // ws from nats-server is only supported over tls
-    return !this.options.ws;
+    return this.connected && this.encrypted;
   }
 
   send(frame: Uint8Array): Promise<void> {
