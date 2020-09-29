@@ -26,7 +26,7 @@ import {
   delay,
 } from "./nats-base-client.ts";
 
-const VERSION = "1.0.0-110";
+const VERSION = "1.0.0-111";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
