@@ -13,9 +13,9 @@
  * limitations under the License.
  */
 import {
-  NatsConnectionImpl,
-  NatsConnection,
   ConnectionOptions,
+  NatsConnection,
+  NatsConnectionImpl,
   setTransportFactory,
   setUrlParseFn,
   Transport,
