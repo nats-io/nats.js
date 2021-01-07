@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The NATS Authors
+ * Copyright 2020-2021 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,35 +17,41 @@ import type {
   Deferred,
   Server,
   Transport,
-} from "./nats-base-client.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-13/nats-base-client/internal_mod.ts";
 import {
   deferred,
   delay,
   ErrorCode,
   NatsError,
   render,
-} from "./nats-base-client.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-13/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.0.0-114";
+const VERSION = "1.0.0-116";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
-  version: string = VERSION;
-  lang: string = LANG;
+  version: string;
+  lang: string;
   closeError?: Error;
-  connected = false;
-  private done = false;
-  // @ts-ignore
+  connected: boolean;
+  private done: boolean;
+  // @ts-ignore: expecting global WebSocket
   private socket: WebSocket;
   private options!: ConnectionOptions;
-  socketClosed = false;
-  encrypted = false;
+  socketClosed: boolean;
+  encrypted: boolean;
 
   yields: Uint8Array[] = [];
   signal: Deferred<void> = deferred<void>();
   private closedNotification: Deferred<void | Error> = deferred();
 
   constructor() {
+    this.version = VERSION;
+    this.lang = LANG;
+    this.connected = false;
+    this.done = false;
+    this.socketClosed = false;
+    this.encrypted = false;
   }
 
   async connect(
@@ -71,7 +77,7 @@ export class WsTransport implements Transport {
       this.signal.resolve();
     };
 
-    //@ts-ignore
+    // @ts-ignore: CloseEvent is provided in browsers
     this.socket.onclose = (evt: CloseEvent) => {
       this.socketClosed = true;
       let reason: Error | undefined;
@@ -82,7 +88,8 @@ export class WsTransport implements Transport {
       this._closed(reason);
     };
 
-    this.socket.onerror = (e: ErrorEvent | Event): any => {
+    // @ts-ignore: signature can be any
+    this.socket.onerror = (e: ErrorEvent | Event): void => {
       const evt = e as ErrorEvent;
       const err = new NatsError(evt.message, ErrorCode.UNKNOWN);
       if (!connected) {
@@ -98,7 +105,7 @@ export class WsTransport implements Transport {
     this._closed(undefined, true);
   }
 
-  private async _closed(err?: Error, internal: boolean = true): Promise<void> {
+  private async _closed(err?: Error, internal = true): Promise<void> {
     if (!this.connected) return;
     if (this.done) return;
     this.closeError = err;
@@ -113,6 +120,7 @@ export class WsTransport implements Transport {
       // 1002 endpoint error, 1000 is clean
       this.socket.close(err ? 1002 : 1000, err ? err.message : undefined);
     } catch (err) {
+      // ignore this
     }
     if (internal) {
       this.closedNotification.resolve(err);

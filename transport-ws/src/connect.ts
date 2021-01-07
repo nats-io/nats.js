@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The NATS Authors
+ * Copyright 2020-2021 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,11 +19,11 @@ import {
   setTransportFactory,
   setUrlParseFn,
   Transport,
-} from "./nats-base-client.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-13/nats-base-client/internal_mod.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
-export function urlParseFn(u: string): string {
+export function wsUrlParseFn(u: string): string {
   const ut = /^(.*:\/\/)(.*)/;
   if (!ut.test(u)) {
     u = `https://${u}`;
@@ -37,9 +37,9 @@ export function urlParseFn(u: string): string {
 
   let protocol;
   let port;
-  let host = url.hostname;
-  let path = url.pathname;
-  let search = url.search || "";
+  const host = url.hostname;
+  const path = url.pathname;
+  const search = url.search || "";
 
   switch (srcProto) {
     case "http:":
@@ -57,7 +57,7 @@ export function urlParseFn(u: string): string {
 }
 
 export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
-  setUrlParseFn(urlParseFn);
+  setUrlParseFn(wsUrlParseFn);
 
   setTransportFactory((): Transport => {
     return new WsTransport();
