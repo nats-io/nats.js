@@ -47,9 +47,9 @@ export class WsTransport implements Transport {
   encrypted: boolean;
   peeked: boolean;
 
-  yields: Uint8Array[] = [];
-  signal: Deferred<void> = deferred<void>();
-  private closedNotification: Deferred<void | Error> = deferred();
+  yields: Uint8Array[];
+  signal: Deferred<void>;
+  private closedNotification: Deferred<void | Error>;
 
   constructor() {
     this.version = VERSION;
@@ -59,6 +59,9 @@ export class WsTransport implements Transport {
     this.socketClosed = false;
     this.encrypted = false;
     this.peeked = false;
+    this.yields = [];
+    this.signal = deferred();
+    this.closedNotification = deferred();
   }
 
   connect(
