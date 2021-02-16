@@ -17,9 +17,9 @@ import {
   NatsConnection,
   NatsConnectionImpl,
   setTransportFactory,
-  setUrlParseFn,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc1/nats-base-client/internal_mod.ts";
+  TransportFactory,
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc2/nats-base-client/internal_mod.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
@@ -57,11 +57,13 @@ export function wsUrlParseFn(u: string): string {
 }
 
 export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
-  setUrlParseFn(wsUrlParseFn);
-
-  setTransportFactory((): Transport => {
-    return new WsTransport();
-  });
+  setTransportFactory({
+    defaultPort: 443,
+    urlParseFn: wsUrlParseFn,
+    factory: (): Transport => {
+      return new WsTransport();
+    },
+  } as TransportFactory);
 
   return NatsConnectionImpl.connect(opts);
 }
