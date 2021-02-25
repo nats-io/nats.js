@@ -12,13 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 import type {
   ConnectionOptions,
   Deferred,
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc2/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc4/nats-base-client/internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -29,7 +30,7 @@ import {
   INFO,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc2/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc4/nats-base-client/internal_mod.ts";
 
 const VERSION = "1.0.0-121";
 const LANG = "nats.ws";
