@@ -19,7 +19,7 @@ import type {
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc4/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/main/nats-base-client/internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -30,7 +30,7 @@ import {
   INFO,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.0-rc4/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/main/nats-base-client/internal_mod.ts";
 
 const VERSION = "1.0.0-122";
 const LANG = "nats.ws";
@@ -74,7 +74,7 @@ export class WsTransport implements Transport {
 
     // ws client doesn't support TLS setting
     if (options.tls) {
-      connLock.reject(new NatsError("tls", ErrorCode.INVALID_OPTION));
+      connLock.reject(new NatsError("tls", ErrorCode.InvalidOption));
       return connLock;
     }
 
@@ -135,7 +135,7 @@ export class WsTransport implements Transport {
       const evt = e as ErrorEvent;
       const err = new NatsError(
         evt.message,
-        ErrorCode.UNKNOWN,
+        ErrorCode.Unknown,
         new Error(evt.error),
       );
       if (!connected) {
