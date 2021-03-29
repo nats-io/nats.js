@@ -32,7 +32,7 @@ import {
   render,
 } from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.1/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.0.1";
+const VERSION = "1.1.0-4";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
@@ -50,7 +50,7 @@ export class WsTransport implements Transport {
 
   yields: Uint8Array[];
   signal: Deferred<void>;
-  private closedNotification: Deferred<void | Error>;
+  closedNotification: Deferred<void | Error>;
 
   constructor() {
     this.version = VERSION;
