@@ -32,7 +32,7 @@ import {
   render,
 } from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.0.8/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.1.2";
+const VERSION = "1.1.6";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
