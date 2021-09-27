@@ -96,7 +96,7 @@ export class WsTransport implements Transport {
       }
       const t = DataBuffer.concat(...this.yields);
       const pm = extractProtocolMessage(t);
-      if (pm) {
+      if (pm !== "") {
         const m = INFO.exec(pm);
         if (!m) {
           if (options.debug) {
