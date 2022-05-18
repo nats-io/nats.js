@@ -19,7 +19,7 @@ import type {
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/main/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.0/nats-base-client/internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -30,9 +30,9 @@ import {
   INFO,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/main/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.0/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.7.2";
+const VERSION = "1.8.0";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
