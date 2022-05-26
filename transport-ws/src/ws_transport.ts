@@ -19,7 +19,7 @@ import type {
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.0/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.1/nats-base-client/internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -30,9 +30,9 @@ import {
   INFO,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.0/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.7.1/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.8.0";
+const VERSION = "1.8.1";
 const LANG = "nats.ws";
 
 export class WsTransport implements Transport {
@@ -211,21 +211,23 @@ export class WsTransport implements Transport {
     return this.connected && this.encrypted;
   }
 
-  send(frame: Uint8Array): Promise<void> {
+  send(frame: Uint8Array): void {
     if (this.done) {
-      return Promise.resolve();
+      return;
     }
     try {
       this.socket.send(frame.buffer);
       if (this.options.debug) {
         console.info(`< ${render(frame)}`);
       }
-      return Promise.resolve();
+      return;
     } catch (err) {
+      // we ignore write errors because client will
+      // fail on a read or when the heartbeat timer
+      // detects a stale connection
       if (this.options.debug) {
         console.error(`!!! ${render(frame)}: ${err}`);
       }
-      return Promise.reject(err);
     }
   }
 
