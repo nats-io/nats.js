@@ -35,6 +35,14 @@ import {
 const VERSION = "1.8.2-0";
 const LANG = "nats.ws";
 
+export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
+  socket: WebSocket;
+  encrypted: boolean;
+}>
+interface WsConnectionOptions extends ConnectionOptions {
+  wsFactory?: WsSocketFactory;
+}
+
 export class WsTransport implements Transport {
   version: string;
   lang: string;
@@ -43,7 +51,7 @@ export class WsTransport implements Transport {
   private done: boolean;
   // @ts-ignore: expecting global WebSocket
   private socket: WebSocket;
-  private options!: ConnectionOptions;
+  private options!: WsConnectionOptions;
   socketClosed: boolean;
   encrypted: boolean;
   peeked: boolean;
@@ -65,9 +73,9 @@ export class WsTransport implements Transport {
     this.closedNotification = deferred();
   }
 
-  connect(
+  async connect(
     server: Server,
-    options: ConnectionOptions,
+    options: WsConnectionOptions,
   ): Promise<void> {
     const connected = false;
     const connLock = deferred<void>();
@@ -80,8 +88,14 @@ export class WsTransport implements Transport {
 
     this.options = options;
     const u = server.src;
-    this.encrypted = u.indexOf("wss://") === 0;
-    this.socket = new WebSocket(u);
+    if (options.wsFactory) {
+      const { socket, encrypted } = await options.wsFactory(server.src, options);
+      this.socket = socket;
+      this.encrypted = encrypted;
+    } else {
+      this.encrypted = u.indexOf("wss://") === 0;
+      this.socket = new WebSocket(u);
+    }
     this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
