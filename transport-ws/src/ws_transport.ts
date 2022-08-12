@@ -38,7 +38,7 @@ const LANG = "nats.ws";
 export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
   socket: WebSocket;
   encrypted: boolean;
-}>
+}>;
 interface WsConnectionOptions extends ConnectionOptions {
   wsFactory?: WsSocketFactory;
 }
@@ -89,7 +89,10 @@ export class WsTransport implements Transport {
     this.options = options;
     const u = server.src;
     if (options.wsFactory) {
-      const { socket, encrypted } = await options.wsFactory(server.src, options);
+      const { socket, encrypted } = await options.wsFactory(
+        server.src,
+        options,
+      );
       this.socket = socket;
       this.encrypted = encrypted;
     } else {
