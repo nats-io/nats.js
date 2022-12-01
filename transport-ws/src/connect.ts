@@ -19,7 +19,7 @@ import {
   setTransportFactory,
   Transport,
   TransportFactory,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.9.2/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.9.3/nats-base-client/internal_mod.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
