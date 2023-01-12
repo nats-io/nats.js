@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 The NATS Authors
+ * Copyright 2020-2023 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,7 +19,7 @@ import {
   setTransportFactory,
   Transport,
   TransportFactory,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.10.2/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.10.3/nats-base-client/internal_mod.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
