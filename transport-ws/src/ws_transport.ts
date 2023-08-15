@@ -102,10 +102,16 @@ export class WsTransport implements Transport {
     this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
+      if(this.isDiscarded()) {
+        return;
+      }
       // we don't do anything here...
     };
 
     this.socket.onmessage = (me: MessageEvent) => {
+      if(this.isDiscarded()) {
+        return;
+      }
       this.yields.push(new Uint8Array(me.data));
       if (this.peeked) {
         this.signal.resolve();
@@ -138,6 +144,9 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: CloseEvent is provided in browsers
     this.socket.onclose = (evt: CloseEvent) => {
+      if(this.isDiscarded()) {
+        return;
+      }
       this.socketClosed = true;
       let reason: Error | undefined;
       if (this.done) return;
@@ -149,6 +158,9 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: signature can be any
     this.socket.onerror = (e: ErrorEvent | Event): void => {
+      if(this.isDiscarded()) {
+        return;
+      }
       const evt = e as ErrorEvent;
       const err = new NatsError(
         evt.message,
@@ -169,6 +181,9 @@ export class WsTransport implements Transport {
   }
 
   private async _closed(err?: Error, internal = true): Promise<void> {
+    if(this.isDiscarded()) {
+      return
+    }
     if (!this.connected) return;
     if (this.done) return;
     this.closeError = err;
@@ -200,6 +215,9 @@ export class WsTransport implements Transport {
 
   async *iterate(): AsyncIterableIterator<Uint8Array> {
     while (true) {
+      if (this.isDiscarded()) {
+        return
+      }
       if (this.yields.length === 0) {
         await this.signal;
       }
@@ -229,7 +247,7 @@ export class WsTransport implements Transport {
   }
 
   send(frame: Uint8Array): void {
-    if (this.done) {
+    if (this.isDiscarded()) {
       return;
     }
     try {
@@ -254,5 +272,29 @@ export class WsTransport implements Transport {
 
   closed(): Promise<void | Error> {
     return this.closedNotification;
+  }
+
+  // check to see if we are discarded, as the connection
+  // may not have been closed, we attempt it here as well.
+  isDiscarded():boolean {
+    if(this.done) {
+      this.discard();
+      return true
+    }
+    return false;
+  }
+
+  // this is to allow a force discard on a connection
+  // if the connection fails during the handshake protocol.
+  // Firefox for example, will keep connections going,
+  // so eventually if it succeeds, the client will have
+  // an additional transport running. With this
+  discard () {
+    this.done = true;
+    try {
+      this.socket?.close()
+    } catch(_err) {
+      // ignored
+    }
   }
 }
