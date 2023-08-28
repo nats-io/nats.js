@@ -189,7 +189,6 @@ export class WsTransport implements Transport {
     this.closeError = err;
     if (!err) {
       while (!this.socketClosed && this.socket.bufferedAmount > 0) {
-        console.log(this.socket.bufferedAmount);
         await delay(100);
       }
     }
