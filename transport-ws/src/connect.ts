@@ -19,17 +19,29 @@ import {
   setTransportFactory,
   Transport,
   TransportFactory,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.18.0/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.19.0/nats-base-client/internal_mod.ts";
 
 import { WsTransport } from "./ws_transport.ts";
 
-export function wsUrlParseFn(u: string): string {
+export function wsUrlParseFn(u: string, encrypted?: boolean): string {
   const ut = /^(.*:\/\/)(.*)/;
   if (!ut.test(u)) {
-    u = `https://${u}`;
+    // if we have no hint to encrypted and no protocol, assume encrypted
+    // else we fix the url from the update to match
+    if (typeof encrypted === "boolean") {
+      u = `${encrypted === true ? "https" : "http"}://${u}`;
+    } else {
+      u = `https://${u}`;
+    }
   }
   let url = new URL(u);
   const srcProto = url.protocol.toLowerCase();
+  if (srcProto === "ws:") {
+    encrypted = false;
+  }
+  if (srcProto === "wss:") {
+    encrypted = true;
+  }
   if (srcProto !== "https:" && srcProto !== "http") {
     u = u.replace(/^(.*:\/\/)(.*)/gm, "$2");
     url = new URL(`http://${u}`);
@@ -48,9 +60,15 @@ export function wsUrlParseFn(u: string): string {
       port = url.port || "80";
       protocol = "ws:";
       break;
-    default:
+    case "https:":
+    case "wss:":
+    case "tls:":
       port = url.port || "443";
       protocol = "wss:";
+      break;
+    default:
+      port = url.port || encrypted === true ? "443" : "80";
+      protocol = encrypted === true ? "wss:" : "ws:";
       break;
   }
   return `${protocol}//${host}:${port}${path}${search}`;

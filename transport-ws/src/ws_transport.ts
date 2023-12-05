@@ -19,7 +19,7 @@ import type {
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.18.0/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.19.0/nats-base-client/internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -30,9 +30,9 @@ import {
   INFO,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.18.0/nats-base-client/internal_mod.ts";
+} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.19.0/nats-base-client/internal_mod.ts";
 
-const VERSION = "1.19.1";
+const VERSION = "1.20.0";
 const LANG = "nats.ws";
 
 export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
@@ -102,14 +102,14 @@ export class WsTransport implements Transport {
     this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
-      if(this.isDiscarded()) {
+      if (this.isDiscarded()) {
         return;
       }
       // we don't do anything here...
     };
 
     this.socket.onmessage = (me: MessageEvent) => {
-      if(this.isDiscarded()) {
+      if (this.isDiscarded()) {
         return;
       }
       this.yields.push(new Uint8Array(me.data));
@@ -144,7 +144,7 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: CloseEvent is provided in browsers
     this.socket.onclose = (evt: CloseEvent) => {
-      if(this.isDiscarded()) {
+      if (this.isDiscarded()) {
         return;
       }
       this.socketClosed = true;
@@ -158,7 +158,7 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: signature can be any
     this.socket.onerror = (e: ErrorEvent | Event): void => {
-      if(this.isDiscarded()) {
+      if (this.isDiscarded()) {
         return;
       }
       const evt = e as ErrorEvent;
@@ -181,8 +181,8 @@ export class WsTransport implements Transport {
   }
 
   private async _closed(err?: Error, internal = true): Promise<void> {
-    if(this.isDiscarded()) {
-      return
+    if (this.isDiscarded()) {
+      return;
     }
     if (!this.connected) return;
     if (this.done) return;
@@ -215,7 +215,7 @@ export class WsTransport implements Transport {
   async *iterate(): AsyncIterableIterator<Uint8Array> {
     while (true) {
       if (this.isDiscarded()) {
-        return
+        return;
       }
       if (this.yields.length === 0) {
         await this.signal;
@@ -275,10 +275,10 @@ export class WsTransport implements Transport {
 
   // check to see if we are discarded, as the connection
   // may not have been closed, we attempt it here as well.
-  isDiscarded():boolean {
-    if(this.done) {
+  isDiscarded(): boolean {
+    if (this.done) {
       this.discard();
-      return true
+      return true;
     }
     return false;
   }
@@ -288,11 +288,11 @@ export class WsTransport implements Transport {
   // Firefox for example, will keep connections going,
   // so eventually if it succeeds, the client will have
   // an additional transport running. With this
-  discard () {
+  discard() {
     this.done = true;
     try {
-      this.socket?.close()
-    } catch(_err) {
+      this.socket?.close();
+    } catch (_err) {
       // ignored
     }
   }
