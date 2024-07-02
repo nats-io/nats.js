@@ -35,6 +35,7 @@ jobs:
         uses: sigoden/install-binary@v1
         with:
           repo: nats-io/nats-server
+          name: nats-server-*-linux-amd64.zip
 
       - name: Lint Deno Module
         working-directory: core
