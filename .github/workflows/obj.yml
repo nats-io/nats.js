@@ -1,4 +1,4 @@
-name: core release
+name: @nats-io/obj release
 
 on:
   push:

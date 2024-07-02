@@ -4,14 +4,12 @@
 ![Test NATS.deno](https://github.com/nats-io/nats.deno/workflows/NATS.deno/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
 
-
-> [!CAUTION]
-> This project is still working in progress and not yet released. Currently supported Javascript are
+> [!CAUTION] This project is still working in progress and not yet released.
+> Currently supported Javascript are
+>
 > - [nats.deno](https://github.com/nats-io/nats.deno)
 > - [nats.js](https://github.com/nats-io/nats.js)
 > - [nats.ws](https://github.com/nats-io/nats.ws)
-
-
 
 Welcome to the new NATS.js repository! Beginning with the v3 release of the
 JavaScript clients, the NATS.js repository reorganizes the NATS JavaScript

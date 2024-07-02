@@ -700,10 +700,15 @@ Deno.test("service - cross platform service test", async () => {
     },
   });
 
+  // running from root?
+  const scheck = Deno.cwd().endsWith("nats.js")
+    ? "./services/tests/service-check.ts"
+    : "./tests/service-check.ts";
+
   const args = [
     "run",
     "-A",
-    "./services/tests/service-check.ts",
+    scheck,
     "--name",
     name,
     "--server",

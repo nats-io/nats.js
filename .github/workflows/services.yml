@@ -1,4 +1,4 @@
-name: core release
+name: @nats-io/services release
 
 on:
   push:

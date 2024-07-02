@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "test_helpers": "../test_helpers/mod.ts",
+    "@nats-io/nats-core": "./src/mod.ts",
+    "@nats-io/nats-core/internal": "./src/internal_mod.ts",
+    "@std/io": "jsr:@std/io@0.224.0"
+  }
+}

@@ -1,4 +1,4 @@
-name: NATS.deno
+name: Test nats.js
 
 on:
   push:
