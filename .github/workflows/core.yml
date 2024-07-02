@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'core/**'
+      - '.github/workflows/core.yml'
     tags: [ 'core/*' ]
     branches:
       - '*'
