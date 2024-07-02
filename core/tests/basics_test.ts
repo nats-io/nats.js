@@ -35,7 +35,6 @@ import {
   headers,
   isIP,
   JSONCodec,
-  jwtAuthenticator,
   nuid,
   RequestStrategy,
   StringCodec,
@@ -55,7 +54,6 @@ import {
   _setup,
   assertErrorCode,
   cleanup,
-  disabled,
   Lock,
   NatsServer,
 } from "test_helpers";
