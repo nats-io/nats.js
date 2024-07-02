@@ -15,7 +15,8 @@
 import type { Deferred } from "./util.ts";
 import { deferred } from "./util.ts";
 import type { QueuedIterator } from "./core.ts";
-import { CallbackFn, Dispatcher, ErrorCode, NatsError } from "./core.ts";
+import { ErrorCode, NatsError } from "./core.ts";
+import type { CallbackFn, Dispatcher } from "./core.ts";
 
 export type IngestionFilterFnResult = { ingest: boolean; protocol: boolean };
 
