@@ -957,17 +957,8 @@ Deno.test("basics - subscription cb with timeout cancels on message", async () =
 });
 
 Deno.test("basics - resolve", async () => {
-  const token = Deno.env.get("NGS_CI_USER");
-  if (!token) {
-    disabled(
-      `skipping: NGS_CI_USER is not available in the environment`,
-    );
-    return;
-  }
-
   const nci = await connect({
-    servers: "connect.ngs.global",
-    authenticator: jwtAuthenticator(token),
+    servers: "demo.nats.io",
   }) as NatsConnectionImpl;
 
   await nci.flush();
@@ -1502,18 +1493,9 @@ Deno.test("basics - respond message", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - resolve", async () => {
-  const token = Deno.env.get("NGS_CI_USER");
-  if (token === undefined) {
-    disabled(
-      `skipping: NGS_CI_USER is not available in the environment`,
-    );
-    return;
-  }
-
+Deno.test("basics - resolve false", async () => {
   const nci = await connect({
-    servers: "connect.ngs.global",
-    authenticator: jwtAuthenticator(token),
+    servers: "demo.nats.io",
     resolve: false,
   }) as NatsConnectionImpl;
 
