@@ -958,7 +958,7 @@ Deno.test("basics - subscription cb with timeout cancels on message", async () =
 
 Deno.test("basics - resolve", async () => {
   const token = Deno.env.get("NGS_CI_USER");
-  if (token === undefined) {
+  if (!token) {
     disabled(
       `skipping: NGS_CI_USER is not available in the environment`,
     );
