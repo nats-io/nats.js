@@ -1,4 +1,4 @@
-name: @nats-io/services release
+name: services release
 
 on:
   push:

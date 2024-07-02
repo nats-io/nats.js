@@ -1,4 +1,4 @@
-name: @nats-io/jetstream release
+name: jetstream release
 
 on:
   push:

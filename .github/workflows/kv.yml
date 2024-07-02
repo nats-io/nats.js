@@ -1,4 +1,4 @@
-name: @nats-io/kv release
+name: kv release
 
 on:
   push:
