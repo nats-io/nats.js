@@ -20,40 +20,46 @@ import {
   Feature,
   headers,
   JSONCodec,
+  nuid,
+  QueuedIteratorImpl,
+  SHA256,
+} from "@nats-io/nats-core/internal";
+
+import type {
   MsgHdrs,
   MsgHdrsImpl,
   NatsConnection,
   NatsError,
-  nuid,
   QueuedIterator,
-  QueuedIteratorImpl,
-  SHA256,
 } from "@nats-io/nats-core/internal";
 
 import {
   consumerOpts,
   DiscardPolicy,
+  JsHeaders,
+  ListerImpl,
+  PubHeaders,
+  StoreCompression,
+  toJetStreamClient,
+} from "@nats-io/jetstream/internal";
+
+import type {
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
-  JsHeaders,
   JsMsg,
   Lister,
   ListerFieldFilter,
-  ListerImpl,
   PubAck,
-  PubHeaders,
   PurgeResponse,
   StorageType,
-  StoreCompression,
   StreamConfig,
   StreamInfo,
   StreamInfoRequestOptions,
   StreamListResponse,
-  toJetStreamClient,
 } from "@nats-io/jetstream/internal";
 
-import {
+import type {
   ObjectInfo,
   ObjectResult,
   ObjectStore,

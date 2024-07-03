@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
+import type {
   Placement,
   PubAck,
   PurgeResponse,
@@ -20,7 +20,7 @@ import {
   StreamInfo,
   StreamInfoRequestOptions,
 } from "@nats-io/jetstream";
-import { MsgHdrs, Nanos, QueuedIterator } from "@nats-io/nats-core";
+import type { MsgHdrs, Nanos, QueuedIterator } from "@nats-io/nats-core";
 
 export type ObjectStoreLink = {
   /**

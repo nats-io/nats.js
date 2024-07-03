@@ -15,7 +15,8 @@
 
 import { connect, delay } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
 import { SimpleMutex } from "jsr:@nats-io/nats-core@3.0.0-17/internal";
-import { jetstream, JsMsg } from "../src/mod.ts";
+import { jetstream } from "../src/mod.ts";
+import type { JsMsg } from "../src/mod.ts";
 import { setupStreamAndConsumer } from "./util.ts";
 
 // create a connection

@@ -1,5 +1,6 @@
 import { connect, Empty } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { jetstream, jetstreamManager, PubAck } from "../src/mod.ts";
+import { jetstream, jetstreamManager } from "../src/mod.ts";
+import type { PubAck } from "../src/mod.ts";
 
 const nc = await connect();
 const jsm = await jetstreamManager(nc);

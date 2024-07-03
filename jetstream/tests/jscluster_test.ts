@@ -4,9 +4,8 @@ import {
   DiscardPolicy,
   RetentionPolicy,
   StorageType,
-  StreamConfig,
-  StreamUpdateConfig,
 } from "../src/jsapi_types.ts";
+import type { StreamConfig, StreamUpdateConfig } from "../src/jsapi_types.ts";
 import { nanos } from "@nats-io/nats-core/internal";
 
 import {
