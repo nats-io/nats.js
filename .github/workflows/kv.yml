@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'kv/**'
+      - '.github/workflows/kv.yml'
     tags: [ 'kv/*' ]
     branches:
       - '*'

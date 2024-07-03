@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'jetstream/**'
+      - '.github/workflows/jetstream.yml'
     tags: [ 'jetstream/*' ]
     branches:
       - '*'

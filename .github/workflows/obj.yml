@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'obj/**'
+      - '.github/workflows/obj.yml'
     tags: [ 'obj/*' ]
     branches:
       - '*'
