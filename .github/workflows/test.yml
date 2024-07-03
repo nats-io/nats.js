@@ -1,4 +1,4 @@
-name: NATS.deno
+name: Test nats.js
 
 on:
   push:
@@ -8,19 +8,22 @@ on:
       - '*'
   pull_request:
     branches: [main]
+    types: [opened]
 
 jobs:
   test:
-    name: ${{ matrix.config.kind }} ${{ matrix.config.os }}
-    runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
-        deno-version: [1.44.4]
+        deno-version: [ 1.44.4 ]
+        module: [ core, jetstream, kv, obj, services ]
+
+    name: test ${{matrix.module}} with local dependencies
+    runs-on: ubuntu-latest-4-cores
+    environment: CI
 
     steps:
       - name: Git Checkout Deno Module
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
@@ -29,43 +32,40 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
 
-      - name: Set NATS Server Version
-        run: echo "NATS_VERSION=v2.10.17" >> $GITHUB_ENV
-
       # this here because dns seems to be wedged on gha
 #      - name: Add hosts to /etc/hosts
 #        run: |
 #          sudo echo "145.40.102.131 demo.nats.io" | sudo tee -a /etc/hosts
 
-      - name: Get nats-server
-        run: |
-          wget "https://github.com/nats-io/nats-server/releases/download/$NATS_VERSION/nats-server-$NATS_VERSION-linux-amd64.zip" -O tmp.zip
-          unzip tmp.zip
-          mv nats-server-$NATS_VERSION-linux-amd64 nats-server
-          rm nats-server/README.md LICENSE
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
 
       - name: Lint Deno Module
         run: |
           deno fmt --check
           deno lint
 
-      - name: Test Deno Module
+      - name: Test ${{matrix.module}} Module
         env:
           TMPDIR: ${{ runner.temp }}
           CI: true
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
-          deno task test
+          deno task test-${{ matrix.module }}
 
-      - name: Build nats.js
-        run: deno bundle --unstable transport-deno/src/connect.ts nats.js
-
-      - name: Generate lcov
-        run: deno coverage --unstable --lcov ./coverage > cov.lcov
-
-      - name: Upload coverage
-        uses: coverallsapp/github-action@1.1.3
-        with:
-          github-token: ${{ secrets.github_token }}
-          path-to-lcov: ./cov.lcov
+#      - name: Build nats.js
+#        run: deno bundle --unstable transport-deno/src/connect.ts nats.js
+#
+#      - name: Generate lcov
+#        run: deno coverage --unstable --lcov ./coverage > cov.lcov
+#
+#      - name: Upload coverage
+#        uses: coverallsapp/github-action@1.1.3
+#        with:
+#          github-token: ${{ secrets.github_token }}
+#          path-to-lcov: ./cov.lcov
 

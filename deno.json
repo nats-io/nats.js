@@ -14,13 +14,20 @@
     "test-kv": "deno test -A --parallel --reload --quiet --coverage=coverage kv/tests",
     "test-obj": "deno test -A --parallel --reload --quiet --coverage=coverage obj/tests",
     "test-services": "deno test -A --parallel --reload --quiet --coverage=coverage services/tests",
-    "cover": "deno coverage --unstable ./coverage --lcov > ./coverage/out.lcov && genhtml -o ./coverage/html ./coverage/out.lcov && open ./coverage/html/index.html"
+    "cover": "deno coverage ./coverage --lcov > ./coverage/out.lcov && genhtml -o ./coverage/html ./coverage/out.lcov && open ./coverage/html/index.html",
+    "lint": "deno task lint-core && deno task lint-jetstream && deno task lint-kv && deno task lint-obj && deno task lint-services && deno task lint-test_helpers",
+    "lint-core": "cd core && deno lint",
+    "lint-jetstream": "cd jetstream && deno lint",
+    "lint-kv": "cd kv && deno lint",
+    "lint-obj": "cd obj && deno lint",
+    "lint-services": "cd services && deno lint",
+    "lint-test_helpers": "cd test_helpers && deno lint"
   },
   "fmt": {
     "include": ["src/", "doc/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md"]
   },
   "lint": {
-    "include": ["src/", "doc/", "bin/", "core/", "jetstream/", "kv/", "obj/", "services/", "*.md"]
+    "exclude": ["docs/"]
   },
   "scopes": {
     "*": {

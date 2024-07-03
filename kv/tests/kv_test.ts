@@ -2248,3 +2248,24 @@ Deno.test("kv - keys filter", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - replicas", async () => {
+  const servers = await NatsServer.jetstreamCluster(3);
+  const nc = await connect({ port: servers[0].port });
+  const js = jetstream(nc);
+
+  const b = await new Kvm(js).create("a", { replicas: 3 });
+  const status = await b.status();
+
+  const jsm = await jetstreamManager(nc);
+  let si = await jsm.streams.info(status.streamInfo.config.name);
+  assertEquals(si.config.num_replicas, 3);
+
+  si = await jsm.streams.update(status.streamInfo.config.name, {
+    num_replicas: 1,
+  });
+  assertEquals(si.config.num_replicas, 1);
+
+  await nc.close();
+  await NatsServer.stopAll(servers, true);
+});

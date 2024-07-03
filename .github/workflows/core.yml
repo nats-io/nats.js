@@ -1,27 +1,28 @@
-name: core release
+name: nats-core release
 
 on:
   push:
     paths:
       - 'core/**'
+      - '.github/workflows/core.yml'
     tags: [ 'core/*' ]
     branches:
       - '*'
 jobs:
   test:
-    name: ${{ matrix.config.kind }} ${{ matrix.config.os }}
+    name: test core with released dependencies
     runs-on: ubuntu-latest-4-cores
     environment: CI
     strategy:
       matrix:
-        deno-version: [1.44.4]
+        deno-version: [1.x.x]
     permissions:
       contents: read
       id-token: write
 
     steps:
       - name: Git Checkout Core
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
@@ -30,11 +31,19 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
 
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
+
       - name: Lint Deno Module
         working-directory: core
         run: |
           deno fmt --check
           deno lint
+
       - name: Test Deno Module
         working-directory: core
         env:

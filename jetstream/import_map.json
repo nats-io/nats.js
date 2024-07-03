@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "@nats-io/nkeys": "jsr:@nats-io/nkeys@1.2.0-4",
+    "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.1-2",
+    "@nats-io/jetstream/internal": "./src/internal_mod.ts",
+    "test_helpers": "../test_helpers/mod.ts",
+    "@std/io": "jsr:@std/io@0.224.0"
+  }
+}
