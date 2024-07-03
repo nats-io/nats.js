@@ -29,20 +29,18 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
 
-      - name: Set NATS Server Version
-        run: echo "NATS_VERSION=v2.10.17" >> $GITHUB_ENV
-
       # this here because dns seems to be wedged on gha
 #      - name: Add hosts to /etc/hosts
 #        run: |
 #          sudo echo "145.40.102.131 demo.nats.io" | sudo tee -a /etc/hosts
 
-      - name: Get nats-server
-        run: |
-          wget "https://github.com/nats-io/nats-server/releases/download/$NATS_VERSION/nats-server-$NATS_VERSION-linux-amd64.zip" -O tmp.zip
-          unzip tmp.zip
-          mv nats-server-$NATS_VERSION-linux-amd64 nats-server
-          rm nats-server/README.md LICENSE
+
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
 
       - name: Lint Deno Module
         run: |

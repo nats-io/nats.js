@@ -27,6 +27,13 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
 
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
+
       - name: Set NATS Server Version
         run: echo "NATS_VERSION=v2.10.17" >> $GITHUB_ENV
 
