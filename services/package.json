@@ -1,5 +1,5 @@
 {
-  "name": "@nats-io/kv",
+  "name": "@nats-io/services",
   "version": "3.0.0-2",
   "files": [
     "lib/"
@@ -23,10 +23,9 @@
   "author": {
     "name": "The NATS Authors"
   },
-  "description": "kv library - this library implements all the base functionality for NATS KV javascript clients",
+  "description": "services library - this library implements all the base functionality for NATS services for javascript clients",
   "dependencies": {
     "@nats-io/nats-core": "3.0.0-17",
-    "@nats-io/jetstream": "3.0.0-3",
     "shx": "^0.3.4",
     "typescript": "^5.4.5"
   }

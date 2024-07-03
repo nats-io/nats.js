@@ -23,7 +23,7 @@
   "author": {
     "name": "The NATS Authors"
   },
-  "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
+  "description": "jetstream library - this library implements all the base functionality for NATS JetStream for javascript clients",
   "dependencies": {
     "@nats-io/nats-core": "3.0.0-17",
     "shx": "^0.3.4",
