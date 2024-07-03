@@ -9,16 +9,16 @@ on:
       - '*'
 jobs:
   test:
-    name: ${{ matrix.config.kind }} ${{ matrix.config.os }}
+    name: test obj with released dependencies
     runs-on: ubuntu-latest-4-cores
     environment: CI
     strategy:
       matrix:
-        deno-version: [1.44.4]
+        deno-version: [1.x.x]
 
     steps:
       - name: Git Checkout Obj
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
