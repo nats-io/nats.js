@@ -17,10 +17,9 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join } from "jsr:@std/path";
 
-async function load(fp: string): Promise<string> {
+async function load(fp: string): Promise<{ version: string }> {
   const src = await Deno.readTextFile(fp);
-  const { version } = JSON.parse(src);
-  return version;
+  return JSON.parse(src);
 }
 
 const argv = parseArgs(
@@ -29,8 +28,10 @@ const argv = parseArgs(
     alias: {
       "m": ["module"],
       "t": ["tag"],
+      "f": ["fix"],
     },
     string: ["module", "tag"],
+    boolean: ["fix"],
   },
 );
 
@@ -46,8 +47,9 @@ if (module === null) {
 let version: string;
 
 if (module.startsWith("transport-")) {
-  let packageVersion: string = "";
-  const versionFile = await load(join(module, "src", "version.json"));
+  let packageVersion: { version: string } | undefined;
+  const versionFilePath = join(module, "src", "version.json");
+  let versionFile = await load(versionFilePath);
   switch (module) {
     case "transport-node":
       packageVersion = await load(join(module, "package.json"));
@@ -68,24 +70,44 @@ if (module.startsWith("transport-")) {
     );
     Deno.exit(1);
   }
-  if (packageVersion !== versionFile) {
+  if (packageVersion.version !== versionFile.version) {
+    if (argv.fix) {
+      versionFile = { version: packageVersion.version };
+      await Deno.writeTextFile(
+        versionFilePath,
+        JSON.stringify(versionFile, null, 2),
+      );
+      console.log(
+        `[OK] updated ${versionFilePath} to ${packageVersion.version}`,
+      );
+      Deno.exit(0);
+    }
     console.error(
-      `[ERROR] expected versions to match - package: ${packageVersion} src/version.json: ${versionFile}`,
+      `[ERROR] expected versions to match - package: ${packageVersion.version} src/version.json: ${versionFile.version}`,
     );
     Deno.exit(1);
   }
-  version = versionFile;
+  version = versionFile.version;
 } else {
   const deno = await load(join(module, "deno.json"));
-  const node = await load(join(module, "package.json"));
+  version = deno.version;
+  const nodePackagePath = join(module, "package.json");
+  const node = await load(nodePackagePath);
 
-  if (deno !== node) {
-    console.error(
-      `[ERROR] expected versions to match - deno.json: ${deno} package.json: ${node}`,
-    );
-    Deno.exit(1);
+  if (deno.version !== node.version) {
+    if (argv.fix) {
+      node.version = deno.version;
+      await Deno.writeTextFile(nodePackagePath, JSON.stringify(node, null, 2));
+      console.log(`[OK] updated ${nodePackagePath} to ${deno.version}`);
+      Deno.exit(0);
+    } else {
+      console.error(
+        `[ERROR] expected versions to match - deno.json: ${deno.version} package.json: ${node.version}`,
+      );
+      Deno.exit(1);
+    }
   }
-  version = deno;
+  node.version = deno.version;
 }
 
 if (argv.tag) {
@@ -94,12 +116,12 @@ if (argv.tag) {
   if (tag.startsWith(prefix)) {
     tag = tag.substring(prefix.length);
   }
-  if (tag !== version) {
+  if (tag !== version!) {
     console.error(
-      `[ERROR] expected tag version to match - bundle: ${version} tag: ${argv.tag}}`,
+      `[ERROR] expected tag version to match - bundle: ${version!} tag: ${argv.tag}}`,
     );
     Deno.exit(1);
   }
 }
-
+console.log(`[OK] ${module} version ${version!}`);
 Deno.exit(0);

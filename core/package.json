@@ -1,9 +1,15 @@
 {
   "name": "@nats-io/nats-core",
   "version": "3.0.0-17",
-  "files": ["lib/", "esm/"],
+  "files": [
+    "lib/",
+    "esm/"
+  ],
   "types": "./lib/mod.d.js",
-  "exports": { ".": "./lib/mod.js", "./internal": "./lib/internal_mod.js" },
+  "exports": {
+    ".": "./lib/mod.js",
+    "./internal": "./lib/internal_mod.js"
+  },
   "license": "Apache-2.0",
   "private": false,
   "scripts": {
@@ -15,7 +21,9 @@
     "prepack": "npm run build"
   },
   "keywords": [],
-  "author": { "name": "The NATS Authors" },
+  "author": {
+    "name": "The NATS Authors"
+  },
   "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
   "dependencies": {
     "@nats-io/nkeys": "1.2.0-4",
@@ -23,5 +31,8 @@
     "shx": "^0.3.4",
     "typescript": "^5.4.5"
   },
-  "devDependencies": { "@types/node": "^20.11.30", "typedoc": "^0.25.12" }
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typedoc": "^0.25.12"
+  }
 }
