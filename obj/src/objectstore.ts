@@ -20,6 +20,7 @@ import {
   Feature,
   headers,
   JSONCodec,
+  MsgHdrsImpl,
   nuid,
   QueuedIteratorImpl,
   SHA256,
@@ -27,7 +28,6 @@ import {
 
 import type {
   MsgHdrs,
-  MsgHdrsImpl,
   NatsConnection,
   NatsError,
   QueuedIterator,
