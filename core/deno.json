@@ -13,7 +13,7 @@
   },
   "tasks": {
     "clean": "rm -rf ./lib ./cjs ./esm",
-    "test": "deno test -A --parallel --reload --quiet tests/ --import-map=./import_map.json",
+    "test": "deno test -A --parallel --reload --quiet tests/ --import-map=./import_map.json"
   },
   "imports": {
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@1.2.0-4",
