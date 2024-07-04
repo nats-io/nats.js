@@ -21,6 +21,8 @@ debug/
 # deno project file
 settings.json
 
+deno.lock
+
 # nyc test coverage
 .nyc_output
 coverage/

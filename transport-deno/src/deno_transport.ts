@@ -35,8 +35,9 @@ import type {
 } from "@nats-io/nats-core/internal";
 
 import { writeAll } from "@std/io";
+import data from "./version.json" with { type: "json" };
 
-const VERSION = "1.25.0";
+const VERSION = data.version;
 const LANG = "nats.deno";
 
 const ReadBufferSize = 1024 * 256;
