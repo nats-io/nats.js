@@ -35,7 +35,7 @@ import type {
 } from "@nats-io/nats-core/internal";
 
 import { writeAll } from "@std/io";
-import data from "./version.json" with {type: "json"}
+import data from "./version.json" with { type: "json" };
 
 const VERSION = data.version;
 const LANG = "nats.deno";

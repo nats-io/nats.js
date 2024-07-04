@@ -31,7 +31,7 @@
     "check-dependencies": "bin/check-dep-versions.ts"
   },
   "fmt": {
-    "include": ["src/", "doc/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md"]
+    "include": ["transport-deno/", "doc/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md"]
   },
   "lint": {
     "exclude": ["docs/"]
