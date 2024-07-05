@@ -3,7 +3,7 @@
   "version": "3.0.0-17",
   "files": [
     "lib/",
-    "esm/"
+    "build/src/"
   ],
   "types": "./lib/mod.d.js",
   "exports": {
@@ -13,11 +13,11 @@
   "license": "Apache-2.0",
   "private": false,
   "scripts": {
-    "clean": "shx rm -Rf ./lib ./cjs ./esm ./docs && shx mkdir esm",
-    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./cjs ./src",
+    "clean": "shx rm -Rf ./build ./lib ./docs",
+    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
-    "doc": "npm run clean && npm run build && node_modules/.bin/typedoc --out ./docs/ && touch ./docs/.nojekyll",
+    "doc": "npm run build && node_modules/.bin/typedoc --out ./docs/ && touch ./docs/.nojekyll",
     "prepack": "npm run build"
   },
   "keywords": [],
@@ -27,12 +27,12 @@
   "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
   "dependencies": {
     "@nats-io/nkeys": "1.2.0-4",
-    "@nats-io/nuid": "2.0.1-2",
-    "shx": "^0.3.4",
-    "typescript": "^5.4.5"
+    "@nats-io/nuid": "2.0.1-2"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
-    "typedoc": "^0.25.12"
+    "typedoc": "^0.25.12",
+    "shx": "^0.3.4",
+    "typescript": "^5.4.5"
   }
 }

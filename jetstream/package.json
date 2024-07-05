@@ -2,7 +2,8 @@
   "name": "@nats-io/jetstream",
   "version": "3.0.0-3",
   "files": [
-    "lib/"
+    "lib/",
+    "build/src/"
   ],
   "types": "./lib/mod.d.js",
   "exports": {
@@ -12,11 +13,11 @@
   "license": "Apache-2.0",
   "private": false,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "clean": "shx rm -Rf ./lib ./cjs ./esm && shx mkdir esm",
-    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./cjs ./src",
+    "clean": "shx rm -Rf ./build ./lib ./docs",
+    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
+    "doc": "npm run build && node_modules/.bin/typedoc --out ./docs/ && touch ./docs/.nojekyll",
     "prepack": "npm run build"
   },
   "keywords": [],
@@ -25,7 +26,11 @@
   },
   "description": "jetstream library - this library implements all the base functionality for NATS JetStream for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-17",
+    "@nats-io/nats-core": "3.0.0-17"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typedoc": "^0.25.12",
     "shx": "^0.3.4",
     "typescript": "^5.4.5"
   }

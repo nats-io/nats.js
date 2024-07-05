@@ -10,6 +10,7 @@ export type {
   EndpointStats,
   NamedEndpointStats,
   Service,
+  ServiceClient,
   ServiceConfig,
   ServiceGroup,
   ServiceHandler,

@@ -57,7 +57,7 @@ if (!dirs.length || argv.h || argv.help) {
 // create out if not exist
 await Deno.lstat(out)
   .catch(async () => {
-    await Deno.mkdir(out);
+    await Deno.mkdir(out, { recursive: true });
   });
 
 // process each file - remove extensions from requires/import
