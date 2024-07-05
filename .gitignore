@@ -1,41 +1,20 @@
-# Logs
-npm-debug.log*
-
-# generated files
 .DS_Store
-nats.js
-jetstream.js
-kv.js
-os.js
-svc.js
+deno.lock
+package-lock.json
 
-*.d.ts
-nats.js.map
-src/version.json
-old_tests/
-examples/certs/
-.tsconfig
+**/build/
+**/lib/
+**/node_modules/
+
 debug/
 .idea/
 .vscode/
-# deno project file
-settings.json
 
-deno.lock
 
 # nyc test coverage
-.nyc_output
 coverage/
-
-# Dependency directories
-**/node_modules/
-
-# Optional npm cache directory
-.npm
 
 # ide crud
 vcs.xml
 
-# we copy package.json to read the version so ts, webpack, etc are happy
-src/package.json
 
