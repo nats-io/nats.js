@@ -59,4 +59,21 @@ jobs:
         run: |
           deno task test
 
+      - name: Build NPM core bundle
+        working-directory: services
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link
 
+      - name: Test Node Transport with local services
+        working-directory: transport-node
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link @nats-io/services
+          npm test
