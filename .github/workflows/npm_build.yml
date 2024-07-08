@@ -1,4 +1,4 @@
-name: Test nats.js
+name: NPM build test
 
 on:
   push:
