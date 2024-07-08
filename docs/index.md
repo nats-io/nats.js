@@ -1,4 +1,7 @@
 # NATS Documentation For JavaScript
 
-- [core](../core/docs/index.html)
-- [jetstream](../jetstream/docs/index.html)
+- [core](./core/index.html)
+- [jetstream](./jetstream/index.html)
+- [kv](./kv/index.html)
+- [obj](./obj/index.html)
+- [services](./services/index.html)
