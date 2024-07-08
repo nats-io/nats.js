@@ -13,11 +13,11 @@
   "license": "Apache-2.0",
   "private": false,
   "scripts": {
-    "clean": "shx rm -Rf ./build ./lib ./docs",
+    "clean": "shx rm -Rf ./build ./lib",
     "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
-    "doc": "npm run build && node_modules/.bin/typedoc --out ./docs/ && touch ./docs/.nojekyll",
+    "doc": "npm run build && node_modules/.bin/typedoc --out ../docs/kv && touch ../docs/.nojekyll",
     "prepack": "npm run build"
   },
   "keywords": [],

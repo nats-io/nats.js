@@ -30,7 +30,7 @@ const h2 = handler(msub);
 for (let i = 1; i < 6; i++) {
   nc.publish("hello", `hello-${i}`);
 }
-// insure all the messages have been delivered to the server
+// ensure all the messages have been delivered to the server
 // meaning that the subscription also processed them.
 await nc.flush();
 // unsub manually from the second subscription

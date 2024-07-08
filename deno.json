@@ -32,10 +32,10 @@
   },
   "fmt": {
     "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md"],
-    "exclude": ["*/docs", "*/lib", "*/build"]
+    "exclude": ["*/lib", "*/build", "docs/"]
   },
   "lint": {
-    "exclude": ["*/docs", "*/lib", "*/build"]
+    "exclude": ["*/lib", "*/build", "docs/"]
   },
   "scopes": {
     "*": {
