@@ -1,0 +1,11 @@
+.deps/
+.DS_Store
+../.idea
+.nyc_output/
+benchmark/
+coverage/
+lib/
+nats-base-client/
+jetstream/
+node_modules/
+debug/

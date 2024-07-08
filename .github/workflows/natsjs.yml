@@ -1,0 +1,54 @@
+name: NATS.js CI
+
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - '*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        node-version: [22.x, 20.x, 18.x]
+        deno-version: [1.43.5]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout NATS.js
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Use Deno Version ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+      - name: Set NATS Server Version
+        run: echo "NATS_VERSION=v2.10.14" >> $GITHUB_ENV
+      - name: Get nats-server
+        run: |
+          wget "https://github.com/nats-io/nats-server/releases/download/$NATS_VERSION/nats-server-$NATS_VERSION-linux-amd64.zip" -O tmp.zip
+          unzip tmp.zip
+          mv nats-server-$NATS_VERSION-linux-amd64 nats-server
+      - run: npm ci
+      - run: npm run prepack
+      - run: npm test
+        env:
+          CI: true
+      - name: Gather coverage
+        if: matrix.node-version == '21.x'
+        run: npm run coveralls
+      - name: Upload coverage
+        uses: coverallsapp/github-action@v1.2.5
+        if: matrix.node-version == '21.x'
+        with:
+          github-token: ${{ secrets.github_token }}
+          path-to-lcov: ./coverage/lcov.info
