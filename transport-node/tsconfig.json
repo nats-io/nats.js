@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "outDir": "lib/",
+    "moduleResolution": "nodenext",
+    "sourceMap": true,
+    "declaration": true,
+    "allowJs": true,
+    "removeComments": false
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "transport-node/test/**/*",
+    "lib/**/*"
+  ]
+}
