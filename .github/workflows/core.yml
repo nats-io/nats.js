@@ -16,6 +16,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [1.x.x]
+        node-version: [ 22.x ]
     permissions:
       contents: read
       id-token: write
@@ -44,6 +45,11 @@ jobs:
           deno fmt --check
           deno lint
 
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
       - name: Test Deno Module
         working-directory: core
         env:
@@ -53,4 +59,21 @@ jobs:
         run: |
           deno task test
 
+      - name: Build NPM core bundle
+        working-directory: core
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link
 
+      - name: Test Node Transport with local nats-core
+        working-directory: transport-node
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link @nats-io/nats-core
+          npm test

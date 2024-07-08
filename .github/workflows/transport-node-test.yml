@@ -1,4 +1,4 @@
-name: Test nats.js
+name: test transport-node with local modules
 
 on:
   push:
@@ -89,7 +89,7 @@ jobs:
           npm run prepack
           npm link   
 
-      - name: Test Node Transport
+      - name: Test Node Transport with local dependencies
         working-directory: transport-node
         env:
           CI: true
