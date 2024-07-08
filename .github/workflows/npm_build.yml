@@ -1,0 +1,50 @@
+name: Test nats.js
+
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - '*'
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        deno-version: [ 1.44.4 ]
+        module: [ core, jetstream, kv, obj, services ]
+        node-version: [22.x]
+
+    name: Build ${{matrix.module}} npm bundle
+    runs-on: ubuntu-latest-4-cores
+    environment: CI
+
+    steps:
+      - name: Git Checkout Deno Module
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Use Deno Version ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Build ${{matrix.module}} NPM Module
+        working-directory: ${{matrix.module}}
+        env:
+          TMPDIR: ${{ runner.temp }}
+          CI: true
+          NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
+        run: |
+          npm ci
+          npm run prepack
+
