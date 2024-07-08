@@ -1,0 +1,104 @@
+name: test transport-node with local modules
+
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - '*'
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        deno-version: [ 1.44.4 ]
+        node-version: [ 22.x ]
+
+    name: test node transport with local dependencies
+    runs-on: ubuntu-latest-4-cores
+    environment: CI
+
+    steps:
+      - name: Git Checkout Deno Module
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Use Deno Version ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
+
+      - name: Build NPM core bundle
+        working-directory: core
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link
+
+      - name: Build NPM jetstream bundle
+        working-directory: jetstream
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link
+
+      - name: Build NPM kv bundle
+        working-directory: kv
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link         
+
+      - name: Build NPM obj bundle
+        working-directory: obj
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link   
+
+      - name: Build NPM services bundle
+        working-directory: services
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link   
+
+      - name: Test Node Transport with local dependencies
+        working-directory: transport-node
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link @nats-io/nats-core
+          npm link @nats-io/jetstream
+          npm link @nats-io/kv
+          npm link @nats-io/obj
+          npm link @nats-io/services
+          npm test

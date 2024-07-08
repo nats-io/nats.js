@@ -49,4 +49,21 @@ jobs:
         run: |
           deno task test
 
+      - name: Build NPM core bundle
+        working-directory: jetstream
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link
 
+      - name: Test Node Transport with local jetstream
+        working-directory: transport-node
+        env:
+          CI: true
+        run: |
+          npm ci
+          npm run prepack
+          npm link @nats-io/jetstream
+          npm test
