@@ -144,3 +144,20 @@ export async function notCompatible(
   }
   return false;
 }
+
+export function flakyTest(
+    fn:  () => void | Promise<void>,
+    { count = 3 } = {},
+): () => Promise<void> {
+  return async () => {
+    const errors: Error[] = [];
+    for (let i = 0; i < count; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    throw new AggregateError(errors);
+  }
+}

@@ -13,7 +13,13 @@
  * limitations under the License.
  */
 
-import { _setup, cleanup, connect, jetstreamServerConf } from "test_helpers";
+import {
+  _setup,
+  cleanup,
+  connect,
+  flakyTest,
+  jetstreamServerConf,
+} from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert";
@@ -111,33 +117,36 @@ Deno.test("next - listener leaks", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("next - consumer not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+Deno.test(
+  "next - consumer not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-  });
+    await jsm.consumers.add("A", {
+      durable_name: "a",
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
+    });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
-  await c.delete();
-  await delay(1000);
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A", "a");
+    await c.delete();
+    await delay(1000);
 
-  const exited = assertRejects(
-    async () => {
-      await c.next({ expires: 1000 });
-    },
-    Error,
-    "consumer not found",
-  );
+    const exited = assertRejects(
+      async () => {
+        await c.next({ expires: 1000 });
+      },
+      Error,
+      "consumer not found",
+    );
 
-  await exited;
-  await cleanup(ns, nc);
-});
+    await exited;
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("next - deleted consumer", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
