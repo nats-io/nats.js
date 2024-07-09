@@ -10,17 +10,14 @@ exports.check = function check(
   opts = Object.assign(opts, { interval: 50 });
 
   const d = deferred();
-  let timer;
-  let to;
-
-  to = setTimeout(() => {
+  const to = setTimeout(() => {
     clearTimeout(to);
     clearInterval(timer);
     const m = opts.name ? `${opts.name} timeout` : "timeout";
     return d.reject(new Error(m));
   }, timeout);
 
-  timer = setInterval(async () => {
+  const timer = setInterval(async () => {
     try {
       const v = await fn();
       if (v) {

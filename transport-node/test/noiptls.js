@@ -13,7 +13,6 @@
  * limitations under the License.
  */
 const { describe, it } = require("node:test");
-const assert = require("node:assert").strict;
 const {
   connect,
   Events,

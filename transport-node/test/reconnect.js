@@ -44,7 +44,6 @@ describe(
       nc.publish(subj);
       await lock;
       await nc.close();
-      // @ts-ignore
       const a = nc.protocol.servers.getServers();
       assert.equal(a.length, 1);
       assert.ok(a[0].didConnect);
@@ -53,7 +52,7 @@ describe(
     it("reconnect - events", async () => {
       const srv = await NatsServer.start();
 
-      let nc = await connect({
+      const nc = await connect({
         port: srv.port,
         waitOnFirstConnect: true,
         reconnectTimeWait: 100,
@@ -90,7 +89,7 @@ describe(
 
     it("reconnect - reconnect not emitted if suppressed", async () => {
       const srv = await NatsServer.start();
-      let nc = await connect({
+      const nc = await connect({
         port: srv.port,
         reconnect: false,
       });
@@ -115,12 +114,12 @@ describe(
 
     it("reconnect - reconnecting after proper delay", async () => {
       const srv = await NatsServer.start();
-      let nc = await connect({
+      const nc = await connect({
         port: srv.port,
         reconnectTimeWait: 500,
         maxReconnectAttempts: 1,
       });
-      // @ts-ignore
+
       const serverLastConnect =
         nc.protocol.servers.getCurrentServer().lastConnect;
 
@@ -129,8 +128,7 @@ describe(
         for await (const e of nc.status()) {
           switch (e.type) {
             case DebugEvents.Reconnecting:
-              const elapsed = Date.now() - serverLastConnect;
-              dt.resolve(elapsed);
+              dt.resolve(Date.now() - serverLastConnect);
               break;
           }
         }
@@ -144,7 +142,7 @@ describe(
     it("reconnect - indefinite reconnects", async () => {
       let srv = await NatsServer.start();
 
-      let nc = await connect({
+      const nc = await connect({
         port: srv.port,
         reconnectTimeWait: 100,
         maxReconnectAttempts: -1,
@@ -188,7 +186,7 @@ describe(
     });
 
     it("reconnect - jitter", async () => {
-      let srv = await NatsServer.start();
+      const srv = await NatsServer.start();
 
       let called = false;
       const h = () => {
@@ -196,14 +194,14 @@ describe(
         return 15;
       };
 
-      let hasDefaultFn;
-      let dc = await connect({
+      const dc = await connect({
         port: srv.port,
         reconnect: false,
       });
-      hasDefaultFn = typeof dc.options.reconnectDelayHandler === "function";
+      const hasDefaultFn =
+        typeof dc.options.reconnectDelayHandler === "function";
 
-      let nc = await connect({
+      const nc = await connect({
         port: srv.port,
         maxReconnectAttempts: 1,
         reconnectDelayHandler: h,

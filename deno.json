@@ -35,7 +35,7 @@
     "exclude": ["*/lib", "*/build", "docs/"]
   },
   "lint": {
-    "exclude": ["*/lib", "*/build", "docs/", "transport-node/"]
+    "exclude": ["*/lib", "*/build", "docs/"]
   },
   "scopes": {
     "*": {

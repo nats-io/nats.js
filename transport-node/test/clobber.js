@@ -33,7 +33,7 @@ describe(
   { timeout: 20_000, concurrency: true, forceExit: true },
   () => {
     it("buffers don't clobber", async () => {
-      let iters = 250 * 1024;
+      const iters = 250 * 1024;
       const data = makeBuffer(iters * 1024);
       const ns = await NatsServer.start();
       const nc = await connect({ port: ns.port });

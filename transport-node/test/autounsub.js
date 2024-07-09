@@ -67,7 +67,7 @@ describe(
       const subj = createInbox();
       const sub = nc.subscribe(subj, { max: 20 });
       const iter = (async () => {
-        for await (const m of sub) {
+        for await (const _ of sub) {
           break;
         }
       })();
@@ -111,7 +111,7 @@ describe(
       await nc.request(subj);
       await nc.drain();
 
-      let counts = subs.map((s) => {
+      const counts = subs.map((s) => {
         return s.getReceived();
       });
       const count = counts.reduce((a, v) => a + v);
@@ -142,22 +142,22 @@ describe(
     });
 
     it("check subscription leaks", async () => {
-      let nc = await connect({ servers: u });
-      let subj = createInbox();
-      let sub = nc.subscribe(subj);
+      const nc = await connect({ servers: u });
+      const subj = createInbox();
+      const sub = nc.subscribe(subj);
       sub.unsubscribe();
       assert.equal(nc.protocol.subscriptions.size(), 0);
       await nc.close();
     });
 
     it("check request leaks", async () => {
-      let nc = await connect({ servers: u });
-      let subj = createInbox();
+      const nc = await connect({ servers: u });
+      const subj = createInbox();
 
       // should have no subscriptions
       assert.equal(nc.protocol.subscriptions.size(), 0);
 
-      let sub = nc.subscribe(subj);
+      const sub = nc.subscribe(subj);
       const _ = (async () => {
         for await (const m of sub) {
           m.respond();
@@ -167,7 +167,7 @@ describe(
       // should have one subscription
       assert.equal(nc.protocol.subscriptions.size(), 1);
 
-      let msgs = [];
+      const msgs = [];
       msgs.push(nc.request(subj));
       msgs.push(nc.request(subj));
 
@@ -186,13 +186,13 @@ describe(
     });
 
     it("check cancelled request leaks", async () => {
-      let nc = await connect({ servers: u });
-      let subj = createInbox();
+      const nc = await connect({ servers: u });
+      const subj = createInbox();
 
       // should have no subscriptions
       assert.equal(nc.protocol.subscriptions.size(), 0);
 
-      let rp = nc.request(subj, Empty, { timeout: 100 });
+      const rp = nc.request(subj, Empty, { timeout: 100 });
 
       assert.equal(nc.protocol.subscriptions.size(), 1);
       assert.equal(nc.protocol.muxSubscriptions.size(), 1);

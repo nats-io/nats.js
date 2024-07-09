@@ -6,17 +6,17 @@ module.exports.Lock = function lock(count = 1, ms = 5000) {
   let methods;
   const promise = new Promise((resolve, reject) => {
     let timer;
-    let cancel = () => {
+    const cancel = () => {
       if (timer) {
         clearTimeout(timer);
       }
     };
 
-    let lock = () => {
+    const lock = () => {
       count++;
     };
 
-    let unlock = () => {
+    const unlock = () => {
       count--;
       if (count === 0) {
         cancel();

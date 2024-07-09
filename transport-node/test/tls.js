@@ -162,7 +162,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     await ns.stop();
   });
 
-  it("shouldn't leak tls config", (t) => {
+  it("shouldn't leak tls config", () => {
     const tlsOptions = {
       keyFile: resolve(join(dir, "./test/certs/client-key.pem")),
       certFile: resolve(join(dir, "./test/certs/client-cert.pem")),
@@ -183,7 +183,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     assert.equal(cc.tls, undefined);
   });
 
-  async function tlsInvalidCertMacro(conf, tlsCode, re) {
+  async function tlsInvalidCertMacro(conf, _tlsCode, re) {
     const ns = await NatsServer.start(tlsConfig);
     await assert.rejects(() => {
       return connect({ servers: `localhost:${ns.port}`, tls: conf });

@@ -74,7 +74,7 @@ describe(
       const subs = [];
       let queueCount = 0;
       for (let i = 0; i < 5; i++) {
-        let s = nc.subscribe(subj, {
+        const s = nc.subscribe(subj, {
           callback: () => {
             queueCount++;
           },

@@ -22,7 +22,7 @@ describe(
   "msgheaders",
   { timeout: 20_000, concurrency: true, forceExit: true },
   () => {
-    it("msgheaders - basics", (t) => {
+    it("msgheaders - basics", () => {
       const h = new MsgHdrsImpl();
       assert.equal(h.size(), 0);
       assert.ok(!h.has("foo"));
@@ -36,7 +36,7 @@ describe(
       h.delete("bar-foo");
       assert.equal(h.size(), 2);
 
-      let header = canonicalMIMEHeaderKey("foo");
+      const header = canonicalMIMEHeaderKey("foo");
       assert.equal("Foo", header);
       assert.ok(!h.has("Foo"));
       assert.ok(h.has("foo"));
@@ -61,7 +61,7 @@ describe(
       assert.ok(!h.equals(hh));
     });
 
-    it("msgheaders - illegal key", (t) => {
+    it("msgheaders - illegal key", () => {
       const h = new MsgHdrsImpl();
       ["bad:", "bad ", String.fromCharCode(127)].forEach((v) => {
         assert.throws(() => {

@@ -105,7 +105,8 @@ describe(
       const iterErr = deferred();
       const sub = nc.subscribe("foo");
       (async () => {
-        for await (const m of sub) {
+        for await (const _ of sub) {
+          // nothing
         }
       })().catch((err) => {
         iterErr.resolve(err);

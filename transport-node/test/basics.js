@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const { describe, it, test, suite } = require("node:test");
+const { describe, it } = require("node:test");
 const assert = require("node:assert").strict;
 const {
   connect,
@@ -28,8 +28,6 @@ const {
 const { AckPolicy, jetstream, jetstreamManager } = require(
   "@nats-io/jetstream",
 );
-
-const net = require("net");
 
 const { deferred, delay, nuid } = require(
   "@nats-io/nats-core/internal",
@@ -110,7 +108,7 @@ describe(
       const nc = await connect({ servers: u });
       const sub = nc.subscribe(subj);
       const iter = (async () => {
-        for await (const m of sub) {
+        for await (const _ of sub) {
           break;
         }
       })();
@@ -161,7 +159,7 @@ describe(
       const subj = createInbox();
       const sub = nc.subscribe(subj);
       const _ = (async () => {
-        for await (const m of sub) {
+        for await (const _ of sub) {
           lock.unlock();
         }
       })();
@@ -210,7 +208,7 @@ describe(
       const partial = 2;
       const full = 5;
 
-      let nc = await connect({ servers: u });
+      const nc = await connect({ servers: u });
       const s = createInbox();
 
       const sub = nc.subscribe(`${s}.*`);
@@ -272,8 +270,8 @@ describe(
     });
 
     it("basics - respond returns false if no reply subject set", async () => {
-      let nc = await connect({ servers: u });
-      let s = createInbox();
+      const nc = await connect({ servers: u });
+      const s = createInbox();
       const dr = deferred();
       const sub = nc.subscribe(s);
       const _ = (async () => {
@@ -289,26 +287,26 @@ describe(
     });
 
     it("basics - closed cannot subscribe", async () => {
-      let nc = await connect({ servers: u });
+      const nc = await connect({ servers: u });
       await nc.close();
       let failed = false;
       try {
         nc.subscribe(createInbox());
         assert.fail("should have not been able to subscribe");
-      } catch (err) {
+      } catch (_) {
         failed = true;
       }
       assert.ok(failed);
     });
 
     it("basics - close cannot request", async () => {
-      let nc = await connect({ servers: u });
+      const nc = await connect({ servers: u });
       await nc.close();
       let failed = false;
       try {
         await nc.request(createInbox());
         assert.fail("should have not been able to request");
-      } catch (err) {
+      } catch (_) {
         failed = true;
       }
       assert.ok(failed);
@@ -316,7 +314,7 @@ describe(
 
     it("basics - flush returns promise", async () => {
       const nc = await connect({ servers: u });
-      let p = nc.flush();
+      const p = nc.flush();
       if (!p) {
         assert.fail("should have returned a promise");
       }
@@ -325,8 +323,8 @@ describe(
     });
 
     it("basics - unsubscribe after close no error", async () => {
-      let nc = await connect({ servers: u });
-      let sub = nc.subscribe(createInbox());
+      const nc = await connect({ servers: u });
+      const sub = nc.subscribe(createInbox());
       await nc.close();
       sub.unsubscribe();
     });
@@ -496,7 +494,8 @@ describe(
       const lock = Lock(1);
       const sub = nc.subscribe(createInbox(), { max: 1, timeout: 250 });
       (async () => {
-        for await (const m of sub) {
+        for await (const _m of sub) {
+          // nothing
         }
       })().catch((err) => {
         assert.equal(err.code, ErrorCode.Timeout);
@@ -511,7 +510,8 @@ describe(
       const subj = createInbox();
       const sub = nc.subscribe(subj, { max: 2, timeout: 500 });
       (async () => {
-        for await (const m of sub) {
+        for await (const _m of sub) {
+          // nothing
         }
       })().catch((err) => {
         assert.fail(err);
@@ -531,7 +531,7 @@ describe(
       let c = 0;
       const sub = nc.subscribe(subj, { max: 2, timeout: 300 });
       (async () => {
-        for await (const m of sub) {
+        for await (const _m of sub) {
           c++;
         }
       })().catch((err) => {
@@ -701,7 +701,7 @@ describe(
 
       const lock = new Lock(5);
       nc2.subscribe(subj, {
-        callback: (err, m) => {
+        callback: (_err, _m) => {
           lock.unlock();
         },
       });
@@ -716,7 +716,7 @@ describe(
       await nc2.close();
     });
 
-    it("basics - createinbox", (t) => {
+    it("basics - createinbox", () => {
       assert.ok(createInbox());
     });
 

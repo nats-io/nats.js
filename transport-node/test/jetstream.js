@@ -121,7 +121,7 @@ describe(
       ok = await jsm.streams.delete("stream");
       assert.equal(ok, true);
 
-      await assert.rejects(async () => {
+      await assert.rejects(() => {
         return jsm.streams.info("stream");
       }, (err) => {
         assert.equal(err.message, "stream not found");
@@ -196,7 +196,7 @@ describe(
       const js = jetstream(nc);
       let iter = await js.fetch("stream", "me", { no_wait: true });
       await (async () => {
-        for await (const m of iter) {
+        for await (const _m of iter) {
           // nothing
         }
       })();
@@ -272,7 +272,7 @@ describe(
       cob.deliverAll();
 
       cob.maxMessages(3);
-      let iter = await js.subscribe("hello.>", cob);
+      const iter = await js.subscribe("hello.>", cob);
       await (async () => {
         for await (const m of iter) {
           m.ack();
@@ -285,12 +285,12 @@ describe(
 
     it("jetstream pullsub", async () => {
       const ns = await NatsServer.start(jetstreamServerConf());
-      let nc = await connect({ port: ns.port });
+      const nc = await connect({ port: ns.port });
 
       const jsm = await jetstreamManager(nc);
       await jsm.streams.add({ name: "stream", subjects: ["hello.>"] });
 
-      let js = jetstream(nc);
+      const js = jetstream(nc);
       let pa = await js.publish("hello.world", Empty);
       assert.equal(pa.seq, 1);
       pa = await js.publish("hello.world", Empty);
@@ -331,7 +331,7 @@ describe(
 
     it("qsub ackall", async () => {
       const ns = await NatsServer.start(jetstreamServerConf());
-      let nc = await connect({ port: ns.port });
+      const nc = await connect({ port: ns.port });
       const jsm = await jetstreamManager(nc);
       const stream = nuid.next();
       const subj = nuid.next();
@@ -444,7 +444,7 @@ describe(
       const nc = await connect({ port: ns.port });
       const js = jetstream(nc);
 
-      await assert.rejects(async () => {
+      await assert.rejects(() => {
         return js.consumers.get("stream", "a");
       }, (err) => {
         assert.equal(err.message, "stream not found");
@@ -511,7 +511,7 @@ describe(
 
       let iter = await c.fetch({ max_messages: 2 });
       const buf = [];
-      for await (let m of iter) {
+      for await (const m of iter) {
         buf.push(m);
         m.ack();
       }
@@ -592,7 +592,7 @@ describe(
       c = await js.consumers.get("stream");
       let iter = await c.fetch({ max_messages: 4 });
       const buf = [];
-      for await (let m of iter) {
+      for await (const m of iter) {
         buf.push(m);
         m.ack();
       }
