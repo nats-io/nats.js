@@ -39,10 +39,10 @@
   "scripts": {
     "build": "tsc",
     "clean": "shx rm -Rf ./lib/*",
-    "fmt": "deno fmt src transport-node/examples/ transport-node/test/",
+    "fmt": "deno fmt src/ examples/ test/ ",
     "prepack": "npm run check-package && npm run build",
     "ava": "nyc ava --verbose -T 60000",
-    "test": "npm run check-package && npm run build && npm run ava",
+    "test": "npm run check-package && npm run build && NODE_EXTRA_CA_CERTS=test/certs/ca.pem; node --test",
     "debug-test": "node ../node_modules/.bin/ava --verbose -T 6500000 --match",
     "setup": "curl -fsSL https://deno.land/x/install/install.sh | sh",
     "setup_win": "choco install deno",

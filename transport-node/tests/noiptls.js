@@ -12,7 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const test = require("ava");
+const { describe, it } = require("node:test");
+const assert = require("node:assert").strict;
 const {
   connect,
   Events,
@@ -34,38 +35,38 @@ const tlsConfig = {
   },
 };
 
-test("tls - reconnect via tls by ip", async (t) => {
-  if (process.env.CI) {
-    t.log("skipped test");
-    t.pass();
-    return;
-  }
-
-  const servers = await NatsServer.startCluster(3, tlsConfig);
-  const nc = await connect(
-    {
-      port: servers[0].port,
-      reconnectTimeWait: 250,
-      tls: {
-        caFile: resolve(join(dir, "/test/certs/ca.pem")),
-      },
-    },
-  );
-
-  await nc.flush();
-  const lock = Lock();
-  const iter = nc.status();
-  (async () => {
-    for await (const e of iter) {
-      if (e.type === Events.Reconnect) {
-        lock.unlock();
-      }
+describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
+  it("reconnect via tls by ip", async () => {
+    if (process.env.CI) {
+      console.log("skipped test");
+      return;
     }
-  })().then();
 
-  await servers[0].stop();
-  await lock;
-  t.pass();
-  await nc.close();
-  await NatsServer.stopAll(servers);
+    const servers = await NatsServer.startCluster(3, tlsConfig);
+    const nc = await connect(
+      {
+        port: servers[0].port,
+        reconnectTimeWait: 250,
+        tls: {
+          caFile: resolve(join(dir, "/test/certs/ca.pem")),
+        },
+      },
+    );
+
+    await nc.flush();
+    const lock = Lock();
+    const iter = nc.status();
+    (async () => {
+      for await (const e of iter) {
+        if (e.type === Events.Reconnect) {
+          lock.unlock();
+        }
+      }
+    })().then();
+
+    await servers[0].stop();
+    await lock;
+    await nc.close();
+    await NatsServer.stopAll(servers);
+  });
 });

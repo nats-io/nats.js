@@ -31,8 +31,8 @@
     "check-dependencies": "bin/check-dep-versions.ts"
   },
   "fmt": {
-    "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md"],
-    "exclude": ["*/lib", "*/build", "docs/", "transport-node/"]
+    "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md", "transport-node/"],
+    "exclude": ["*/lib", "*/build", "docs/"]
   },
   "lint": {
     "exclude": ["*/lib", "*/build", "docs/", "transport-node/"]
