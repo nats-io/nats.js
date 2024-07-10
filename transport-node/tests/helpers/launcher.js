@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The NATS Authors
+ * Copyright 2020-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -163,7 +163,7 @@ exports.NatsServer = class NatsServer {
     return Promise.resolve();
   }
 
-  async varz() {
+  varz() {
     if (!this.monitoring) {
       return Promise.reject(new Error(`server is not monitoring`));
     }
@@ -263,12 +263,12 @@ exports.NatsServer = class NatsServer {
     }
   }
 
-  static async start(conf = {}, debug = undefined) {
+  static start(conf = {}, debug = undefined) {
     const exe = "nats-server";
     const tmp = path.resolve(process.env.TMPDIR || ".");
 
     let srv;
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         conf = conf || {};
         conf.ports_file_dir = tmp;
@@ -285,8 +285,7 @@ exports.NatsServer = class NatsServer {
         if (debug) {
           debug.log(`${exe} -c ${confFile}`);
         }
-        srv = await spawn(exe, ["-c", confFile]);
-
+        srv = spawn(exe, ["-c", confFile]);
         if (debug) {
           debug.log(`[${srv.pid}] - launched`);
         }
@@ -295,7 +294,7 @@ exports.NatsServer = class NatsServer {
           path.join(tmp, `nats-server_${srv.pid}.ports`),
         );
 
-        const pi = await check(
+        check(
           () => {
             try {
               if (debug) {
@@ -308,36 +307,37 @@ exports.NatsServer = class NatsServer {
                 return d;
               }
             } catch (_) {
+              // nothing
             }
           },
           1000,
           { name: "read ports file" },
-        );
+        ).then((pi) => {
+          if (debug) {
+            debug.log(`[${srv.pid}] - ports file found`);
+          }
+          const ports = parsePorts(pi);
+          if (conf.cluster && conf.cluster.name) {
+            ports.clusterName = conf.cluster.name;
+          }
 
-        if (debug) {
-          debug.log(`[${srv.pid}] - ports file found`);
-        }
+          const ns = new NatsServer(
+            { info: ports, process: srv, debug: debug, config: conf },
+          );
 
-        const ports = parsePorts(pi);
-        if (conf.cluster && conf.cluster.name) {
-          ports.clusterName = conf.cluster.name;
-        }
-
-        const ns = new NatsServer(
-          { info: ports, process: srv, debug: debug, config: conf },
-        );
-
-        await check(
-          async () => {
-            if (debug) {
-              debug.log(`[${srv.pid}] - attempting to connect`);
-            }
-            return await ns.varz();
-          },
-          5000,
-          { name: "wait for server", interval: 250 },
-        );
-        resolve(ns);
+          check(
+            async () => {
+              if (debug) {
+                debug.log(`[${srv.pid}] - attempting to connect`);
+              }
+              return await ns.varz();
+            },
+            5000,
+            { name: "wait for server", interval: 250 },
+          ).then(() => {
+            resolve(ns);
+          });
+        });
       } catch (err) {
         if (srv && debug) {
           try {
@@ -351,7 +351,7 @@ exports.NatsServer = class NatsServer {
     });
   }
 
-  static async addClusterMember(
+  static addClusterMember(
     ns,
     conf = {},
     debug = false,
@@ -369,7 +369,7 @@ exports.NatsServer = class NatsServer {
     return NatsServer.start(conf, debug);
   }
 
-  static async localClusterFormed(servers) {
+  static localClusterFormed(servers) {
     const ports = servers.map((s) => s.port);
 
     const fn = async function (s) {

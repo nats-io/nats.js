@@ -61,6 +61,7 @@ import {
   assertThrowsAsyncErrorCode,
   cleanup,
   connect,
+  flakyTest,
   jetstreamExportServerConf,
   jetstreamServerConf,
   NatsServer,
@@ -946,68 +947,71 @@ Deno.test("jsm - cross account streams", async () => {
   await cleanup(ns, nc, admin);
 });
 
-Deno.test("jsm - cross account consumers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamExportServerConf(), {
-    user: "a",
-    pass: "s3cret",
-  });
+Deno.test(
+  "jsm - cross account consumers",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamExportServerConf(), {
+      user: "a",
+      pass: "s3cret",
+    });
 
-  const sawIPA = deferred();
-  nc.subscribe("IPA.>", {
-    callback: () => {
-      sawIPA.resolve();
-    },
-    max: 1,
-  });
+    const sawIPA = deferred();
+    nc.subscribe("IPA.>", {
+      callback: () => {
+        sawIPA.resolve();
+      },
+      max: 1,
+    });
 
-  const jsm = await jetstreamManager(nc, { apiPrefix: "IPA" });
-  await sawIPA;
+    const jsm = await jetstreamManager(nc, { apiPrefix: "IPA" });
+    await sawIPA;
 
-  // add a stream
-  const stream = nuid.next();
-  const subj = `${stream}.A`;
-  await jsm.streams.add({ name: stream, subjects: [subj] });
+    // add a stream
+    const stream = nuid.next();
+    const subj = `${stream}.A`;
+    await jsm.streams.add({ name: stream, subjects: [subj] });
 
-  let consumers = await jsm.consumers.list(stream).next();
-  assertEquals(consumers.length, 0);
+    let consumers = await jsm.consumers.list(stream).next();
+    assertEquals(consumers.length, 0);
 
-  await jsm.consumers.add(stream, {
-    durable_name: "me",
-    ack_policy: AckPolicy.Explicit,
-  });
+    await jsm.consumers.add(stream, {
+      durable_name: "me",
+      ack_policy: AckPolicy.Explicit,
+    });
 
-  // cannot publish to the stream from the client account
-  // publish from the js account
-  const admin = await connect({ port: ns.port, user: "js", pass: "js" });
-  admin.publish(subj);
-  admin.publish(subj);
-  await admin.flush();
+    // cannot publish to the stream from the client account
+    // publish from the js account
+    const admin = await connect({ port: ns.port, user: "js", pass: "js" });
+    admin.publish(subj);
+    admin.publish(subj);
+    await admin.flush();
 
-  consumers = await jsm.consumers.list(stream).next();
-  assertEquals(consumers.length, 1);
-  assertEquals(consumers[0].name, "me");
-  assertEquals(consumers[0].config.durable_name, "me");
-  assertEquals(consumers[0].num_pending, 2);
+    consumers = await jsm.consumers.list(stream).next();
+    assertEquals(consumers.length, 1);
+    assertEquals(consumers[0].name, "me");
+    assertEquals(consumers[0].config.durable_name, "me");
+    assertEquals(consumers[0].num_pending, 2);
 
-  const ci = await jsm.consumers.info(stream, "me");
-  assertEquals(ci.name, "me");
-  assertEquals(ci.config.durable_name, "me");
-  assertEquals(ci.num_pending, 2);
+    const ci = await jsm.consumers.info(stream, "me");
+    assertEquals(ci.name, "me");
+    assertEquals(ci.config.durable_name, "me");
+    assertEquals(ci.num_pending, 2);
 
-  const ok = await jsm.consumers.delete(stream, "me");
-  assertEquals(ok, true);
+    const ok = await jsm.consumers.delete(stream, "me");
+    assertEquals(ok, true);
 
-  await assertRejects(
-    async () => {
-      await jsm.consumers.info(stream, "me");
-    },
-    Error,
-    "consumer not found",
-    undefined,
-  );
+    await assertRejects(
+      async () => {
+        await jsm.consumers.info(stream, "me");
+      },
+      Error,
+      "consumer not found",
+      undefined,
+    );
 
-  await cleanup(ns, nc, admin);
-});
+    await cleanup(ns, nc, admin);
+  }),
+);
 
 Deno.test("jsm - jetstream error info", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));

@@ -39,10 +39,9 @@
   "scripts": {
     "build": "tsc",
     "clean": "shx rm -Rf ./lib/*",
-    "fmt": "deno fmt src transport-node/examples/ transport-node/test/",
+    "fmt": "deno fmt src/ examples/ test/ ",
     "prepack": "npm run check-package && npm run build",
-    "ava": "nyc ava --verbose -T 60000",
-    "test": "npm run check-package && npm run build && npm run ava",
+    "test": "npm run check-package && npm run build && NODE_EXTRA_CA_CERTS=test/certs/ca.pem; node --test",
     "debug-test": "node ../node_modules/.bin/ava --verbose -T 6500000 --match",
     "setup": "curl -fsSL https://deno.land/x/install/install.sh | sh",
     "setup_win": "choco install deno",
@@ -64,55 +63,13 @@
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
-    "ava": "^5.3.x",
     "minimist": "^1.2.8",
     "nats-jwt": "^0.0.9",
-    "nyc": "^15.1.0",
     "shx": "^0.3.3",
     "typescript": "5.4.5",
     "@nats-io/jetstream": "^3.0.0-3",
     "@nats-io/kv": "^3.0.0-2",
     "@nats-io/obj": "^3.0.0-1"
   },
-  "typings": "./lib/src/mod.d.ts",
-  "ava": {
-    "failFast": false,
-    "files": [
-      "./test/**/*.js",
-      "!./test/helpers/**/*.js"
-    ]
-  },
-  "nyc": {
-    "extension": [
-      ".ts",
-      ".js"
-    ],
-    "include": [
-      "src/**/*.ts",
-      "lib/src/**/*.js",
-      "nats-base-client/**/*.ts",
-      "lib/nats-base-client/**/*.js",
-      "jetstream/**/*.ts",
-      "lib/jetstream/**/*.js"
-    ],
-    "exclude": [
-      "nats-base-client/bench.ts",
-      "nats-base-client/codec.ts",
-      "nats-base-client/databuffer.ts",
-      "nats-base-client/denobuffer.ts",
-      "nats-base-client/muxsubscription.ts",
-      "nats-base-client/nkeys.ts",
-      "nats-base-client/nuid.ts",
-      "nats-base-client/parser.ts",
-      "nats-base-client/queued_iterator.ts",
-      "nats-base-client/servers.ts",
-      "nats-base-client/transport.ts",
-      "nats-base-client/util.ts",
-      "lib/test/**",
-      "examples/**",
-      "benchmark/**"
-    ],
-    "sourceMap": true,
-    "all": true
-  }
+  "typings": "./lib/src/mod.d.ts"
 }

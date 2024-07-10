@@ -87,7 +87,8 @@ export class NodeTransport implements Transport {
       this.setupHandlers();
       this.signal.resolve();
       return Promise.resolve();
-    } catch (err) {
+    } catch (ex) {
+      let err = ex;
       if (!err) {
         // this seems to be possible in Kubernetes
         // where an error is thrown, but it is undefined

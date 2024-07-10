@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2022 The NATS Authors
+ * Copyright 2018-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -33,5 +33,5 @@ export interface NatsServer extends PortInfo {
   getLog(): string;
   stop(): Promise<void>;
   signal(s: "KILL" | "QUIT" | "STOP" | "REOPEN" | "RELOAD" | "LDM");
-  varz(): Promise<any>;
+  varz(): Promise<unknown>;
 }
