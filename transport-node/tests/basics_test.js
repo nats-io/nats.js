@@ -42,7 +42,8 @@ describe(
     });
 
     it("basics - tls connect", async () => {
-      const nc = await connect({ servers: ["demo.nats.io:4443"] });
+      const nc = await connect({ servers: ["demo.nats.io"] });
+      assert.equal(nc.protocol.transport?.isEncrypted(), true);
       await nc.flush();
       await nc.close();
     });
