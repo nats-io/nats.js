@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The NATS Authors
+ * Copyright 2020-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -28,9 +28,9 @@ const dir = process.cwd();
 const tlsConfig = {
   trace: true,
   tls: {
-    ca_file: resolve(join(dir, "/test/certs/ca.pem")),
-    cert_file: resolve(join(dir, "/test/certs/server_noip.pem")),
-    key_file: resolve(join(dir, "/test/certs/key_noip.pem")),
+    ca_file: resolve(join(dir, "/tests/certs/ca.pem")),
+    cert_file: resolve(join(dir, "/tests/certs/server_noip.pem")),
+    key_file: resolve(join(dir, "/tests/certs/key_noip.pem")),
   },
 };
 
@@ -47,7 +47,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
         port: servers[0].port,
         reconnectTimeWait: 250,
         tls: {
-          caFile: resolve(join(dir, "/test/certs/ca.pem")),
+          caFile: resolve(join(dir, "/tests/certs/ca.pem")),
         },
       },
     );

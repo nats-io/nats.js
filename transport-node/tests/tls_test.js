@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The NATS Authors
+ * Copyright 2020-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -32,9 +32,9 @@ const dir = process.cwd();
 const tlsConfig = {
   host: "0.0.0.0",
   tls: {
-    cert_file: resolve(join(dir, "./test/certs/server.pem")),
-    key_file: resolve(join(dir, "./test/certs/key.pem")),
-    ca_file: resolve(join(dir, "./test/certs/ca.pem")),
+    cert_file: resolve(join(dir, "./tests/certs/server.pem")),
+    key_file: resolve(join(dir, "./tests/certs/key.pem")),
+    ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
   },
 };
 describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
@@ -108,9 +108,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     const ns = await NatsServer.start(tlsConfig);
 
     const certs = {
-      keyFile: resolve(join(dir, "./test/certs/client-key.pem")),
-      certFile: resolve(join(dir, "./test/certs/client-cert.pem")),
-      caFile: resolve(join(dir, "./test/certs/ca.pem")),
+      keyFile: resolve(join(dir, "./tests/certs/client-key.pem")),
+      certFile: resolve(join(dir, "./tests/certs/client-cert.pem")),
+      caFile: resolve(join(dir, "./tests/certs/ca.pem")),
     };
     const nc = await connect({
       port: ns.port,
@@ -126,9 +126,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     const ns = await NatsServer.start(tlsConfig);
 
     const certs = {
-      key: readFileSync(resolve(join(dir, "./test/certs/client-key.pem"))),
-      cert: readFileSync(resolve(join(dir, "./test/certs/client-cert.pem"))),
-      ca: readFileSync(resolve(join(dir, "./test/certs/ca.pem"))),
+      key: readFileSync(resolve(join(dir, "./tests/certs/client-key.pem"))),
+      cert: readFileSync(resolve(join(dir, "./tests/certs/client-cert.pem"))),
+      ca: readFileSync(resolve(join(dir, "./tests/certs/ca.pem"))),
     };
     const nc = await connect({
       port: ns.port,
@@ -143,9 +143,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
   it("bad file paths", async () => {
     const ns = await NatsServer.start(tlsConfig);
     const certs = {
-      keyFile: "./test/certs/client-key.pem",
+      keyFile: "./tests/certs/client-key.pem",
       certFile: "./x/certs/client-cert.pem",
-      caFile: "./test/certs/ca.pem",
+      caFile: "./tests/certs/ca.pem",
     };
     try {
       await connect({
@@ -164,9 +164,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
 
   it("shouldn't leak tls config", () => {
     const tlsOptions = {
-      keyFile: resolve(join(dir, "./test/certs/client-key.pem")),
-      certFile: resolve(join(dir, "./test/certs/client-cert.pem")),
-      caFile: resolve(join(dir, "./test/certs/ca.pem")),
+      keyFile: resolve(join(dir, "./tests/certs/client-key.pem")),
+      certFile: resolve(join(dir, "./tests/certs/client-cert.pem")),
+      caFile: resolve(join(dir, "./tests/certs/ca.pem")),
     };
 
     let opts = { tls: tlsOptions, cert: "another" };
@@ -201,9 +201,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     () => {
       return tlsInvalidCertMacro(
         {
-          keyFile: resolve(join(dir, "./test/certs/client-key.pem")),
-          certFile: resolve(join(dir, "./test/certs/ca.pem")),
-          caFile: resolve(join(dir, "./test/certs/server.pem")),
+          keyFile: resolve(join(dir, "./tests/certs/client-key.pem")),
+          certFile: resolve(join(dir, "./tests/certs/ca.pem")),
+          caFile: resolve(join(dir, "./tests/certs/server.pem")),
         },
         "ERR_OSSL_X509_KEY_VALUES_MISMATCH",
         /key values mismatch/i,
@@ -216,9 +216,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     () => {
       return tlsInvalidCertMacro(
         {
-          keyFile: resolve(join(dir, "./test/certs/client-cert.pem")),
-          certFile: resolve(join(dir, "./test/certs/client-key.pem")),
-          caFile: resolve(join(dir, "./test/certs/ca.pem")),
+          keyFile: resolve(join(dir, "./tests/certs/client-cert.pem")),
+          certFile: resolve(join(dir, "./tests/certs/client-key.pem")),
+          caFile: resolve(join(dir, "./tests/certs/ca.pem")),
         },
         "ERR_OSSL_PEM_NO_START_LINE",
         /no start line/i,
@@ -241,19 +241,19 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
 
   it("invalid key file", () => {
     return tlsInvalidArgPathMacro({
-      keyFile: resolve(join(dir, "./test/certs/client.ky")),
+      keyFile: resolve(join(dir, "./tests/certs/client.ky")),
     }, "keyFile");
   });
 
   it("invalid cert file", () => {
     return tlsInvalidArgPathMacro({
-      certFile: resolve(join(dir, "./test/certs/client.cert")),
+      certFile: resolve(join(dir, "./tests/certs/client.cert")),
     }, "certFile");
   });
 
   it("invalid ca file", () => {
     return tlsInvalidArgPathMacro({
-      caFile: resolve(join(dir, "./test/certs/ca.cert")),
+      caFile: resolve(join(dir, "./tests/certs/ca.cert")),
     }, "caFile");
   });
 
@@ -276,7 +276,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     const a = connect({
       servers: `localhost:${ns.port}`,
       tls: {
-        caFile: resolve(join(dir, "./test/certs/ca.pem")),
+        caFile: resolve(join(dir, "./tests/certs/ca.pem")),
       },
     });
     // will NOT upgrade to tls
@@ -299,9 +299,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
       host: "0.0.0.0",
       tls: {
         handshake_first: true,
-        cert_file: resolve(join(dir, "./test/certs/server.pem")),
-        key_file: resolve(join(dir, "./test/certs/key.pem")),
-        ca_file: resolve(join(dir, "./test/certs/ca.pem")),
+        cert_file: resolve(join(dir, "./tests/certs/server.pem")),
+        key_file: resolve(join(dir, "./tests/certs/key.pem")),
+        ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
       },
     });
 
@@ -309,7 +309,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
       port: ns.port,
       tls: {
         handshakeFirst: true,
-        ca: readFileSync(resolve(join(dir, "./test/certs/ca.pem"))),
+        ca: readFileSync(resolve(join(dir, "./tests/certs/ca.pem"))),
       },
     });
 
