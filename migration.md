@@ -81,13 +81,13 @@ To use JetStream, you must install and import `@nats/jetstream`.
 
 ## Changes to KV
 
-To use KV, you must install and import `@nats-kv`, and create an instance of
+To use KV, you must install and import `@nats-io/kv`, and create an instance of
 Kvm:
 
 ```typescript
 import { connect } from "@nats-deno/mod.ts";
 import { jetstream } from "@nats-jetstream/mod.ts";
-import { Kvm } from "@nats-kv/mod.ts";
+import { Kvm } from "@nats-io/kv";
 const nc = await connect();
 let kvm = new Kvm(nc);
 // or create a JetStream which allows you to specify jetstream options
@@ -106,4 +106,15 @@ await kvm.open("mykv");
 
 ## Changes to ObjectStore
 
-To use ObjectStore, you must install and import `@nats/obj`.
+> [!CAUTION] Clients prior to 3.x used to shim the global `crypto`
+> automatically. `crypto` is available on node 20 and better. Please upgrade
+> your node runtime or shim `crypto`:
+>
+> ```javascript
+> if (typeof globalThis.crypto === "undefined") {
+>   const c = require("crypto");
+>   global.crypto = c.webcrypto;
+> }
+> ```
+
+To use ObjectStore, you must install and import `@nats-io/obj`.
