@@ -33,8 +33,8 @@ import { connect as tlsConnect, TlsOptions, TLSSocket } from "tls";
 const { resolve } = require("path");
 const { readFile, existsSync } = require("fs");
 const dns = require("dns");
-
-const VERSION = "2.26.0";
+const data = require("./version.json");
+export const VERSION = data.version;
 const LANG = "nats.js";
 
 export class NodeTransport implements Transport {
