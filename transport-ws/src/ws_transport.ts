@@ -196,7 +196,7 @@ export class WsTransport implements Transport {
     try {
       // 1002 endpoint error, 1000 is clean
       this.socket.close(err ? 1002 : 1000, err ? err.message : undefined);
-    } catch (err) {
+    } catch (_) {
       // ignore this
     }
     if (internal) {
