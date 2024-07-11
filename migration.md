@@ -106,15 +106,15 @@ await kvm.open("mykv");
 
 ## Changes to ObjectStore
 
-> [!CAUTION] Clients prior to 3.x used to shim the global `crypto` automatically.
-> `crypto` is available on node 20 and better. Please upgrade your node runtime or
-> shim `crypto`:
-> 
->  if (typeof globalThis.crypto === "undefined") {
->    const c = require("crypto");
->    // this will patch to undefined if webcrypto is not available (node 14)
->    // views will toss if crypto is not available
->    global.crypto = c.webcrypto;
->  }
+> [!CAUTION] Clients prior to 3.x used to shim the global `crypto`
+> automatically. `crypto` is available on node 20 and better. Please upgrade
+> your node runtime or shim `crypto`:
+>
+> ```javascript
+> if (typeof globalThis.crypto === "undefined") {
+>   const c = require("crypto");
+>   global.crypto = c.webcrypto;
+> }
+> ```
 
 To use ObjectStore, you must install and import `@nats-io/obj`.
