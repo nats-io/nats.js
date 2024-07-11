@@ -12,13 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const { VERSION } = JSON.parse(await Deno.readTextFile("src/version.json"));
+const d = await Deno.readTextFile("./src/version.json");
+const { version } = JSON.parse(d);
 
-const pkg = await Deno.readTextFile("package.json");
+const pkg = await Deno.readTextFile("./package.json");
 const m = JSON.parse(pkg);
-if (m.version !== VERSION) {
+if (m.version !== version) {
   console.error(
-    `[ERROR] expected package version ${m.version} and transport version ${VERSION} to match`,
+    `[ERROR] expected package version ${m.version} and transport version ${version} to match`,
   );
   Deno.exit(1);
 } else {
