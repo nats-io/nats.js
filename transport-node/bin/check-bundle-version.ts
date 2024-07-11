@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 The NATS Authors
+ * Copyright 2021-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,39 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const src = await Deno.readTextFile("src/node_transport.ts");
-const lines = src.split("\n");
-const filtered = lines.filter((txt) => {
-  return txt.indexOf("const VERSION") === 0;
-});
-let parsed = filtered.map((line) => {
-  const chunks = line.split(" ");
-  if (
-    chunks.length === 4 &&
-    chunks[0] === "const" &&
-    chunks[1] === "VERSION" &&
-    chunks[2] === "="
-  ) {
-    let v = chunks[3].replace(";", "");
-    v = JSON.parse(v);
-    return v;
-  }
-});
-parsed = parsed ?? [];
-if (parsed.length !== 1) {
-  console.error(`[ERROR] unexpected number of matches on 'const VERSION'.`);
-  Deno.exit(1);
-}
-let VERSION = "";
-if (parsed.length === 1) {
-  VERSION = parsed[0] ?? "";
-}
+const d = await Deno.readTextFile("./src/version.json");
+const { version } = JSON.parse(d);
 
-const pkg = await Deno.readTextFile("package.json");
+const pkg = await Deno.readTextFile("./package.json");
 const m = JSON.parse(pkg);
-if (m.version !== VERSION) {
+if (m.version !== version) {
   console.error(
-    `[ERROR] expected package version ${m.version} and transport version ${VERSION} to match`,
+    `[ERROR] expected package version ${m.version} and transport version ${version} to match`,
   );
   Deno.exit(1);
 } else {

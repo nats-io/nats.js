@@ -7,10 +7,11 @@
     "sourceMap": true,
     "declaration": true,
     "allowJs": true,
-    "removeComments": false
+    "removeComments": false,
+    "resolveJsonModule": true
   },
   "include": [
-    "src"
+    "src/**/*"
   ],
   "exclude": [
     "transport-node/test/**/*",

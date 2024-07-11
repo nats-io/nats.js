@@ -23,6 +23,10 @@ const {
   "../lib/mod",
 );
 
+const {
+  VERSION,
+} = require("../lib/node_transport");
+
 const { Lock } = require("./helpers/lock");
 const { NatsServer } = require("./helpers/launcher");
 const { jetstreamServerConf } = require("./helpers/jsutil.js");
@@ -33,6 +37,10 @@ describe(
   "basics",
   { timeout: 20_000, concurrency: true, forceExit: true },
   () => {
+    it("basics - reported version", () => {
+      const pkg = require("../package.json");
+      assert.equal(VERSION, pkg.version);
+    });
     it("basics - connect default", async () => {
       const ns = await NatsServer.start({ port: 4222 });
       const nc = await connect();
