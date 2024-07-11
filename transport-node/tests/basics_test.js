@@ -43,7 +43,7 @@ describe(
     });
     it("basics - connect default", async () => {
       const ns = await NatsServer.start({ port: 4222 });
-      const nc = await connect({ debug: true });
+      const nc = await connect();
       await nc.flush();
       await nc.close();
       await ns.stop();
