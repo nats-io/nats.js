@@ -37,7 +37,7 @@ describe(
   "basics",
   { timeout: 20_000, concurrency: true, forceExit: true },
   () => {
-    it("basics - reported version", async () => {
+    it("basics - reported version", () => {
       const pkg = require("../package.json");
       assert.equal(VERSION, pkg.version);
     });
