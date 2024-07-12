@@ -12,8 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const d = await Deno.readTextFile("./src/version.json");
-const { version } = JSON.parse(d);
+import { join } from "jsr:@std/path";
+const { version } = await import(join(Deno.cwd(), "src", "version.ts"));
 
 const pkg = await Deno.readTextFile("./package.json");
 const m = JSON.parse(pkg);
