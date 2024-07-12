@@ -37,7 +37,7 @@
     "MAINTAINERS.md"
   ],
   "scripts": {
-    "build": "tsc && shx cp src/*.json lib/",
+    "build": "tsc",
     "clean": "shx rm -Rf ./lib/*",
     "fmt": "deno fmt src/ examples/ test/ ",
     "prepack": "npm run check-package && npm run build",
