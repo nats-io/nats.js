@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 The NATS Authors
+ * Copyright 2020-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -53,6 +53,15 @@ export function jsopts() {
   };
 }
 
+export function wsopts() {
+    return {
+      websocket: {
+        no_tls: true,
+        port: -1,
+      },
+    };
+}
+
 export function jetstreamExportServerConf(
   opts: unknown = {},
   prefix = "IPA.>",
@@ -91,6 +100,10 @@ export function jetstreamServerConf(
     conf.jetstream.store_dir = Deno.makeTempDirSync({ prefix: "jetstream" });
   }
   return conf as Record<string, unknown>;
+}
+
+export function wsServerConf(opts: unknown = {}): Record<string,unknown> {
+  return Object.assign(wsopts(), opts);
 }
 
 export async function _setup(

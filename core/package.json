@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-17",
+  "version": "3.0.0-18",
   "files": [
     "lib/",
     "build/src/"
