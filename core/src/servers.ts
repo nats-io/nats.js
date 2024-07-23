@@ -24,11 +24,14 @@ import type {
 import { DEFAULT_HOST, DEFAULT_PORT } from "./core.ts";
 
 export function isIPV4OrHostname(hp: string): boolean {
-  if (hp.indexOf(".") !== -1) {
-    return true;
-  }
+  // in the wild seeing IPv4s as IPv6s
+  // ::ffff:35.234.43.228 which incorrectly get mapped to IPv4 unless
+  // we add this test first
   if (hp.indexOf("[") !== -1 || hp.indexOf("::") !== -1) {
     return false;
+  }
+  if (hp.indexOf(".") !== -1) {
+    return true;
   }
   // if we have a plain hostname or host:port
   if (hp.split(":").length <= 2) {

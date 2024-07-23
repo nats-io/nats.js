@@ -132,4 +132,5 @@ Deno.test("servers - port 80", () => {
 Deno.test("servers - hostname only", () => {
   assertEquals(isIPV4OrHostname("hostname"), true);
   assertEquals(isIPV4OrHostname("hostname:40"), true);
+  assertEquals(isIPV4OrHostname("::ffff:35.234.43.228"), false);
 });
