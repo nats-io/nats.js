@@ -44,6 +44,8 @@ Deno.test("ws - connect", async () => {
   await cleanup(ns, nc);
 });
 
+// Fixme: allow sanitizer once ws transport closes cleanly.
+
 Deno.test({
   name: "ws - wss connection",
   async fn() {
@@ -62,25 +64,6 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 });
-
-// FIXME: setup wss server
-// Deno.test({
-//   name: "ws - wss connect default",
-//   async fn() {
-//     const ns = await NatsServer.start(wsServerConf(
-//
-//     ));
-//     const nc = await wsconnect({});
-//     assertEquals(
-//       (nc as NatsConnectionImpl).protocol.transport?.isEncrypted(),
-//       true,
-//     );
-//     await nc.flush();
-//     await cleanup(ns, nc);
-//   },
-//   sanitizeOps: false,
-//   sanitizeResources: false,
-// });
 
 Deno.test({
   name: "ws - pubsub",
