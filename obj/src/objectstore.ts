@@ -884,6 +884,7 @@ export class ObjectStoreImpl implements ObjectStore {
     // pacify the tsc compiler downstream
     const sc = Object.assign({ max_age }, opts) as unknown as StreamConfig;
     sc.name = this.stream;
+    sc.num_replicas = opts.replicas ?? 1;
     sc.allow_direct = true;
     sc.allow_rollup_hdrs = true;
     sc.discard = DiscardPolicy.New;

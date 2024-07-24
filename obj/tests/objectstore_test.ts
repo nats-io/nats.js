@@ -19,6 +19,7 @@ import {
   connect,
   jetstreamServerConf,
   notCompatible,
+    NatsServer
 } from "test_helpers";
 import {
   assert,
@@ -1179,4 +1180,16 @@ Deno.test("os - os rejects in older servers", async () => {
   await t("2.6.2", false);
   await t("2.6.3", true);
   await cleanup(ns, nc);
+});
+
+Deno.test("os - replicas", async () => {
+  const servers = await NatsServer.jetstreamCluster(3);
+  const nc = await connect({ port: servers[0].port });
+
+  const js = nc.jetstream();
+  const os = await js.views.os("rep", { replicas: 3 });
+  const status = await os.status();
+  assertEquals(status.replicas, 3);
+  await nc.close();
+  await NatsServer.stopAll(servers);
 });
