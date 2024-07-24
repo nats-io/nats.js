@@ -16,10 +16,12 @@
 import type {
   ConnectionOptions,
   Deferred,
+  NatsConnection,
   Server,
   ServerInfo,
   Transport,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.28.0/nats-base-client/internal_mod.ts";
+  TransportFactory,
+} from "./internal_mod.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -28,11 +30,14 @@ import {
   ErrorCode,
   extractProtocolMessage,
   INFO,
+  NatsConnectionImpl,
   NatsError,
   render,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/v1.28.0/nats-base-client/internal_mod.ts";
+  setTransportFactory,
+} from "./internal_mod.ts";
+import { version } from "./version.ts";
 
-const VERSION = "1.29.0";
+const VERSION = version;
 const LANG = "nats.ws";
 
 export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
@@ -296,4 +301,69 @@ export class WsTransport implements Transport {
       // ignored
     }
   }
+}
+
+export function wsUrlParseFn(u: string, encrypted?: boolean): string {
+  const ut = /^(.*:\/\/)(.*)/;
+  if (!ut.test(u)) {
+    // if we have no hint to encrypted and no protocol, assume encrypted
+    // else we fix the url from the update to match
+    if (typeof encrypted === "boolean") {
+      u = `${encrypted === true ? "https" : "http"}://${u}`;
+    } else {
+      u = `https://${u}`;
+    }
+  }
+  let url = new URL(u);
+  const srcProto = url.protocol.toLowerCase();
+  if (srcProto === "ws:") {
+    encrypted = false;
+  }
+  if (srcProto === "wss:") {
+    encrypted = true;
+  }
+  if (srcProto !== "https:" && srcProto !== "http") {
+    u = u.replace(/^(.*:\/\/)(.*)/gm, "$2");
+    url = new URL(`http://${u}`);
+  }
+
+  let protocol;
+  let port;
+  const host = url.hostname;
+  const path = url.pathname;
+  const search = url.search || "";
+
+  switch (srcProto) {
+    case "http:":
+    case "ws:":
+    case "nats:":
+      port = url.port || "80";
+      protocol = "ws:";
+      break;
+    case "https:":
+    case "wss:":
+    case "tls:":
+      port = url.port || "443";
+      protocol = "wss:";
+      break;
+    default:
+      port = url.port || encrypted === true ? "443" : "80";
+      protocol = encrypted === true ? "wss:" : "ws:";
+      break;
+  }
+  return `${protocol}//${host}:${port}${path}${search}`;
+}
+
+export function wsconnect(
+  opts: ConnectionOptions = {},
+): Promise<NatsConnection> {
+  setTransportFactory({
+    defaultPort: 443,
+    urlParseFn: wsUrlParseFn,
+    factory: (): Transport => {
+      return new WsTransport();
+    },
+  } as TransportFactory);
+
+  return NatsConnectionImpl.connect(opts);
 }

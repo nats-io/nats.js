@@ -7,7 +7,8 @@
     "sourceMap": true,
     "declaration": true,
     "allowJs": true,
-    "removeComments": false
+    "removeComments": false,
+    "resolveJsonModule": true
   },
   "include": [
     "./build/src/**/*"

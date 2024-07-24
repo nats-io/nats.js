@@ -18,6 +18,12 @@
       "./tsconfig.json"
     ]
   },
+  "lint": {
+    "exclude": ["lib/"]
+  },
+  "fmt": {
+    "exclude": ["lib/"]
+  },
   "tasks": {
     "test": "deno test -A --parallel --reload --quiet tests/ --import-map=import_map.json"
   },

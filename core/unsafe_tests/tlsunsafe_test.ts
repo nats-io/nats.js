@@ -1,5 +1,8 @@
 import { join, resolve } from "jsr:@std/path";
-import { connect, NatsServer } from "test_helpers";
+import { cleanup, connect, NatsServer, wsServerConf } from "test_helpers";
+import { delay, wsconnect } from "../src/internal_mod.ts";
+import type { NatsConnectionImpl } from "../src/internal_mod.ts";
+import { assertEquals } from "jsr:@std/assert";
 
 Deno.test("tls-unsafe - handshake first", async () => {
   const cwd = Deno.cwd();
@@ -36,4 +39,33 @@ Deno.test("tls-unsafe - handshake first", async () => {
   await nc.request("foo", "hello");
   await nc.close();
   await ns.stop();
+});
+
+Deno.test({
+  name: "wss - wss connect default",
+  async fn() {
+    const tlsConfig = await NatsServer.tlsConfig();
+    const tls = tlsConfig.tls;
+    const ns = await NatsServer.start(
+      wsServerConf(
+        {
+          websocket: {
+            port: 443,
+            tls,
+          },
+        },
+      ),
+      true,
+    );
+    await delay(2000);
+    const nc = await wsconnect();
+    assertEquals(
+      (nc as NatsConnectionImpl).protocol.transport?.isEncrypted(),
+      true,
+    );
+    await nc.flush();
+    await cleanup(ns, nc);
+  },
+  sanitizeOps: false,
+  sanitizeResources: false,
 });

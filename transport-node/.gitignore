@@ -9,3 +9,4 @@ nats-base-client/
 jetstream/
 node_modules/
 debug/
+lib/
