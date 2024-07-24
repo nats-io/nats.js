@@ -16,6 +16,7 @@ jobs:
       matrix:
         deno-version: [ 1.44.4 ]
         node-version: [ 22.x ]
+      fail-fast: false
 
     name: test node transport with local dependencies
     runs-on: ubuntu-latest-4-cores

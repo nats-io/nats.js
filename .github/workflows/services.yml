@@ -16,6 +16,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [1.x.x]
+      fail-fast: false
 
     steps:
       - name: Git Checkout Services

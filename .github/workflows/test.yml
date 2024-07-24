@@ -16,6 +16,7 @@ jobs:
       matrix:
         deno-version: [ 1.44.4 ]
         module: [ core, jetstream, kv, obj, services ]
+      fail-fast: false
 
     name: test ${{matrix.module}} with local dependencies
     runs-on: ubuntu-latest-4-cores

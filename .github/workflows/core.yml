@@ -17,6 +17,7 @@ jobs:
       matrix:
         deno-version: [1.x.x]
         node-version: [ 22.x ]
+      fail-fast: false
     permissions:
       contents: read
       id-token: write
