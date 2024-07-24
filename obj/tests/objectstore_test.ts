@@ -18,8 +18,8 @@ import {
   cleanup,
   connect,
   jetstreamServerConf,
+  NatsServer,
   notCompatible,
-    NatsServer
 } from "test_helpers";
 import {
   assert,
