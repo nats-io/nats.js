@@ -4,18 +4,23 @@
 ![Test NATS.deno](https://github.com/nats-io/nats.deno/workflows/NATS.deno/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
 
-> [!IMPORTANT] 
-> This project reorganizes the NATS Base Client library, into multiple
-> modules, and on-boards the supported transports (Deno, Node, and WebSocket).
-> While there have been some important refactorings, the code is stable
-> and considered pre-release.
-> 
-> 
-> Currently supported Javascript are
+> [!IMPORTANT] This project reorganizes the NATS Base Client library (part of
+> nats.deno), into multiple modules, and on-boards the supported transports
+> (Deno, Node/Bun, and WebSocket).
+>
+> While there have been some important refactorings and minor API changes to
+> address the split into multiple modules, the code is stable and you are
+> welcomed to on-board it into your own projects, with the caveat that
+> additional API changes are forthcoming. These changes will be advertised
+> properly.
+>
+> This repository now supersedes:
 >
 > - [nats.deno](https://github.com/nats-io/nats.deno)
-> - [nats.js](https://github.com/nats-io/nats.js)
 > - [nats.ws](https://github.com/nats-io/nats.ws)
+> - Note that the old [nats.js](https://github.com/nats-io/nats.node) has been
+>   renamed to nats.node so that the repository _nats.js_ could be used for this
+>   project.
 
 Welcome to the new NATS.js repository! Beginning with the v3 release of the
 JavaScript clients, the NATS.js repository reorganizes the NATS JavaScript
@@ -45,28 +50,28 @@ The new modules are:
 If you are getting started with NATS for the first time, you'll be able to pick
 one of our technologies and more easily incorporate it into your apps. Perhaps
 you heard about the NATS KV and would like to incorporate it into your app. The
-KV module will shortcut a lot of things for you. You will of course need a
-transport which will allow you to `connect` you to a NATS server, but once you
-know how to create a connection you will be focusing on a smaller subset of the
-APIs rather than be confronted with all the functionality you can use in a NATS
+KV module will shortcut a lot of concepts for you. You will of course need a
+transport which will allow you to `connect` to a NATS server, but once you know
+how to create a connection you will be focusing on a smaller subset of the APIs
+rather than be confronted with all the functionality you available to a NATS
 client. From there, we are certain that you will broaden your use of NATS into
 other areas, but your initial effort should be more straight forward.
 
-Another reason for the change is that it has the potential to make your client a
-bit smaller, and if versions change on a submodule that you don't use, you won't
-be confronted with an upgrade choice. These modules also allows us to version
-more strictly, and thus telegraph to you the effort or scope of changes and
-prevent surprises when upgrading.
+Another reason for the change is that, the new modules have the potential to
+make your client a bit smaller, and if versions change on a submodule that you
+don't use, you won't be confronted with an upgrade choice. These modules also
+allows us to version more strictly, and thus telegraph to you the effort or
+scope of changes in the update and prevent surprises when upgrading.
 
 By decoupling of the NATS client functionality from a transport, we enable NATS
-developers to create new modules that can run all runtimes so long as they
+developers to create new modules that can run in all runtimes so long as they
 follow a pattern where a `NatsConnection` (or some other standard interface) is
-used as the basis of the module. For example, the JetStream module exposes a
-`jetstream()` and `jetstreamManager()` functions that will return a JetStream
-API that you use to interact with JetStream for creating resources or consuming
-streams. The actual connection type is not important, and the library will work
-regardless of the runtime provided the runtime has the minimum support required
-by the library.
+used as the basis of the module. For example, the JetStream module exposes the
+`jetstream()` and `jetstreamManager()` functions that return the JetStream API
+to interact with JetStream for creating resources or consuming streams. The
+actual connection type is not important, and the library will work regardless of
+the runtime provided so long as the runtime has the minimum support required by
+the library.
 
 # Getting Started
 
@@ -79,6 +84,11 @@ that matches the runtime you want to use:
 
 - [Deno Transport](transport-deno/README.md) which implements a TCP transport
   for [Deno](https://deno.land)
+- [Node Transport](transport-node/README.md) which implements a TCP transport
+  for [Node](https://nodejs.org).
+- For browser [W3C Websocket] runtimes, the websocket client is now part of the
+  [Core](core/README.md), as some runtimes such as Deno and Node v22 support it
+  natively.
 
 The module for the transport will tell you how to install it, and how to use it.
 
