@@ -4,7 +4,13 @@
 ![Test NATS.deno](https://github.com/nats-io/nats.deno/workflows/NATS.deno/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
 
-> [!CAUTION] This project is still working in progress and not yet released.
+> [!IMPORTANT] 
+> This project reorganizes the NATS Base Client library, into multiple
+> modules, and on-boards the supported transports (Deno, Node, and WebSocket).
+> While there have been some important refactorings, the code is stable
+> and considered pre-release.
+> 
+> 
 > Currently supported Javascript are
 >
 > - [nats.deno](https://github.com/nats-io/nats.deno)
