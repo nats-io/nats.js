@@ -6,15 +6,22 @@ The _core_ module implements the _core_ functionality for JavaScript clients:
 - NATS protocol handling - messaging functionality (publish, subscribe and
   request reply)
 
-A native transports (node, deno, browser) modules are a peer module that export
-a `connect` function which returns a concrete instance of a `NatsConnection`.
-The transport library re-exports all the functionality in this module, to make
-it the entry point into the NATS JavaScript ecosystem.
+A native transports (node, deno) modules are a peer module that export a
+`connect` function which returns a concrete instance of a `NatsConnection`. The
+transport library re-exports all the functionality in this module, to make it
+the entry point into the NATS JavaScript ecosystem.
 
 You can use this module as a runtime agnostic dependency and implement
 functionality that uses a NATS client connection without binding your code to a
 particular JavaScript runtime. For example, the @nats-io/jetstream library
 depends on @nats-io/nats-core to implement all of its JetStream protocol.
+
+## WebSocket Support
+
+The _core_ module also offers a for W3C Websocket transport (aka browser, Deno,
+and Node v22) via the exported `wsconnect` function. This function is
+semantically equivalent to the traditional `connect`, but returns a
+`NatsConnection` that is backed by a W3C WebSocket.
 
 # Installation
 
