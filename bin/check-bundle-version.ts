@@ -1,129 +1,27 @@
 #!/usr/bin/env -S deno run -A
+/*
+ * Copyright 2021-2024 The NATS Authors
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join } from "jsr:@std/path";
+import { loadVersions, SemVer } from "./lib/bundle_versions.ts";
 
-class ModuleVersions {
-  file?: SemVer;
-  deno?: SemVer;
-  node?: SemVer;
-
-  constructor() {
-  }
-
-  max(): SemVer | null {
-    const vers = this.versions();
-    let vv: SemVer | null = null;
-    vers.forEach((v) => {
-      vv = vv == null ? v : vv.max(v);
-    });
-    return vv;
-  }
-
-  versions(): SemVer[] {
-    const vers = [];
-    if (this.file) {
-      vers.push(this.file);
-    }
-    if (this.deno) {
-      vers.push(this.deno);
-    }
-    if (this.node) {
-      vers.push(this.node);
-    }
-    return vers;
-  }
-
-  check() {
-    const m = this.max();
-    if (m !== null) {
-      this.versions().forEach((v) => {
-        if (m.compare(v) !== 0) {
-          throw new Error("different versions found");
-        }
-      });
-    }
-  }
-}
-
-class SemVer {
-  major: number;
-  minor: number;
-  micro: number;
-  qualifier: string;
-
-  constructor(v: string) {
-    const m = v.match(/(\d+).(\d+).(\d+)(-{1}(.+))?/);
-    if (m) {
-      this.major = parseInt(m[1]);
-      this.minor = parseInt(m[2]);
-      this.micro = parseInt(m[3]);
-      this.qualifier = m[5] ? m[5] : "";
-    } else {
-      throw new Error(`'${v}' is not a semver value`);
-    }
-  }
-
-  compare(b: SemVer): number {
-    if (this.major < b.major) return -1;
-    if (this.major > b.major) return 1;
-    if (this.minor < b.minor) return -1;
-    if (this.minor > b.minor) return 1;
-    if (this.micro < b.micro) return -1;
-    if (this.micro > b.micro) return 1;
-    if (this.qualifier === "") return 1;
-    if (b.qualifier === "") return -1;
-    return this.qualifier.localeCompare(b.qualifier);
-  }
-
-  max(b: SemVer): SemVer {
-    return this.compare(b) > 0 ? this : b;
-  }
-
-  string(): string {
-    return `${this.major}.${this.minor}.${this.micro}` +
-      (this.qualifier ? `-${this.qualifier}` : "");
-  }
-}
-
-async function loadVersionFile(module: string): Promise<string> {
-  const { version } = await import(
-    join(Deno.cwd(), module, "src", "version.ts")
-  ).catch(() => {
-    return "";
-  });
-  return version;
-}
-
-async function loadPackageFile(fp: string): Promise<{ version: string }> {
-  const src = await Deno.readTextFile(fp)
-    .catch(() => {
-      return JSON.stringify({ version: "" });
-    });
-  return JSON.parse(src);
-}
-
-async function loadVersions(module: string): Promise<ModuleVersions> {
-  const v = new ModuleVersions();
-  const file = await loadVersionFile(module);
-  if (file) {
-    v.file = new SemVer(file);
-  }
-
-  const { version: deno } = await loadPackageFile(
-    join(Deno.cwd(), module, "deno.json"),
-  );
-  if (deno) {
-    v.deno = new SemVer(deno);
-  }
-
-  const { version: node } = await loadPackageFile(
-    join(Deno.cwd(), module, "package.json"),
-  );
-  if (node) {
-    v.node = new SemVer(node);
-  }
-  return v;
-}
+// Check that a particular bundle has consistent versions across
+// deno.json, package.json, version.ts, and build tag
+// the option --fix will pick the best (newest version and use that everywhere)
+// --tag (version set by CI in a tag)
+// deno run -A check-bundle-versions.ts --module [core|jetstream|kv|obj|transport-node|transport-deno|services] [--tag 1.2.3] [--fix]
 
 async function fixPackageVersion(fp: string, version: SemVer): Promise<void> {
   const d = JSON.parse(await Deno.readTextFile(fp));
