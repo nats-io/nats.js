@@ -59,7 +59,7 @@
       "@nats-io/services/internal": "./services/src/internal_mod.ts"
     }
   },
-  "workspaces": [
+  "workspace": [
     "./transport-deno",
     "./core",
     "./jetstream",
