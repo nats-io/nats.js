@@ -47,7 +47,7 @@
     "setup_win": "choco install deno",
     "cover:html": "/nyc report --reporter=html && open coverage/index.html",
     "coveralls": "shx mkdir -p ./coverage && nyc report --reporter=text-lcov > ./coverage/lcov.info",
-    "check-package": "deno run --allow-all bin/check-bundle-version.ts",
+    "check-package": "cd .. && deno run --allow-all bin/check-bundle-version.ts --module transport-node",
     "version": "deno run -A bin/update-transport-version.ts && git add transport-node/src/node_transport.ts",
     "postversion": "git push && git push --tags",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
