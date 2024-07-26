@@ -15,7 +15,7 @@ jobs:
     environment: CI
     strategy:
       matrix:
-        deno-version: [1.x.x]
+        deno-version: [1.45.x]
 
     steps:
       - name: Git Checkout Services
