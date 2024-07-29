@@ -2,8 +2,12 @@ name: test transport-node with local modules
 
 on:
   push:
-    tags:
-      - '*'
+    paths:
+      - 'core/**'
+      - 'jetstream/**'
+      - 'kv/**'
+      - 'obj/**'
+      - 'services/**'
     branches:
       - '*'
   pull_request:
