@@ -32,7 +32,8 @@
     "check-versions-services": "bin/check-bundle-version.ts --module services",
     "check-versions-transport-node": "bin/check-bundle-version.ts --module transport-node",
     "check-versions-transport-deno": "bin/check-bundle-version.ts --module transport-deno",
-    "check-dependencies": "bin/check-dep-versions.ts"
+    "sync-dependencies": "deno task chk-deps && deno fmt",
+    "chk-deps": "bin/check-dep-versions.ts"
   },
   "fmt": {
     "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md", "transport-node/"],
