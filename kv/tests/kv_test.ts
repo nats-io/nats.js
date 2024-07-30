@@ -2269,3 +2269,32 @@ Deno.test("kv - replicas", async () => {
   await nc.close();
   await NatsServer.stopAll(servers, true);
 });
+
+Deno.test("kv - sourced", async () => {
+  const { ns, nc } = await _setup(
+    connect,
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+
+  const js = jetstream(nc);
+  const kvm = await new Kvm(js);
+  const source = await kvm.create("source");
+  const target = await kvm.create("target", {
+    sources: [{ name: "source" }],
+  });
+
+  await source.put("hello", "world");
+  for (let i = 0; i < 10; i++) {
+    const v = await target.get("hello");
+    if (v === null) {
+      await delay(250);
+      continue;
+    }
+    assertEquals(v.string(), "world");
+  }
+
+  await cleanup(ns, nc);
+});

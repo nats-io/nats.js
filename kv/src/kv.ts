@@ -364,11 +364,21 @@ export class Bucket implements KV, KvRemove {
     } else if (opts.sources) {
       const sources = opts.sources.map((s) => {
         const c = Object.assign({}, s) as StreamSource;
+        const srcBucketName = c.name.startsWith(kvPrefix)
+          ? c.name.substring(kvPrefix.length)
+          : c.name;
         if (!c.name.startsWith(kvPrefix)) {
           c.name = `${kvPrefix}${c.name}`;
         }
+        if (!s.external && srcBucketName !== this.bucket) {
+          c.subject_transforms = [
+            { src: `$KV.${srcBucketName}.>`, dest: `$KV.${this.bucket}.>` },
+          ];
+        }
+        return c;
       });
       sc.sources = sources as unknown[] as StreamSource[];
+      sc.subjects = [this.subjectForBucket()];
     } else {
       sc.subjects = [this.subjectForBucket()];
     }
