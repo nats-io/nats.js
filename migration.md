@@ -67,7 +67,9 @@ these modules for cross-runtime consumption.
 - [Deno](./transport-deno/README.md)
 - [Node](./transport-node/README.md)
 - [W3C Websocket](./core/README.md) - the client can be created in a compliant
-  runtime via the [`wsconnect`](https://nats-io.github.io/nats.js/core/functions/wsconenct.html) function
+  runtime via the
+  [`wsconnect`](https://nats-io.github.io/nats.js/core/functions/wsconenct.html)
+  function
 
 ## Changes in Nats Base Client
 
