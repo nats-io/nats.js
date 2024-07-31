@@ -11,24 +11,20 @@ A Node.js client for the [NATS messaging system](https://nats.io).
 # Installation
 
 ```bash
-npm install nats@latest
+npm install @nats-io/transport-node
 ```
-
-The nats.js@2.0.0 **is not API compatible** with previous versions of nats.js.
-For a migration guide, please see [the migration guide](migration.md).
 
 ### Documentation and the NATS Base Client
 
-This repository implements the Node.js transport of the client. This transport
-depends on a common module called the _NATS Base Client_ which lives along the
-[nats.deno](https://github.com/nats-io/nats.deno/tree/main/nats-base-client).
-The NATS Base Client provides the same API and functionality across all
-JavaScript NATS clients supported by nats.io (nats.deno, nats.js and nats.ws).
+This module implements the Node.js transport of the client. This transport
+depends on a common module called the [@nats-io/nats-core](../core/README.md).
+The @nats-io/nats-core provides the same API and functionality across all
+JavaScript NATS clients supported by nats.io (deno, node and websocket).
 
 While the best documentation is looking at code examples, you may want to browse
-the [JSDoc documentation](https://nats-io.github.io/nats.deno). The best entry
+the [JSDoc documentation](https://nats-io.github.io/nats.js). The best entry
 point into the JS Doc is the
-[NatsConnection](https://nats-io.github.io/nats.deno/interfaces/NatsConnection.html)
+[NatsConnection](https://nats-io.github.io/nats.js/core/interfaces/NatsConnection.html)
 all functionality starts with a connection.
 
 ## Basics
