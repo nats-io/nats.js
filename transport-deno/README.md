@@ -1,4 +1,4 @@
-# NATS.deno - A [NATS](http://nats.io) client for [Deno](https://deno.land)
+# NATS Deno Transport - A [NATS](http://nats.io) client for [Deno](https://deno.land)
 
 A Deno transport for the [NATS messaging system](https://nats.io).
 
