@@ -27,6 +27,10 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Remove NPM Workspace
+        run: |
+          rm -f package.json
+
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denoland/setup-deno@v1
         with:
@@ -58,13 +62,12 @@ jobs:
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
           deno task test
-
       - name: Build NPM core bundle
         working-directory: core
         env:
           CI: true
         run: |
-          npm ci
+          npm install
           npm run prepack
           npm link
 
@@ -73,7 +76,7 @@ jobs:
         env:
           CI: true
         run: |
-          npm ci
+          npm install
           npm run prepack
           npm link @nats-io/nats-core
           npm test

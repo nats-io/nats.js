@@ -28,6 +28,10 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Remove NPM Workspace
+        run: |
+          rm -f package.json
+
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denoland/setup-deno@v1
         with:
@@ -45,6 +49,6 @@ jobs:
           CI: true
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
-          npm ci
+          npm install
           npm run prepack
 

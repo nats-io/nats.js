@@ -1,9 +1,11 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-1",
+  "version": "3.0.0-2",
   "files": [
     "lib/",
-    "build/src/"
+    "build/src/",
+    "LICENSE",
+    "README.md"
   ],
   "types": "./lib/mod.d.js",
   "exports": {
@@ -13,6 +15,7 @@
   "license": "Apache-2.0",
   "private": false,
   "scripts": {
+    "real-clean": "npm run clean && shx rm -Rf ./node_modules",
     "clean": "shx rm -Rf ./build ./lib",
     "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
@@ -26,13 +29,13 @@
   },
   "description": "obj library - this library implements all the base functionality for NATS objectstore for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "~3.0.0-18",
-    "@nats-io/jetstream": "~3.0.0-4"
+    "@nats-io/jetstream": "~3.0.0-6",
+    "@nats-io/nats-core": "~3.0.0-19"
   },
   "devDependencies": {
-    "@types/node": "^20.11.30",
-    "typedoc": "^0.25.12",
+    "@types/node": "^22.0.0",
     "shx": "^0.3.4",
-    "typescript": "^5.4.5"
+    "typedoc": "^0.26.5",
+    "typescript": "^5.5.4"
   }
 }

@@ -27,6 +27,10 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Remove NPM Workspace
+        run: |
+          rm -f package.json
+
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denoland/setup-deno@v1
         with:
@@ -55,8 +59,8 @@ jobs:
           CI: true
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
-          deno task check-versions --module ${{ matrix.module }}
-          deno task check-dependencies --module ${{ matrix.module }}
+          deno run -A bin/check-bundle-version.ts --module ${{ matrix.module }}
+          deno task check-dependencies
           deno task test-${{ matrix.module }}
 
 #      - name: Build nats.js
