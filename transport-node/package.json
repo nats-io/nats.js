@@ -31,13 +31,12 @@
   "files": [
     "lib/",
     "transport-node/examples/",
-    "OWNERS.md",
-    "CODE-OF-CONDUCT.md",
     "LICENSE",
-    "MAINTAINERS.md"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc",
+    "real-clean": "npm run clean && shx rm -Rf ./node_modules",
     "clean": "shx rm -Rf ./lib/*",
     "fmt": "deno fmt src/ examples/ test/ ",
     "prepack": "npm run check-package && npm run build",
@@ -57,7 +56,7 @@
     "node": ">= 18.0.0"
   },
   "dependencies": {
-    "@nats-io/nats-core": "~3.0.0-18",
+    "@nats-io/nats-core": "~3.0.0-19",
     "@nats-io/nkeys": "^1.2.0-4",
     "@nats-io/nuid": "^2.0.1-2"
   },

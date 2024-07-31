@@ -1,6 +1,6 @@
 .DS_Store
 deno.lock
-package-lock.json
+./package-lock.json
 
 **/build/
 **/lib/

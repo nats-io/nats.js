@@ -1,14 +1,23 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-18",
+  "version": "3.0.0-19",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
   },
   "publish": {
     "exclude": [
-      "./tests/**/*",
-      "./unsafe_tests/**/*"
+      "./.npmrc",
+      "./build/",
+      "./examples/",
+      "./import_map.json",
+      "./node_modules/",
+      "./package-lock.json",
+      "./package.json",
+      "./tests/",
+      "./tsconfig.json",
+      "./typedoc.json",
+      "./unsafe_tests/"
     ]
   },
   "lint": {
