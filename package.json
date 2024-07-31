@@ -4,6 +4,7 @@
     "./jetstream",
     "./kv",
     "./obj",
-    "./services"
+    "./services",
+    "./transport-node"
   ]
 }
