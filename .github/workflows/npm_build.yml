@@ -45,6 +45,6 @@ jobs:
           CI: true
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
-          npm ci
+          npm install
           npm run prepack
 

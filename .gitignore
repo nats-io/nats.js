@@ -1,20 +1,11 @@
 .DS_Store
-deno.lock
-./package-lock.json
-
-**/build/
-**/lib/
-**/node_modules/
-
-debug/
 .idea/
-.vscode/
-
-
-# nyc test coverage
+benchmark/
 coverage/
-
-# ide crud
-vcs.xml
-
-
+lib/
+debug/
+lib/
+build/
+package-lock.json
+deno.lock
+node_modules/

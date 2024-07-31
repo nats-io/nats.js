@@ -54,7 +54,7 @@ jobs:
         env:
           CI: true
         run: |
-          npm ci
+          npm install
           npm run prepack
           npm link
 
@@ -63,7 +63,7 @@ jobs:
         env:
           CI: true
         run: |
-          npm ci
+          npm install
           npm run prepack
           npm link @nats-io/obj
           npm test
