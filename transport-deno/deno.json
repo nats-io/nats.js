@@ -1,5 +1,5 @@
 {
-  "name": "@nats-io/nats-transport-deno",
+  "name": "@nats-io/transport-deno",
   "version": "3.0.0-5",
   "exports": {
     ".": "./src/mod.ts"

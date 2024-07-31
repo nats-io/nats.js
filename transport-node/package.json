@@ -30,7 +30,6 @@
   "types": "lib/src/mod.d.ts",
   "files": [
     "lib/",
-    "transport-node/examples/",
     "LICENSE",
     "README.md"
   ],

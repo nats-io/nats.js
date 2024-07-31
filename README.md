@@ -4,9 +4,11 @@
 ![Test NATS.deno](https://github.com/nats-io/nats.deno/workflows/NATS.deno/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
 
-> [!IMPORTANT] This project reorganizes the NATS Base Client library (part of
-> nats.deno), into multiple modules, and on-boards the supported transports
-> (Deno, Node/Bun, and WebSocket).
+> [!IMPORTANT]
+>
+> This project reorganizes the NATS Base Client library (part of nats.deno),
+> into multiple modules, and on-boards the supported transports (Deno, Node/Bun,
+> and WebSocket).
 >
 > While there have been some important refactorings and minor API changes to
 > address the split into multiple modules, the code is stable and you are
@@ -99,4 +101,5 @@ point is likely [Core](core/README.md). If data oriented, it may be
 ## Documentation
 
 Each of the modules has an introductory page that shows the main API usage for
-the module. It also hosts its JsDoc.
+the module. You can access it's
+[JSDoc here](https://nats-io.github.io/nats.js/).
