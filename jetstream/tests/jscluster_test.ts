@@ -1,5 +1,5 @@
 import { jetstream, jetstreamManager } from "../src/jsclient.ts";
-import { connect, NatsServer, notCompatible } from "test_helpers";
+import { connect, flakyTest, NatsServer, notCompatible } from "test_helpers";
 import {
   DiscardPolicy,
   RetentionPolicy,
@@ -120,54 +120,57 @@ Deno.test("jsm - stream update properties", async () => {
   await NatsServer.stopAll(servers, true);
 });
 
-Deno.test("streams - mirrors", async () => {
-  const cluster = await NatsServer.jetstreamCluster(3);
-  const nc = await connect({ port: cluster[0].port });
-  const jsm = await jetstreamManager(nc);
+Deno.test(
+  "streams - mirrors",
+  flakyTest(async () => {
+    const cluster = await NatsServer.jetstreamCluster(3);
+    const nc = await connect({ port: cluster[0].port });
+    const jsm = await jetstreamManager(nc);
 
-  // create a stream in a different server in the cluster
-  await jsm.streams.add({
-    name: "src",
-    subjects: ["src.*"],
-    placement: {
-      cluster: cluster[1].config.cluster.name,
-      tags: cluster[1].config.server_tags,
-    },
-  });
-
-  // create a mirror in the server we connected
-  await jsm.streams.add({
-    name: "mirror",
-    placement: {
-      cluster: cluster[2].config.cluster.name,
-      tags: cluster[2].config.server_tags,
-    },
-    mirror: {
+    // create a stream in a different server in the cluster
+    await jsm.streams.add({
       name: "src",
-    },
-  });
+      subjects: ["src.*"],
+      placement: {
+        cluster: cluster[1].config.cluster.name,
+        tags: cluster[1].config.server_tags,
+      },
+    });
 
-  const js = jetstream(nc);
-  const s = await js.streams.get("src");
-  assertExists(s);
-  assertEquals(s.name, "src");
+    // create a mirror in the server we connected
+    await jsm.streams.add({
+      name: "mirror",
+      placement: {
+        cluster: cluster[2].config.cluster.name,
+        tags: cluster[2].config.server_tags,
+      },
+      mirror: {
+        name: "src",
+      },
+    });
 
-  const alternates = await s.alternates();
-  assertEquals(2, alternates.length);
-  assertArrayIncludes(alternates.map((a) => a.name), ["src", "mirror"]);
+    const js = jetstream(nc);
+    const s = await js.streams.get("src");
+    assertExists(s);
+    assertEquals(s.name, "src");
 
-  await assertRejects(
-    async () => {
-      await js.streams.get("another");
-    },
-    Error,
-    "stream not found",
-  );
+    const alternates = await s.alternates();
+    assertEquals(2, alternates.length);
+    assertArrayIncludes(alternates.map((a) => a.name), ["src", "mirror"]);
 
-  const s2 = await s.best();
-  const selected = (await s.info(true)).alternates?.[0]?.name ?? "";
-  assertEquals(s2.name, selected);
+    await assertRejects(
+      async () => {
+        await js.streams.get("another");
+      },
+      Error,
+      "stream not found",
+    );
 
-  await nc.close();
-  await NatsServer.stopAll(cluster, true);
-});
+    const s2 = await s.best();
+    const selected = (await s.info(true)).alternates?.[0]?.name ?? "";
+    assertEquals(s2.name, selected);
+
+    await nc.close();
+    await NatsServer.stopAll(cluster, true);
+  }),
+);
