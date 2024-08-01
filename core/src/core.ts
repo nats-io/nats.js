@@ -152,7 +152,6 @@ export class NatsError extends Error {
    * @param {String} message
    * @param {String} code
    * @param {Error} [chainedError]
-   * @constructor
    *
    * @api private
    */

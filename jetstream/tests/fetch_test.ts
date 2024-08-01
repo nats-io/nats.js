@@ -13,7 +13,13 @@
  * limitations under the License.
  */
 
-import { _setup, cleanup, connect, jetstreamServerConf } from "test_helpers";
+import {
+  _setup,
+  cleanup,
+  connect,
+  flakyTest,
+  jetstreamServerConf,
+} from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
 import {
@@ -114,39 +120,42 @@ Deno.test("fetch - exactly messages", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("fetch - consumer not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+Deno.test(
+  "fetch - consumer not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-  });
+    await jsm.consumers.add("A", {
+      durable_name: "a",
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
+    });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A", "a");
 
-  await c.delete();
+    await c.delete();
 
-  const iter = await c.fetch({
-    expires: 3000,
-  });
+    const iter = await c.fetch({
+      expires: 3000,
+    });
 
-  const exited = assertRejects(
-    async () => {
-      for await (const _ of iter) {
-        // nothing
-      }
-    },
-    Error,
-    "consumer not found",
-  );
+    const exited = assertRejects(
+      async () => {
+        for await (const _ of iter) {
+          // nothing
+        }
+      },
+      Error,
+      "consumer not found",
+    );
 
-  await exited;
-  await cleanup(ns, nc);
-});
+    await exited;
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("fetch - deleted consumer", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());

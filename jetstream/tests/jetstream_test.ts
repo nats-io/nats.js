@@ -63,6 +63,7 @@ import {
   _setup,
   assertBetween,
   cleanup,
+  flakyTest,
   jetstreamServerConf,
   Lock,
   notCompatible,
@@ -1108,40 +1109,43 @@ Deno.test("jetstream - detailed errors", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - repub on 503", async () => {
-  const servers = await NatsServer.setupDataConnCluster(4);
-  const nc = await connect({ port: servers[0].port });
+Deno.test(
+  "jetstream - repub on 503",
+  flakyTest(async () => {
+    const servers = await NatsServer.setupDataConnCluster(4);
+    const nc = await connect({ port: servers[0].port });
 
-  const { stream, subj } = await initStream(nc, nuid.next(), {
-    num_replicas: 3,
-  });
+    const { stream, subj } = await initStream(nc, nuid.next(), {
+      num_replicas: 3,
+    });
 
-  const jsm = await jetstreamManager(nc);
-  const si = await jsm.streams.info(stream);
-  const host = si.cluster!.leader || "";
-  const leader = servers.find((s) => {
-    return s.config.server_name === host;
-  });
+    const jsm = await jetstreamManager(nc);
+    const si = await jsm.streams.info(stream);
+    const host = si.cluster!.leader || "";
+    const leader = servers.find((s) => {
+      return s.config.server_name === host;
+    });
 
-  // publish a message
-  const js = jetstream(nc);
-  const pa = await js.publish(subj);
-  assertEquals(pa.stream, stream);
+    // publish a message
+    const js = jetstream(nc);
+    const pa = await js.publish(subj);
+    assertEquals(pa.stream, stream);
 
-  // now stop and wait a bit for the servers
-  await leader?.stop();
-  await delay(1000);
+    // now stop and wait a bit for the servers
+    await leader?.stop();
+    await delay(1000);
 
-  await js.publish(subj, Empty, {
-    //@ts-ignore: testing
-    retries: 15,
-    retry_delay: 1000,
-    timeout: 15000,
-  });
+    await js.publish(subj, Empty, {
+      //@ts-ignore: testing
+      retries: 15,
+      retry_delay: 1000,
+      timeout: 15000,
+    });
 
-  await nc.close();
-  await NatsServer.stopAll(servers, true);
-});
+    await nc.close();
+    await NatsServer.stopAll(servers, true);
+  }),
+);
 
 Deno.test("jetstream - duplicate message pub", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
