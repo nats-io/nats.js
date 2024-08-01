@@ -23,7 +23,7 @@ jobs:
       - name: Run workspaces version bump
         run: |
           git fetch origin
-          deno run -A jsr:@aricart/bump-workspaces@0.1.18/cli --debug
+          deno run -A jsr:@aricart/bump-workspaces@0.1.19-1/cli --debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_USER_NAME: ${{ github.actor }}
