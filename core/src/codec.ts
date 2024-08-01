@@ -33,7 +33,6 @@ export interface Codec<T> {
 /**
  * Returns a {@link Codec} for encoding strings to a message payload
  * and decoding message payloads into strings.
- * @constructor
  */
 export function StringCodec(): Codec<string> {
   return {
@@ -51,7 +50,6 @@ export function StringCodec(): Codec<string> {
  * serialize them to an Uint8Array, and conversely, from an
  * Uint8Array to JSON to a JavaScript Object.
  * @param reviver
- * @constructor
  */
 export function JSONCodec<T = unknown>(
   reviver?: (this: unknown, key: string, value: unknown) => unknown,
