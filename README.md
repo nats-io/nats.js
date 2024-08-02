@@ -103,3 +103,10 @@ point is likely [Core](core/README.md). If data oriented, it may be
 Each of the modules has an introductory page that shows the main API usage for
 the module. You can access it's
 [JSDoc here](https://nats-io.github.io/nats.js/).
+
+## Contributing
+
+If you are interested in contributing to NATS, read about our...
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Report issues or propose Pull Requests](https://github.com/nats-io)
