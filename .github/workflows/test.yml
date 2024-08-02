@@ -62,6 +62,7 @@ jobs:
           deno run -A bin/check-bundle-version.ts --module ${{ matrix.module }}
           deno task check-dependencies
           deno task test-${{ matrix.module }}
+          deno coverage coverage --include=${{ matrix.module}}/src
 
 #      - name: Build nats.js
 #        run: deno bundle --unstable transport-deno/src/connect.ts nats.js
