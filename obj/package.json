@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-2",
+  "version": "3.0.0-3",
   "files": [
     "lib/",
     "build/src/",
@@ -13,6 +13,10 @@
     "./internal": "./lib/internal_mod.js"
   },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nats-io/nats.js"
+  },
   "private": false,
   "scripts": {
     "real-clean": "npm run clean && shx rm -Rf ./node_modules",
@@ -29,8 +33,8 @@
   },
   "description": "obj library - this library implements all the base functionality for NATS objectstore for javascript clients",
   "dependencies": {
-    "@nats-io/jetstream": "~3.0.0-6",
-    "@nats-io/nats-core": "~3.0.0-19"
+    "@nats-io/jetstream": "~3.0.0-7",
+    "@nats-io/nats-core": "~3.0.0-20"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
