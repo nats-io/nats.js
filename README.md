@@ -46,7 +46,7 @@ The new modules are:
 - [Kv](kv/README.md) which implements NATS KV functionality (uses JetStream)
 - [Obj](obj/README.md) which implements NATS Object Store functionality (uses
   JetStream)
-- [Services](obj/README.md) which implements a framework for building NATS
+- [Services](services/README.md) which implements a framework for building NATS
   services
 
 If you are getting started with NATS for the first time, you'll be able to pick
