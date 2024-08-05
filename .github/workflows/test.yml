@@ -1,4 +1,4 @@
-name: Test nats.js
+name: Test Modules
 
 on:
   push:
@@ -11,68 +11,10 @@ on:
     types: [opened]
 
 jobs:
-  test:
-    strategy:
-      matrix:
-        deno-version: [ 1.45.x ]
-        module: [ core, jetstream, kv, obj, services ]
-
-    name: test ${{matrix.module}} with local dependencies
-    runs-on: ubuntu-latest-4-cores
-    environment: CI
-
-    steps:
-      - name: Git Checkout Deno Module
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Remove NPM Workspace
-        run: |
-          rm -f package.json
-
-      - name: Use Deno Version ${{ matrix.deno-version }}
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: ${{ matrix.deno-version }}
-
-      # this here because dns seems to be wedged on gha
-#      - name: Add hosts to /etc/hosts
-#        run: |
-#          sudo echo "145.40.102.131 demo.nats.io" | sudo tee -a /etc/hosts
-
-      - name: Install nats-server
-        uses: aricart/install-binary@v1.0.0
-        with:
-          repo: nats-io/nats-server
-          name: nats-server
-          cache: true
-
-      - name: Lint Deno Module
-        run: |
-          deno fmt --check
-          deno lint
-
-      - name: Test ${{matrix.module}} Module
-        env:
-          TMPDIR: ${{ runner.temp }}
-          CI: true
-          NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
-        run: |
-          deno run -A bin/check-bundle-version.ts --module ${{ matrix.module }}
-          deno task check-dependencies
-          deno task test-${{ matrix.module }}
-          deno coverage coverage --include=${{ matrix.module}}/src
-
-#      - name: Build nats.js
-#        run: deno bundle --unstable transport-deno/src/connect.ts nats.js
-#
-#      - name: Generate lcov
-#        run: deno coverage --unstable --lcov ./coverage > cov.lcov
-#
-#      - name: Upload coverage
-#        uses: coverallsapp/github-action@1.1.3
-#        with:
-#          github-token: ${{ secrets.github_token }}
-#          path-to-lcov: ./cov.lcov
+  lint:
+    uses: ./.github/workflows/consistency_checks.yml
+  test-deno:
+    uses: ./.github/workflows/deno_checks.yml
+  test-node:
+    uses: ./.github/workflows/node_checks.yml
 
