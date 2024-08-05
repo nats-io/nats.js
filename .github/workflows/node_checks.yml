@@ -1,0 +1,46 @@
+name: Workspace Node Tests
+
+on:
+  workflow_call:
+
+jobs:
+  node-tests-workspace:
+    runs-on: ubuntu-latest-4-cores
+    environment: CI
+    strategy:
+      matrix:
+        deno-version: [ 1.45.x ]
+        node-version: [ 22.x ]
+
+    steps:
+      - name: Git Checkout Sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Deno ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Test Node with Workspace Dependencies
+        env:
+          NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
+          TMPDIR: ${{ runner.temp }}
+          CI: true
+        run: |
+          npm install --workspaces
+          npm run prepack --workspaces
+          npm test --workspace transport-node

@@ -18,19 +18,20 @@ jobs:
         deno-version: [1.45.x]
 
     steps:
-      - name: Git Checkout Kv
+      - name: Git Checkout Core
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - name: Remove NPM Workspace
-        run: |
-          rm -f package.json
 
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denoland/setup-deno@v1
         with:
           deno-version: ${{ matrix.deno-version }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
       - name: Install nats-server
         uses: aricart/install-binary@v1.0.0
@@ -39,11 +40,10 @@ jobs:
           name: nats-server
           cache: true
 
-      - name: Lint Deno Module
-        working-directory: kv
+      - name: Disable NPM workspace
         run: |
-          deno fmt --check
-          deno lint
+          deno task disable-npm-workspace
+
       - name: Test Deno Module
         working-directory: kv
         env:

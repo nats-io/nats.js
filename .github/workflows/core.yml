@@ -10,7 +10,7 @@ on:
       - '*'
 jobs:
   test:
-    name: test core with released dependencies
+    name: Test core changes with released dependencies
     runs-on: ubuntu-latest-4-cores
     environment: CI
     strategy:
@@ -27,14 +27,15 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Remove NPM Workspace
-        run: |
-          rm -f package.json
-
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denoland/setup-deno@v1
         with:
           deno-version: ${{ matrix.deno-version }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
       - name: Install nats-server
         uses: aricart/install-binary@v1.0.0
@@ -43,16 +44,9 @@ jobs:
           name: nats-server
           cache: true
 
-      - name: Lint Deno Module
-        working-directory: core
+      - name: Disable NPM workspace
         run: |
-          deno fmt --check
-          deno lint
-
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
+          deno task disable-npm-workspace
 
       - name: Test Deno Module
         working-directory: core
@@ -62,6 +56,7 @@ jobs:
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
         run: |
           deno task test
+
       - name: Build NPM core bundle
         working-directory: core
         env:
