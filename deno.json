@@ -11,7 +11,7 @@
     "test-all": "deno task test-core && deno task test-jetstream && deno task test-kv && deno task test-obj && deno task test-services",
     "test-core": "deno task test-core-basic && deno task test-unsafe",
     "test-core-basic": "deno test -A --parallel --reload --quiet --coverage=coverage core/tests",
-    "test-unsafe": "deno test -A --parallel --reload --quiet --unsafely-ignore-certificate-errors --coverage=coverage core/unsafe_tests",
+    "test-unsafe": "deno test -A --parallel --reload --unsafely-ignore-certificate-errors --coverage=coverage core/unsafe_tests",
     "test-jetstream": "deno test -A --parallel --reload --quiet --coverage=coverage jetstream/tests",
     "test-kv": "deno test -A --parallel --reload --quiet --coverage=coverage kv/tests",
     "test-obj": "deno test -A --parallel --reload --quiet --coverage=coverage obj/tests",
