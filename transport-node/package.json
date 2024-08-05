@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/transport-node",
-  "version": "3.0.0-7",
+  "version": "3.0.0-11",
   "description": "Node.js client for NATS, a lightweight, high-performance cloud native messaging system",
   "keywords": [
     "nats",
@@ -27,7 +27,7 @@
   },
   "contributors": [],
   "main": "index.js",
-  "types": "lib/src/mod.d.ts",
+  "types": "lib/mod.d.ts",
   "files": [
     "lib/",
     "LICENSE",
@@ -46,7 +46,6 @@
     "cover:html": "/nyc report --reporter=html && open coverage/index.html",
     "coveralls": "shx mkdir -p ./coverage && nyc report --reporter=text-lcov > ./coverage/lcov.info",
     "check-package": "cd .. && deno run --allow-all bin/check-bundle-version.ts --module transport-node",
-    "version": "deno run -A bin/update-transport-version.ts && git add transport-node/src/node_transport.ts",
     "postversion": "git push && git push --tags",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
     "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
@@ -55,7 +54,7 @@
     "node": ">= 18.0.0"
   },
   "dependencies": {
-    "@nats-io/nats-core": "~3.0.0-20",
+    "@nats-io/nats-core": "~3.0.0-24",
     "@nats-io/nkeys": "^1.2.0-4",
     "@nats-io/nuid": "^2.0.1-2"
   },
@@ -68,6 +67,5 @@
     "@nats-io/jetstream": "^3.0.0-3",
     "@nats-io/kv": "^3.0.0-2",
     "@nats-io/obj": "^3.0.0-1"
-  },
-  "typings": "./lib/src/mod.d.ts"
+  }
 }

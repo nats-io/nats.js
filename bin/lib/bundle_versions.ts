@@ -70,7 +70,17 @@ export class SemVer {
     if (this.micro > b.micro) return 1;
     if (this.qualifier === "") return 1;
     if (b.qualifier === "") return -1;
-    return this.qualifier.localeCompare(b.qualifier);
+
+    // if we have non-empty qualifiers - we expect them to
+    const q = parseInt(this.qualifier);
+    const qq = parseInt(b.qualifier);
+
+    if (isNaN(q) || isNaN(qq)) {
+      return this.qualifier.localeCompare(b.qualifier);
+    }
+    if (q < qq) return -1;
+    if (q > qq) return 1;
+    return 0;
   }
 
   max(b: SemVer): SemVer {
