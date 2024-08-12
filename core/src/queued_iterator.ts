@@ -70,6 +70,7 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
   err?: Error;
   time: number;
   yielding: boolean;
+  didBreak: boolean;
 
   constructor() {
     this.inflight = 0;
@@ -84,6 +85,7 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
     this.iterClosed = deferred<void | Error>();
     this.time = 0;
     this.yielding = false;
+    this.didBreak = false;
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -92,6 +94,20 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
 
   push(v: T | CallbackFn): void {
     if (this.done) {
+      return;
+    }
+    // if they `break` from a `for await`, any signaling that is pushed via
+    // a function is not handled this can prevent closed promises from
+    // resolving downstream.
+    if (this.didBreak) {
+      if (typeof v === "function") {
+        const cb = v as CallbackFn;
+        try {
+          cb();
+        } catch (_) {
+          // ignored
+        }
+      }
       return;
     }
     if (typeof v === "function") {
@@ -177,18 +193,22 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
       }
     } finally {
       // the iterator used break/return
+      console.log("QI finally called stop...");
+      this.didBreak = true;
       this.stop();
     }
   }
 
   stop(err?: Error): void {
     if (this.done) {
+      console.log("QI done", this.done);
       return;
     }
     this.err = err;
     this.done = true;
     this.signal.resolve();
     this.iterClosed.resolve(err);
+    console.log("QI stop()", this.done);
   }
 
   getProcessed(): number {
