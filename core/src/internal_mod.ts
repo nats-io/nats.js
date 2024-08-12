@@ -95,6 +95,7 @@ export type {
   ApiError,
   Auth,
   Authenticator,
+  CallbackFn,
   ConnectionOptions,
   Dispatcher,
   JwtAuth,
