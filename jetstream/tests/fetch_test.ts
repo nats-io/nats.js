@@ -327,3 +327,28 @@ Deno.test("fetch - consumer bind", async () => {
   assertEquals(cisub.getProcessed(), 0);
   await cleanup(ns, nc);
 });
+
+Deno.test("fetch - exceeding max_messages will stop", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    max_batch: 100,
+  });
+
+  const js = jetstream(nc);
+  const c = await js.consumers.get("A", "a");
+  const iter = await c.fetch({ max_messages: 1000 });
+  await assertRejects(
+    async () => {
+      for await (const _ of iter) {
+        // ignore
+      }
+    },
+    Error,
+    "exceeded maxrequestbatch of 100",
+  );
+
+  await cleanup(ns, nc);
+});
