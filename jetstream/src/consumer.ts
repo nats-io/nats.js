@@ -197,6 +197,18 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
                 this.stop(error);
                 return;
               }
+            } else if (
+              code === 409 && description.includes("exceeded maxrequestbatch")
+            ) {
+              this.notify(
+                ConsumerDebugEvents.DebugEvent,
+                `${code} ${description}`,
+              );
+              if (!this.refilling) {
+                const error = new NatsError(description, `${code}`);
+                this.stop(error);
+                return;
+              }
             } else {
               this.notify(
                 ConsumerDebugEvents.DebugEvent,
@@ -653,11 +665,13 @@ export class PullConsumerImpl implements Consumer {
     // FIXME: need some way to pad this correctly
     const to = Math.round(m.opts.expires * 1.05);
     const timer = timeout(to);
-    m.closed().catch(() => {
+    m.closed().catch((err) => {
+      console.log(err);
     }).finally(() => {
       timer.cancel();
     });
-    timer.catch(() => {
+    timer.catch((err) => {
+      console.log(">>>", err);
       m.close().catch();
     });
     m.trackTimeout(timer);
