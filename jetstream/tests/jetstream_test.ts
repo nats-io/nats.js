@@ -972,60 +972,6 @@ Deno.test("jetstream - bind with diff subject fails", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - test events stream", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({
-    name: "events",
-    subjects: ["events.>"],
-  });
-
-  await js.subscribe("events.>", {
-    stream: "events",
-    config: {
-      ack_policy: AckPolicy.Explicit,
-      deliver_policy: DeliverPolicy.All,
-      deliver_subject: "foo",
-      durable_name: "me",
-      filter_subject: "events.>",
-    },
-    callbackFn: (_err: NatsError | null, msg: JsMsg | null) => {
-      msg?.ack();
-    },
-  });
-
-  await js.publish("events.a");
-  await js.publish("events.b");
-  await delay(2000);
-  await cleanup(ns, nc);
-});
-
-Deno.test("jetstream - bind without consumer should fail", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({
-    name: "events",
-    subjects: ["events.>"],
-  });
-
-  const opts = consumerOpts();
-  opts.manualAck();
-  opts.ackExplicit();
-  opts.bind("events", "hello");
-
-  await assertRejects(
-    async () => {
-      await js.subscribe("events.>", opts);
-    },
-    Error,
-    "unable to bind - durable consumer hello doesn't exist in events",
-  );
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jetstream - backoff", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.7.2")) {

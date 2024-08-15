@@ -890,7 +890,6 @@ export interface ConsumerConfig extends ConsumerUpdateConfig {
   "deliver_policy": DeliverPolicy;
   /**
    * Allows push consumers to form a queue group
-   * @deprecated
    */
   "deliver_group"?: string;
   /**
@@ -974,7 +973,6 @@ export interface ConsumerUpdateConfig {
   "headers_only"?: boolean;
   /**
    * The subject where the push consumer should be sent the messages
-   * @deprecated
    */
   "deliver_subject"?: string;
   /**

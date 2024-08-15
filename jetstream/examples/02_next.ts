@@ -25,7 +25,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.get(stream, consumer);
+const c = await js.consumers.getPullConsumer(stream, consumer);
 
 // the consumer is simply asked for one message by default
 // this will resolve in 30s or null is returned

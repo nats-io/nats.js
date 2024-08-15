@@ -25,7 +25,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.get(stream, consumer);
+const c = await js.consumers.getPullConsumer(stream, consumer);
 
 // we can consume using callbacks too
 console.log("waiting for messages");

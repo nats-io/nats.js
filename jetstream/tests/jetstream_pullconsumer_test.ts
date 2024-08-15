@@ -353,31 +353,37 @@ Deno.test("jetstream - pull sub ephemeral", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - pull consumer info without pull", async () => {
+Deno.test("jetstream - push requires delivery_subject", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const { stream, subj } = await initStream(nc);
+  const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
+  const js = jsm.jetstream();
 
   await jsm.consumers.add(stream, {
-    durable_name: "me",
+    durable_name: "pull",
     ack_policy: AckPolicy.Explicit,
   });
 
-  const js = jetstream(nc);
-  await js.publish(subj);
+  await jsm.consumers.add(stream, {
+    durable_name: "push",
+    ack_policy: AckPolicy.Explicit,
+    deliver_subject: "foo",
+  });
 
-  const ci = await jsm.consumers.info(stream, "me");
-  assertEquals(ci.num_pending, 1);
-
-  const sopts = consumerOpts();
-  sopts.durable("me");
   await assertRejects(
-    async () => {
-      await js.subscribe(subj, sopts);
+    () => {
+      return js.consumers.get(stream, "push");
     },
     Error,
-    "push consumer requires deliver_subject",
-    undefined,
+    "not a pull consumer",
+  );
+
+  await assertRejects(
+    () => {
+      return js.consumers.getPushConsumer(stream, "pull");
+    },
+    Error,
+    "not a push consumer",
   );
 
   await cleanup(ns, nc);
