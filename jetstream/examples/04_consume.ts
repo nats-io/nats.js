@@ -25,7 +25,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.get(stream, consumer);
+const c = await js.consumers.getPullConsumer(stream, consumer);
 
 // the consumer is wrapped in loop because this way, if there's some failure
 // it will re-setup consume, and carry on.

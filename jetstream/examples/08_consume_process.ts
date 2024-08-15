@@ -25,7 +25,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc, 10000);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.get(stream, consumer);
+const c = await js.consumers.getPullConsumer(stream, consumer);
 
 // this example uses a consume that processes the stream
 // creating a frequency table based on the subjects found

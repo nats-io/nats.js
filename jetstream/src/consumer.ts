@@ -22,6 +22,7 @@ import {
   timeout,
 } from "@nats-io/nats-core/internal";
 import type {
+  CallbackFn,
   MsgHdrs,
   QueuedIterator,
   Status,
@@ -163,6 +164,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
         if (isProtocol) {
           if (isHeartbeatMsg(msg)) {
+            const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
+            const natsLastStream = msg.headers?.get("Nats-Last-Stream");
+            this.notify(ConsumerDebugEvents.Heartbeat, {
+              natsLastConsumer,
+              natsLastStream,
+            });
             return;
           }
           const code = msg.headers?.code;
@@ -317,14 +324,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.pull(this.pullOptions());
   }
 
-  _push(r: JsMsg) {
+  _push(r: JsMsg | CallbackFn) {
     if (!this.callback) {
       super.push(r);
     } else {
-      const fn = typeof r === "function" ? r as () => void : null;
+      const fn = typeof r === "function" ? r as CallbackFn : null;
       try {
         if (!fn) {
-          this.callback(r);
+          const m = r as JsMsg;
+          this.callback(m);
         } else {
           fn();
         }
@@ -646,6 +654,14 @@ export class PullConsumerImpl implements Consumer {
     this.name = info.name;
   }
 
+  isPullConsumer(): boolean {
+    return true;
+  }
+
+  isPushConsumer(): boolean {
+    return false;
+  }
+
   consume(
     opts: ConsumeOptions = {
       max_messages: 100,
@@ -789,6 +805,14 @@ export class OrderedPullConsumerImpl implements Consumer {
     // to support a random start sequence we need to update the cursor
     this.startSeq = this.consumerOpts.opt_start_seq || 0;
     this.cursor.stream_seq = this.startSeq > 0 ? this.startSeq - 1 : 0;
+  }
+
+  isPullConsumer(): boolean {
+    return true;
+  }
+
+  isPushConsumer(): boolean {
+    return false;
   }
 
   getConsumerOpts(seq: number): ConsumerConfig {

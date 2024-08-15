@@ -25,7 +25,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.get(stream, consumer);
+const c = await js.consumers.getPullConsumer(stream, consumer);
 
 // with fetch the consumer can manually control the buffering
 for (let i = 0; i < 3; i++) {
