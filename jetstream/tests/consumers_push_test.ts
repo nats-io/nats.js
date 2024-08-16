@@ -41,10 +41,11 @@ Deno.test("push consumers - basics", async () => {
   const iter = await c.consume();
   await (async () => {
     for await (const m of iter) {
-      m.ack();
-      if (m.info.streamSequence === 3) {
-        break;
-      }
+      m.ackAck().then(() => {
+        if (m.info.streamSequence === 3) {
+          iter.stop();
+        }
+      });
     }
   })();
 
