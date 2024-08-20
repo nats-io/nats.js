@@ -1055,3 +1055,24 @@ Deno.test("ordered consumers - next reset", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("ordered consumers - initial creation fails, consumer fails", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jsm.jetstream();
+
+  const c = await js.consumers.get("A") as OrderedPullConsumerImpl;
+  await jsm.streams.delete("A");
+  c.maxInitialReset = 3;
+  await assertRejects(
+    () => {
+      return c.consume();
+    },
+    Error,
+    "stream not found",
+  );
+
+  await cleanup(ns, nc);
+});
