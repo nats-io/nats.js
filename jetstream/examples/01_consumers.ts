@@ -24,12 +24,12 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-const c = await js.consumers.getPullConsumer(stream, consumer);
+const c = await js.consumers.get(stream, consumer);
 console.log(await c.info(true));
 
 // getting an ordered consumer requires no name
 // as the library will create it
-const oc = await js.consumers.getOrderedPullConsumer(stream);
+const oc = await js.consumers.get(stream);
 console.log(await oc.info(true));
 
 await nc.close();

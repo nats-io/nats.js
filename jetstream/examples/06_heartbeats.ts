@@ -26,7 +26,7 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 // retrieve an existing consumer
 const js = jetstream(nc);
 
-const c = await js.consumers.getPullConsumer(stream, consumer);
+const c = await js.consumers.get(stream, consumer);
 while (true) {
   const messages = await c.consume({ max_messages: 1 });
 
