@@ -835,11 +835,11 @@ export class OrderedPullConsumerImpl implements Consumer {
     if (this.consumerOpts.headers_only === true) {
       config.headers_only = true;
     }
-    if (Array.isArray(this.consumerOpts.filterSubjects)) {
-      config.filter_subjects = this.consumerOpts.filterSubjects;
+    if (Array.isArray(this.consumerOpts.filter_subjects)) {
+      config.filter_subjects = this.consumerOpts.filter_subjects;
     }
-    if (typeof this.consumerOpts.filterSubjects === "string") {
-      config.filter_subject = this.consumerOpts.filterSubjects;
+    if (typeof this.consumerOpts.filter_subjects === "string") {
+      config.filter_subject = this.consumerOpts.filter_subjects;
     }
     if (this.consumerOpts.replay_policy) {
       config.replay_policy = this.consumerOpts.replay_policy;

@@ -1,6 +1,7 @@
 import { toJsMsg } from "./jsmsg.ts";
 import type { JsMsg } from "./jsmsg.ts";
-import type { ConsumerInfo } from "./jsapi_types.ts";
+import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
+import type { ConsumerConfig, ConsumerInfo } from "./jsapi_types.ts";
 import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
 
 import type {
@@ -13,10 +14,15 @@ import type {
 } from "./types.ts";
 import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 import {
+  backoff,
+  createInbox,
+  delay,
   Events,
   IdleHeartbeatMonitor,
   millis,
+  nanos,
   NatsError,
+  nuid,
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
 import type {
@@ -35,17 +41,109 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   listeners: QueuedIterator<ConsumerStatus>[];
   abortOnMissingResource: boolean;
   callback: ConsumerCallbackFn | null;
+  ordered: boolean;
+  cursor!: { stream_seq: number; deliver_seq: number };
+  namePrefix: string | null;
+  deliverPrefix: string | null;
+  serial: number;
+  createFails!: number;
 
-  constructor(c: PushConsumerImpl, opts: Partial<PushConsumerOptions> = {}) {
+  constructor(
+    c: PushConsumerImpl,
+    userOptions: Partial<PushConsumerOptions> = {},
+    internalOptions: Partial<PushConsumerInternalOptions> = {},
+  ) {
     super();
     this.consumer = c;
     this.monitor = null;
     this.listeners = [];
-    this.abortOnMissingResource = opts.abort_on_missing_resource === true;
-    this.callback = opts.callback || null;
+    this.abortOnMissingResource =
+      userOptions.abort_on_missing_resource === true;
+    this.callback = userOptions.callback || null;
     this.noIterator = this.callback !== null;
+    this.namePrefix = null;
+    this.deliverPrefix = null;
+    this.ordered = internalOptions.ordered === true;
+    this.serial = 1;
+    if (this.ordered) {
+      this.namePrefix = internalOptions.name_prefix ?? `oc_${nuid.next()}`;
+      this.deliverPrefix = internalOptions.deliver_prefix ?? createInbox();
+      this.cursor = { stream_seq: 1, deliver_seq: 0 };
+      const startSeq = c._info.config.opt_start_seq || 0;
+      this.cursor.stream_seq = startSeq > 0 ? startSeq - 1 : 0;
+      this.createFails = 0;
+    }
+
     this.start();
   }
+
+  reset() {
+    const { name } = this.consumer._info?.config;
+    if (name) {
+      this.consumer.api.delete(this.consumer.stream, name)
+        .catch(() => {
+          // ignored
+        });
+    }
+
+    const config = this.getConsumerOpts();
+    // reset delivery seq
+    this.cursor.deliver_seq = 0;
+    // if they do a consumer info, they get the new one.
+    this.consumer.name = config.name!;
+    // sync the serial - if they stop and restart, it will go forward
+    this.consumer.serial = this.serial;
+    // remap the subscription
+    this.consumer.api.nc._resub(this.sub, config.deliver_subject!);
+    // create the consumer
+    this.consumer.api.add(
+      this.consumer.stream,
+      config,
+    ).then((ci) => {
+      this.createFails = 0;
+      this.consumer._info = ci;
+      this.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
+    }).catch((err) => {
+      this.createFails++;
+      if (err.message === "stream not found") {
+        this.notify(ConsumerEvents.StreamNotFound, this.createFails);
+        if (this.abortOnMissingResource) {
+          this.stop(err);
+          return;
+        }
+      }
+      // we have attempted to create 30 times, never succeeded
+      if (this.createFails >= 30 && this.received === 0) {
+        this.stop(err);
+      }
+      const bo = backoff();
+      delay(bo.backoff(this.createFails))
+        .then(() => {
+          if (!this.done) {
+            this.reset();
+          }
+        });
+    });
+  }
+
+  getConsumerOpts(): ConsumerConfig {
+    const src = Object.assign({}, this.consumer._info.config);
+    this.serial++;
+    const name = `${this.namePrefix}_${this.serial}`;
+
+    return Object.assign(src, {
+      name,
+      deliver_policy: DeliverPolicy.StartSequence,
+      opt_start_seq: this.cursor.stream_seq + 1,
+      ack_policy: AckPolicy.None,
+      inactive_threshold: nanos(5 * 60 * 1000),
+      num_replicas: 1,
+      flow_control: true,
+      idle_heartbeat: nanos(30 * 1000),
+      deliver_subject: `${this.deliverPrefix}.${this.serial}`,
+    });
+  }
+
   closed(): Promise<void | Error> {
     return this.iterClosed;
   }
@@ -179,7 +277,17 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             return;
           }
         } else {
-          this._push(toJsMsg(msg));
+          const m = toJsMsg(msg);
+          if (this.ordered) {
+            const dseq = m.info.deliverySequence;
+            if (dseq !== this.cursor.deliver_seq + 1) {
+              this.reset();
+              return;
+            }
+            this.cursor.deliver_seq = dseq;
+            this.cursor.stream_seq = m.info.streamSequence;
+          }
+          this._push(m);
         }
       },
     });
@@ -208,24 +316,47 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 }
 
+export type PushConsumerInternalOptions = PushConsumerOptions & {
+  bound: boolean;
+  ordered: boolean;
+  name_prefix: string;
+  deliver_prefix: string;
+};
+
 export class PushConsumerImpl implements PushConsumer {
   api: ConsumerAPIImpl;
   _info: ConsumerInfo;
   stream: string;
   name: string;
   bound: boolean;
+  ordered: boolean;
   started: boolean;
+  serial: number;
+  opts: Partial<PushConsumerInternalOptions>;
 
-  constructor(api: ConsumerAPI, info: ConsumerInfo, bound = false) {
+  constructor(
+    api: ConsumerAPI,
+    info: ConsumerInfo,
+    opts: Partial<PushConsumerInternalOptions> = {},
+  ) {
     this.api = api as ConsumerAPIImpl;
     this._info = info;
     this.stream = info.stream_name;
     this.name = info.name;
-    this.bound = bound;
+    this.bound = opts.bound === true;
     this.started = false;
+    this.opts = opts;
+    this.serial = 0;
+    this.ordered = opts.ordered || false;
+
+    if (this.ordered) {
+      this.serial = 1;
+    }
   }
 
-  consume(opts: Partial<PushConsumerOptions> = {}): Promise<ConsumerMessages> {
+  consume(
+    userOptions: Partial<PushConsumerOptions> = {},
+  ): Promise<ConsumerMessages> {
     if (this.started) {
       return Promise.reject(new Error("consumer already started"));
     }
@@ -238,7 +369,7 @@ export class PushConsumerImpl implements PushConsumer {
     if (!this._info.config.deliver_group && this._info.push_bound) {
       return Promise.reject(new Error("consumer is already bound"));
     }
-    const v = new PushConsumerMessagesImpl(this, opts);
+    const v = new PushConsumerMessagesImpl(this, userOptions, this.opts);
     this.started = true;
     v.closed().then(() => {
       this.started = false;
@@ -261,8 +392,9 @@ export class PushConsumerImpl implements PushConsumer {
     if (cached) {
       return Promise.resolve(this._info);
     }
-    const { stream_name, name } = this._info;
-    const info = await this.api.info(stream_name, name);
+    // FIXME: this can possibly return a stale ci if this is an ordered
+    //   consumer, and the consumer reset while we awaited the info...
+    const info = await this.api.info(this.stream, this.name);
     this._info = info;
     return info;
   }
