@@ -22,7 +22,7 @@ export {
   DirectMsgHeaders,
   isBoundPushConsumerOptions,
   isConsumerOptsBuilder,
-  isOrderedConsumerOptions,
+  isOrderedPushConsumerOptions,
   isPullConsumer,
   isPushConsumer,
   JsHeaders,

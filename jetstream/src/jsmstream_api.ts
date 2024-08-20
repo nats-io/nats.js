@@ -14,11 +14,14 @@
  */
 
 import {
+  createInbox,
   Empty,
   Feature,
   headers,
   JSONCodec,
   MsgHdrsImpl,
+  nanos,
+  nuid,
   TD,
 } from "@nats-io/nats-core/internal";
 import type {
@@ -31,7 +34,7 @@ import type {
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import type { StreamNames } from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
-import { validateStreamName } from "./jsutil.ts";
+import { minValidation, validateStreamName } from "./jsutil.ts";
 import type {
   BoundPushConsumerOptions,
   Consumer,
@@ -49,7 +52,10 @@ import type {
   Streams,
 } from "./types.ts";
 
+import { isOrderedPushConsumerOptions } from "./types.ts";
+
 import { isBoundPushConsumerOptions } from "./types.ts";
+import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
 import type {
   ApiPagedRequest,
   ConsumerConfig,
@@ -73,6 +79,7 @@ import type {
 } from "./jsapi_types.ts";
 import { OrderedPullConsumerImpl, PullConsumerImpl } from "./consumer.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
+import type { PushConsumerInternalOptions } from "./pushconsumer.ts";
 import { PushConsumerImpl } from "./pushconsumer.ts";
 
 export function convertStreamSourceDomain(s?: StreamSource) {
@@ -126,22 +133,83 @@ export class ConsumersImpl implements Consumers {
       | Partial<OrderedPushConsumerOptions>,
   ): Promise<PushConsumer> {
     await this.checkVersion();
+    minValidation("stream", stream);
     if (typeof name === "string") {
+      minValidation("name", name);
       const ci = await this.api.info(stream, name);
-      if (typeof ci.config.deliver_subject === "string") {
-        return new PushConsumerImpl(this.api, ci);
-      } else {
+      if (typeof ci.config.deliver_subject !== "string") {
         return Promise.reject(new Error("not a push consumer"));
       }
-    } else {
-      return Promise.reject(new Error("ordered push consumer not implemented"));
+      return new PushConsumerImpl(this.api, ci);
+    } else if (name === undefined) {
+      return this.getOrderedPushConsumer(stream);
+    } else if (isOrderedPushConsumerOptions(name)) {
+      return this.getOrderedPushConsumer(stream, name);
     }
+
+    return Promise.reject(new Error("unsupported push consumer type"));
+  }
+
+  async getOrderedPushConsumer(
+    stream: string,
+    opts: Partial<OrderedPushConsumerOptions> = {},
+  ): Promise<PushConsumer> {
+    opts = Object.assign({}, opts);
+    let { name_prefix, deliver_prefix, filter_subjects } = opts;
+    delete opts.deliver_prefix;
+    delete opts.name_prefix;
+    delete opts.filter_subjects;
+
+    if (typeof opts.opt_start_seq === "number") {
+      opts.deliver_policy = DeliverPolicy.StartSequence;
+    }
+    if (typeof opts.opt_start_time === "string") {
+      opts.deliver_policy = DeliverPolicy.StartTime;
+    }
+
+    name_prefix = name_prefix || `oc_${nuid.next()}`;
+    minValidation("name_prefix", name_prefix);
+    deliver_prefix = deliver_prefix || createInbox();
+    minValidation("deliver_prefix", name_prefix);
+
+    const cc = Object.assign({}, opts) as ConsumerConfig;
+    cc.ack_policy = AckPolicy.None;
+    cc.inactive_threshold = nanos(5 * 60 * 1000);
+    cc.num_replicas = 1;
+    cc.max_deliver = 1;
+
+    if (Array.isArray(filter_subjects)) {
+      cc.filter_subjects = filter_subjects;
+    }
+    if (typeof filter_subjects === "string") {
+      cc.filter_subject = filter_subjects;
+    }
+    if (
+      typeof cc.filter_subjects === "undefined" &&
+      typeof cc.filter_subject === "undefined"
+    ) {
+      cc.filter_subject = ">";
+    }
+
+    cc.name = `${name_prefix}_1`;
+    cc.deliver_subject = `${deliver_prefix}.1`;
+
+    const ci = await this.api.add(stream, cc);
+    const iopts: Partial<PushConsumerInternalOptions> = {
+      name_prefix,
+      deliver_prefix,
+      ordered: true,
+    };
+
+    return new PushConsumerImpl(this.api, ci, iopts);
   }
 
   getBoundPushConsumer(opts: BoundPushConsumerOptions): Promise<PushConsumer> {
     if (isBoundPushConsumerOptions(opts)) {
       const ci = { config: opts as ConsumerConfig } as ConsumerInfo;
-      return Promise.resolve(new PushConsumerImpl(this.api, ci, true));
+      return Promise.resolve(
+        new PushConsumerImpl(this.api, ci, { bound: true }),
+      );
     } else {
       return Promise.reject(new Error("deliver_subject is required"));
     }
@@ -240,8 +308,7 @@ export class StreamImpl implements Stream {
   getPushConsumer(
     name?:
       | string
-      | Partial<OrderedPushConsumerOptions>
-      | BoundPushConsumerOptions,
+      | Partial<OrderedPushConsumerOptions>,
   ): Promise<PushConsumer> {
     return new ConsumersImpl(new ConsumerAPIImpl(this.api.nc, this.api.opts))
       .getPushConsumer(this.name, name);

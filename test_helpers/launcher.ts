@@ -16,8 +16,8 @@
 import { join, resolve } from "jsr:@std/path";
 import { rgb24 } from "jsr:@std/fmt/colors";
 import { check, jsopts } from "./mod.ts";
-import { extend, timeout } from "../core/src/internal_mod.ts";
-import type { Deferred } from "../core/src/internal_mod.ts";
+import { extend, timeout } from "../core/src/util.ts";
+import type { Deferred } from "../core/src/util.ts";
 import { deferred, delay, nuid } from "../core/src/mod.ts";
 import { Certs } from "./certs.ts";
 
@@ -634,7 +634,9 @@ export class NatsServer implements PortInfo {
     conf.http = conf.http || "127.0.0.1:-1";
     conf.leafnodes = conf.leafnodes || {};
     conf.leafnodes.listen = conf.leafnodes.listen || "127.0.0.1:-1";
-    conf.server_tags = [`id:${nuid.next()}`];
+    conf.server_tags = Array.isArray(conf.server_targs)
+        ? conf.server_tags.push(`id:${nuid.next()}`)
+        : [`id:${nuid.next()}`];
 
     return conf;
   }
@@ -809,7 +811,7 @@ export function toConf(o: any, indent?: string): string {
             buf.push(`${pad}${k}: ${v}`);
           }
         } else {
-          if (v.includes(" ")) {
+          if (v.includes(" ") || v.startsWith("$") || ((v.includes("{{") && v.includes("}")))) {
             buf.push(`${pad}"${v}"`);
           } else {
             buf.push(pad + v);

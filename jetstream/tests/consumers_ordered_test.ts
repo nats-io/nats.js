@@ -174,7 +174,7 @@ Deno.test("ordered consumers - filters consume", async () => {
   await js.publish("test.b");
   await js.publish("test.c");
 
-  const oc = await js.consumers.get("test", { filterSubjects: ["test.b"] });
+  const oc = await js.consumers.get("test", { filter_subjects: ["test.b"] });
   assertExists(oc);
 
   const iter = await oc.consume();
@@ -204,7 +204,7 @@ Deno.test("ordered consumers - filters fetch", async () => {
   await js.publish("test.b");
   await js.publish("test.c");
 
-  const oc = await js.consumers.get("test", { filterSubjects: ["test.b"] });
+  const oc = await js.consumers.get("test", { filter_subjects: ["test.b"] });
   assertExists(oc);
 
   const iter = await oc.fetch({ expires: 1000 });

@@ -659,6 +659,8 @@ Deno.test("jetstream - bind", async () => {
     return Promise.reject("called info");
   };
 
+  console.log(ci.config);
+
   const c = await js.consumers.getBoundPushConsumer(
     ci.config as BoundPushConsumerOptions,
   );
@@ -765,7 +767,7 @@ Deno.test("jetstream - bind example", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - push bound", async () => {
+Deno.test("jetstream - push consumer is bound", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream } = await initStream(nc);
 

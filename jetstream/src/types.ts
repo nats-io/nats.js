@@ -672,7 +672,7 @@ export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
  */
 export type OrderedConsumerOptions = {
   name_prefix: string;
-  filterSubjects: string[] | string;
+  filter_subjects: string[] | string;
   deliver_policy: DeliverPolicy;
   opt_start_seq: number;
   opt_start_time: string;
@@ -682,14 +682,26 @@ export type OrderedConsumerOptions = {
 };
 
 export type OrderedPushConsumerOptions = OrderedConsumerOptions & {
-  deliver_subject: string;
-  queue?: string;
+  deliver_prefix: string;
 };
 
-export function isOrderedConsumerOptions(
-  v: OrderedPushConsumerOptions | OrderedConsumerOptions,
+export function isOrderedPushConsumerOptions(
+  v: unknown,
 ): v is OrderedPushConsumerOptions {
-  return "deliver_subject" in v;
+  if (v && typeof v === "object") {
+    return "name_prefix" in v ||
+      "deliver_subject_prefix" in v ||
+      "filter_subjects" in v ||
+      "deliver_policy" in v ||
+      "opt_start_seq" in v ||
+      "opt_start_time" in v ||
+      "replay_policy" in v ||
+      "inactive_threshold" in v ||
+      "headers_only" in v ||
+      "deliver_prefix" in v;
+  }
+
+  return false;
 }
 
 export function isPullConsumer(v: PushConsumer | Consumer): v is Consumer {
@@ -817,7 +829,12 @@ export interface Streams {
 export function isBoundPushConsumerOptions(
   v: unknown,
 ): v is BoundPushConsumerOptions {
-  return typeof v === "object" && "deliver_subject" in v!;
+  if (v && typeof v === "object") {
+    return "deliver_subject" in v ||
+      "deliver_group" in v ||
+      "idle_heartbeat" in v;
+  }
+  return false;
 }
 
 /**
@@ -870,11 +887,15 @@ export interface Consumers {
     stream: string,
     name?:
       | string
-      | Partial<OrderedPushConsumerOptions>
-      | BoundPushConsumerOptions,
+      | Partial<OrderedPushConsumerOptions>,
   ): Promise<PushConsumer>;
 
   getBoundPushConsumer(opts: BoundPushConsumerOptions): Promise<PushConsumer>;
+
+  // getOrderedPushConsumer(
+  //   stream: string,
+  //   opts?: Partial<OrderedPushConsumerOptions>,
+  // ): Promise<PushConsumer>;
 }
 
 export interface ConsumerOpts {
@@ -1294,11 +1315,18 @@ export interface Stream {
   ): Promise<Consumer>;
 
   getPushConsumer(
+    stream: string,
     name?:
       | string
-      | Partial<OrderedPushConsumerOptions>
-      | { subject: string },
+      | Partial<OrderedPushConsumerOptions>,
   ): Promise<PushConsumer>;
+
+  // getPushConsumer(
+  //   name?:
+  //     | string
+  //     | Partial<OrderedPushConsumerOptions>
+  //     | BoundPushConsumerOptions,
+  // ): Promise<PushConsumer>;
 
   getMessage(query: MsgRequest): Promise<StoredMsg>;
 
