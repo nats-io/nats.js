@@ -182,6 +182,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     return new ListerImpl<ConsumerInfo>(subj, filter, this);
   }
 
+  // Fixme: the API returns the number of nanoseconds, but really should return
+  //  millis,
   pause(
     stream: string,
     name: string,
@@ -196,6 +198,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     >;
   }
 
+  // Fixme: the API returns the number of nanoseconds, but really should return
+  //  millis,
   resume(
     stream: string,
     name: string,

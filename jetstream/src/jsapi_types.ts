@@ -110,7 +110,7 @@ export interface SubjectTransformConfig {
 export interface StreamConsumerLimits {
   /**
    * The default `inactive_threshold` applied to consumers.
-   * This value is specified in nanoseconds. Pleause use the `nanos()`
+   * This value is specified in nanoseconds. Please use the `nanos()`
    * function to convert between millis and nanoseconds. Or `millis()`
    * to convert a nanosecond value to millis.
    */
@@ -982,11 +982,12 @@ export interface ConsumerUpdateConfig {
    */
   "max_batch"?: number;
   /**
-   * The maximum expires value that may be set when doing a pull on a Pull Consumer
+   * The maximum expires value that may be set when doing a pull on a Pull Consumer expressed in nanoseconds.
    */
   "max_expires"?: Nanos;
   /**
-   * Duration that instructs the server to clean up ephemeral consumers that are inactive for that long
+   * Duration that instructs the server to clean up ephemeral consumers that are inactive for the specified
+   * time in nanoseconds
    */
   "inactive_threshold"?: Nanos;
   /**

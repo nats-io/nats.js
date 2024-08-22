@@ -700,7 +700,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     const qii = qi as QueuedIteratorImpl<unknown>;
     if (qii?.noIterator === false) {
       // grab stats in the iterator
-      this.processing_time = qii.time;
+      this.processing_time = nanos(qii.time);
       this.num_requests = qii.processed;
       this.average_processing_time =
         this.processing_time > 0 && this.num_requests > 0
