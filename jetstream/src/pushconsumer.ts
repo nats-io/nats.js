@@ -32,6 +32,7 @@ import type {
   SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import { isFlowControlMsg, isHeartbeatMsg } from "./mod.ts";
+import type { Status } from "../../core/src/core.ts";
 
 export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
@@ -47,7 +48,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   deliverPrefix: string | null;
   serial: number;
   createFails!: number;
-
+  statusIterator!: QueuedIteratorImpl<Status>;
   constructor(
     c: PushConsumerImpl,
     userOptions: Partial<PushConsumerOptions> = {},
@@ -156,6 +157,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     if (this.done) {
       return;
     }
+    this.statusIterator?.stop();
     this.monitor?.cancel();
     this.monitor = null;
     this._push(() => {
@@ -215,8 +217,9 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       );
 
       (async () => {
-        const status = this.consumer.api.nc.status();
-        for await (const s of status) {
+        this.statusIterator = this.consumer.api.nc
+          .status() as QueuedIteratorImpl<Status>;
+        for await (const s of this.statusIterator) {
           switch (s.type) {
             case Events.Disconnect:
               this.monitor?.cancel();
