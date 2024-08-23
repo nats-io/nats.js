@@ -347,7 +347,7 @@ export interface ConsumerAPI {
   delete(stream: string, consumer: string): Promise<boolean>;
 
   /**
-   * Lists all the consumers on the specfied streams
+   * Lists all the consumers on the specified streams
    * @param stream
    */
   list(stream: string): Lister<ConsumerInfo>;
