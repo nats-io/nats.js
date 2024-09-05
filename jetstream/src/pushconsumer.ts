@@ -48,7 +48,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   deliverPrefix: string | null;
   serial: number;
   createFails!: number;
-  statusIterator!: QueuedIteratorImpl<Status>;
+
   constructor(
     c: PushConsumerImpl,
     userOptions: Partial<PushConsumerOptions> = {},
@@ -187,7 +187,6 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       }
     }
   }
-
   status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
