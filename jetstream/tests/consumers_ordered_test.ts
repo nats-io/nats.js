@@ -919,7 +919,7 @@ Deno.test("ordered consumers - fetch reset", async () => {
   let resets = 0;
   function countResets(iter: ConsumerMessages): Promise<void> {
     return (async () => {
-      for await (const s of await iter.status()) {
+      for await (const s of iter.status()) {
         if (s.type === ConsumerDebugEvents.Reset) {
           resets++;
         }
@@ -971,7 +971,7 @@ Deno.test("ordered consumers - consume reset", async () => {
   let resets = 0;
   function countResets(iter: ConsumerMessages): Promise<void> {
     return (async () => {
-      for await (const s of await iter.status()) {
+      for await (const s of iter.status()) {
         if (s.type === ConsumerDebugEvents.Reset) {
           resets++;
         }

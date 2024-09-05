@@ -663,7 +663,7 @@ export interface Close {
 }
 
 export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
-  status(): Promise<AsyncIterable<ConsumerStatus>>;
+  status(): AsyncIterable<ConsumerStatus>;
 }
 
 /**

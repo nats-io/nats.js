@@ -32,7 +32,7 @@ while (true) {
 
   // watch the to see if the consume operation misses heartbeats
   (async () => {
-    for await (const s of await messages.status()) {
+    for await (const s of messages.status()) {
       if (s.type === ConsumerEvents.HeartbeatsMissed) {
         // you can decide how many heartbeats you are willing to miss
         const n = s.data as number;

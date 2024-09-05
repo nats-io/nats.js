@@ -188,10 +188,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 
   start(): void {

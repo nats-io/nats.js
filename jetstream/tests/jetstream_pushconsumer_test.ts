@@ -468,9 +468,9 @@ Deno.test("jetstream - idle heartbeats", async () => {
     },
   });
 
-  const status = await messages.status();
+  const status = messages.status();
 
-  for await (const s of await status) {
+  for await (const s of status) {
     if (s.type === ConsumerDebugEvents.Heartbeat) {
       const d = s.data as {
         natsLastConsumer: string;
@@ -492,10 +492,11 @@ Deno.test("jetstream - flow control", async () => {
     connect,
     jetstreamServerConf({
       jetstream: {
-        max_file: -1,
+        max_file_store: -1,
       },
     }),
   );
+
   const { stream, subj } = await initStream(nc);
   const data = new Uint8Array(1024 * 100);
   const js = jetstream(nc);
@@ -523,7 +524,7 @@ Deno.test("jetstream - flow control", async () => {
 
   const c = await js.consumers.getPushConsumer(stream, "me");
   const iter = await c.consume({ callback: () => {} });
-  const status = await iter.status();
+  const status = iter.status();
   for await (const s of status) {
     if (s.type === ConsumerDebugEvents.FlowControl) {
       iter.stop();
@@ -627,7 +628,7 @@ Deno.test("jetstream - bind", async () => {
     connect,
     jetstreamServerConf({
       jetstream: {
-        max_file: -1,
+        max_file_store: -1,
       },
     }),
   );
@@ -695,7 +696,7 @@ Deno.test("jetstream - bind", async () => {
   let fc = 0;
   let hb = 0;
 
-  for await (const s of await messages.status()) {
+  for await (const s of messages.status()) {
     if (s.type === ConsumerDebugEvents.FlowControl) {
       fc++;
     } else if (s.type === ConsumerDebugEvents.Heartbeat) {
@@ -746,7 +747,7 @@ Deno.test("jetstream - bind example", async () => {
     }
   })().then();
 
-  const status = await messages.status();
+  const status = messages.status();
   (async () => {
     for await (const s of status) {
       console.log(s);
@@ -829,11 +830,11 @@ Deno.test("jetstream - idleheartbeats notifications don't cancel", async () => {
 
   const msgs = await c.consume({ callback: () => {} });
   let missed = 0;
-  for await (const s of await msgs.status()) {
+  for await (const s of msgs.status()) {
     if (s.type === ConsumerEvents.HeartbeatsMissed) {
       missed++;
       if (missed > 3) {
-        msgs.close();
+        await msgs.close();
       }
     }
   }

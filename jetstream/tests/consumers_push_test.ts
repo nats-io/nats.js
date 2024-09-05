@@ -13,7 +13,7 @@ import {
 } from "test_helpers";
 import { nanos } from "@nats-io/nats-core";
 import { assert, assertEquals, assertExists } from "jsr:@std/assert";
-import { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
+import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
 import { delay } from "@nats-io/nats-core/internal";
 
 Deno.test("push consumers - basics", async () => {

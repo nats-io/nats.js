@@ -566,10 +566,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return args;
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 }
 
@@ -594,7 +594,7 @@ export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
       this.stop(err || undefined);
     });
     (async () => {
-      const status = await this.src.status();
+      const status = this.src.status();
       for await (const s of status) {
         this.notify(s.type, s.data);
       }
@@ -634,10 +634,10 @@ export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
     return this.iterClosed;
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 }
 
@@ -710,7 +710,7 @@ export class PullConsumerImpl implements Consumer {
     // watch the messages for heartbeats missed
     if (to >= 60_000) {
       (async () => {
-        for await (const s of await iter.status()) {
+        for await (const s of iter.status()) {
           if (
             s.type === ConsumerEvents.HeartbeatsMissed &&
             (s.data as number) >= 2

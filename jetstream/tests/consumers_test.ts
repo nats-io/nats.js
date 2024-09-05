@@ -213,7 +213,7 @@ Deno.test("consumers - fetch heartbeats", async () => {
   const d = deferred<ConsumerStatus>();
 
   await (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       d.resolve(s);
       iter.stop();
@@ -363,7 +363,7 @@ Deno.test("consumers - discard notifications", async () => {
       // nothing
     }
   })().then();
-  for await (const s of await iter.status()) {
+  for await (const s of iter.status()) {
     console.log(s);
     if (s.type === ConsumerDebugEvents.Discard) {
       const r = s.data as Record<string, number>;
@@ -371,7 +371,7 @@ Deno.test("consumers - discard notifications", async () => {
       break;
     }
   }
-  await iter.stop();
+  iter.stop();
   await cleanup(ns, nc);
 });
 
@@ -400,7 +400,7 @@ Deno.test("consumers - threshold_messages", async () => {
 
   let next: PullOptions[] = [];
   const done = (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       if (s.type === ConsumerDebugEvents.Next) {
         next.push(s.data as PullOptions);
       }
@@ -457,7 +457,7 @@ Deno.test("consumers - threshold_messages bytes", async () => {
   const next: PullOptions[] = [];
   const discards: { msgsLeft: number; bytesLeft: number }[] = [];
   const done = (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       if (s.type === ConsumerDebugEvents.Next) {
         next.push(s.data as PullOptions);
       }
