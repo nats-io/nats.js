@@ -48,6 +48,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   deliverPrefix: string | null;
   serial: number;
   createFails!: number;
+  statusIterator!: QueuedIteratorImpl<Status>;
 
   constructor(
     c: PushConsumerImpl,
