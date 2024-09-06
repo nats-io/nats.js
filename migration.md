@@ -93,6 +93,10 @@ To use JetStream, you must install and import `@nats/jetstream`.
   instead.
 - `JetStreamClient#subscribe()`, `JetStreamClient#fetch()` have been removed.
   Use the `Consumers` API to `get()` your consumer.
+- `OrderedConsumerOptions#filterSubjects` changed to
+  `OrderedConsumerOptions#filter_subjects`.
+- Consumer.status() now returns `AsyncIterable<ConsumerStatus>` instead of a
+  `Promise<AsyncIterable<ConsumerStatus>>`
 
 ## Changes to KV
 

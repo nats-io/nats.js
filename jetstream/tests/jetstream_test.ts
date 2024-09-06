@@ -972,60 +972,6 @@ Deno.test("jetstream - bind with diff subject fails", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - test events stream", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({
-    name: "events",
-    subjects: ["events.>"],
-  });
-
-  await js.subscribe("events.>", {
-    stream: "events",
-    config: {
-      ack_policy: AckPolicy.Explicit,
-      deliver_policy: DeliverPolicy.All,
-      deliver_subject: "foo",
-      durable_name: "me",
-      filter_subject: "events.>",
-    },
-    callbackFn: (_err: NatsError | null, msg: JsMsg | null) => {
-      msg?.ack();
-    },
-  });
-
-  await js.publish("events.a");
-  await js.publish("events.b");
-  await delay(2000);
-  await cleanup(ns, nc);
-});
-
-Deno.test("jetstream - bind without consumer should fail", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({
-    name: "events",
-    subjects: ["events.>"],
-  });
-
-  const opts = consumerOpts();
-  opts.manualAck();
-  opts.ackExplicit();
-  opts.bind("events", "hello");
-
-  await assertRejects(
-    async () => {
-      await js.subscribe("events.>", opts);
-    },
-    Error,
-    "unable to bind - durable consumer hello doesn't exist in events",
-  );
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jetstream - backoff", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.7.2")) {
@@ -1232,37 +1178,45 @@ Deno.test("jetstream - mem_storage consumer option", async () => {
 });
 
 Deno.test("jetstream - num_replicas consumer option", async () => {
-  const servers = await NatsServer.setupDataConnCluster();
-  const nc = await connect({ port: servers[0].port });
-  if (await notCompatible(servers[0], nc, "2.9.0")) {
-    await NatsServer.stopAll(servers, true);
-    return;
-  }
-
-  const { stream, subj } = await initStream(nc, nuid.next(), {
-    num_replicas: 3,
-  });
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
-  const si = await jsm.streams.info(stream);
-  assertEquals(si.config.num_replicas, 3);
 
-  const opts = consumerOpts();
-  opts.ackExplicit();
-  opts.durable("opts");
+  const name = nuid.next();
 
-  const js = jetstream(nc);
-  const sub = await js.pullSubscribe(subj, opts);
-  let ci = await sub.consumerInfo();
-  assertEquals(ci.config.num_replicas, 0);
+  // will reject with a replica error (replica value was properly sent)
+  await assertRejects(
+    () => {
+      return jsm.streams.add({
+        name,
+        subjects: ["foo"],
+        num_replicas: 3,
+      });
+    },
+    Error,
+    "replicas > 1 not supported in non-clustered mode",
+  );
 
-  ci.config.num_replicas = 2;
-  ci = await jsm.consumers.update(stream, "opts", ci.config);
-  assertEquals(ci.config.num_replicas, 2);
+  // replica of 1
+  const si = await jsm.streams.add({
+    name,
+    subjects: ["foo"],
+  });
+  assertEquals(si.config.num_replicas, 1);
 
-  await nc.close();
-  await NatsServer.stopAll(servers, true);
-  // in ci this hangs
-  await delay(500);
+  // will reject since the replicas are not enabled - so it was read
+  await assertRejects(
+    () => {
+      return jsm.consumers.add(name, {
+        name,
+        ack_policy: AckPolicy.Explicit,
+        num_replicas: 3,
+      });
+    },
+    Error,
+    "replicas > 1 not supported in non-clustered mode",
+  );
+
+  await cleanup(ns, nc);
 });
 
 Deno.test("jetstream - filter_subject consumer update", async () => {

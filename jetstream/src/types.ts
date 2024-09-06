@@ -17,6 +17,7 @@ import type {
   Codec,
   Msg,
   MsgHdrs,
+  Nanos,
   NatsConnectionImpl,
   NatsError,
   Payload,
@@ -403,6 +404,10 @@ export interface JetStreamManager {
 export type Ordered = {
   ordered: true;
 };
+export type PushConsumerOptions =
+  & ConsumeCallback
+  & AbortOnMissingResource;
+
 export type NextOptions = Expires & Bind;
 export type ConsumeBytes =
   & MaxBytes
@@ -421,7 +426,9 @@ export type ConsumeMessages =
   & ConsumeCallback
   & AbortOnMissingResource
   & Bind;
-export type ConsumeOptions = ConsumeBytes | ConsumeMessages;
+export type ConsumeOptions =
+  | ConsumeBytes
+  | ConsumeMessages;
 /**
  * Options for fetching bytes
  */
@@ -483,6 +490,7 @@ export type Expires = {
    */
   expires?: number;
 };
+
 export type Bind = {
   /**
    * If set to true the client will not try to check on its consumer by issuing consumer info
@@ -593,6 +601,18 @@ export enum ConsumerDebugEvents {
    * read-only. This notification is only useful for debugging. Data is PullOptions.
    */
   Next = "next",
+
+  /**
+   * Notifies that the client received a server-side heartbeat. The payload the data
+   * portion has the format `{natsLastConsumer: string, natsLastStream: string}`;
+   */
+  Heartbeat = "heartbeat",
+
+  /**
+   * Notifies that the client received a server-side flow control message.
+   * The data is null.
+   */
+  FlowControl = "flow_control",
 }
 
 export interface ConsumerStatus {
@@ -600,7 +620,17 @@ export interface ConsumerStatus {
   data: unknown;
 }
 
-export interface ExportedConsumer {
+export interface PushConsumer
+  extends InfoableConsumer, DeleteableConsumer, ConsumerKind {
+  consume(opts?: PushConsumerOptions): Promise<ConsumerMessages>;
+}
+
+export interface ConsumerKind {
+  isPullConsumer(): boolean;
+  isPushConsumer(): boolean;
+}
+
+export interface ExportedConsumer extends ConsumerKind {
   next(
     opts?: NextOptions,
   ): Promise<JsMsg | null>;
@@ -614,10 +644,16 @@ export interface ExportedConsumer {
   ): Promise<ConsumerMessages>;
 }
 
-export interface Consumer extends ExportedConsumer {
+export interface InfoableConsumer {
   info(cached?: boolean): Promise<ConsumerInfo>;
+}
 
+export interface DeleteableConsumer {
   delete(): Promise<boolean>;
+}
+
+export interface Consumer
+  extends ExportedConsumer, InfoableConsumer, DeleteableConsumer {
 }
 
 export interface Close {
@@ -627,7 +663,7 @@ export interface Close {
 }
 
 export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
-  status(): Promise<AsyncIterable<ConsumerStatus>>;
+  status(): AsyncIterable<ConsumerStatus>;
 }
 
 /**
@@ -636,7 +672,7 @@ export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
  */
 export type OrderedConsumerOptions = {
   name_prefix: string;
-  filterSubjects: string[] | string;
+  filter_subjects: string[] | string;
   deliver_policy: DeliverPolicy;
   opt_start_seq: number;
   opt_start_time: string;
@@ -644,6 +680,37 @@ export type OrderedConsumerOptions = {
   inactive_threshold: number;
   headers_only: boolean;
 };
+
+export type OrderedPushConsumerOptions = OrderedConsumerOptions & {
+  deliver_prefix: string;
+};
+
+export function isOrderedPushConsumerOptions(
+  v: unknown,
+): v is OrderedPushConsumerOptions {
+  if (v && typeof v === "object") {
+    return "name_prefix" in v ||
+      "deliver_subject_prefix" in v ||
+      "filter_subjects" in v ||
+      "deliver_policy" in v ||
+      "opt_start_seq" in v ||
+      "opt_start_time" in v ||
+      "replay_policy" in v ||
+      "inactive_threshold" in v ||
+      "headers_only" in v ||
+      "deliver_prefix" in v;
+  }
+
+  return false;
+}
+
+export function isPullConsumer(v: PushConsumer | Consumer): v is Consumer {
+  return v.isPullConsumer();
+}
+
+export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
+  return v.isPushConsumer();
+}
 
 /**
  * Interface for interacting with JetStream data
@@ -759,6 +826,40 @@ export interface Streams {
   get(stream: string): Promise<Stream>;
 }
 
+export function isBoundPushConsumerOptions(
+  v: unknown,
+): v is BoundPushConsumerOptions {
+  if (v && typeof v === "object") {
+    return "deliver_subject" in v ||
+      "deliver_group" in v ||
+      "idle_heartbeat" in v;
+  }
+  return false;
+}
+
+/**
+ * For bound push consumers, the client must provide at least the
+ * deliver_subject. Note that these values must match the ConsumerConfig
+ * exactly
+ */
+export type BoundPushConsumerOptions = ConsumeCallback & {
+  /**
+   * The deliver_subject as specified in the ConsumerConfig
+   */
+  deliver_subject: string;
+  /**
+   * The deliver_group as specified in the ConsumerConfig
+   */
+  deliver_group?: string;
+  /**
+   * The idle_heartbeat in Nanos as specified in the ConsumerConfig.
+   * This value starts a client-side timer to detect missing heartbeats.
+   * If not specified or values don't match, there will be a skew and
+   * the possibility of false heartbeat missed notifications.
+   */
+  idle_heartbeat?: Nanos;
+};
+
 export interface Consumers {
   /**
    * Returns the Consumer configured for the specified stream having the specified name.
@@ -777,8 +878,24 @@ export interface Consumers {
    */
   get(
     stream: string,
-    name?: string | Partial<OrderedConsumerOptions>,
+    name?:
+      | string
+      | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
+
+  getPushConsumer(
+    stream: string,
+    name?:
+      | string
+      | Partial<OrderedPushConsumerOptions>,
+  ): Promise<PushConsumer>;
+
+  getBoundPushConsumer(opts: BoundPushConsumerOptions): Promise<PushConsumer>;
+
+  // getOrderedPushConsumer(
+  //   stream: string,
+  //   opts?: Partial<OrderedPushConsumerOptions>,
+  // ): Promise<PushConsumer>;
 }
 
 export interface ConsumerOpts {
@@ -1196,6 +1313,20 @@ export interface Stream {
   getConsumer(
     name?: string | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
+
+  getPushConsumer(
+    stream: string,
+    name?:
+      | string
+      | Partial<OrderedPushConsumerOptions>,
+  ): Promise<PushConsumer>;
+
+  // getPushConsumer(
+  //   name?:
+  //     | string
+  //     | Partial<OrderedPushConsumerOptions>
+  //     | BoundPushConsumerOptions,
+  // ): Promise<PushConsumer>;
 
   getMessage(query: MsgRequest): Promise<StoredMsg>;
 

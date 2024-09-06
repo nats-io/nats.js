@@ -160,7 +160,7 @@ Deno.test("consumers - info", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("consumers - push consumer not supported", async () => {
+Deno.test("consumers - push consumer on get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
   const js = jetstream(nc);
 
@@ -175,7 +175,7 @@ Deno.test("consumers - push consumer not supported", async () => {
       await js.consumers.get(stream, "b");
     },
     Error,
-    "push consumer not supported",
+    "not a pull consumer",
   );
 
   await cleanup(ns, nc);
@@ -213,7 +213,7 @@ Deno.test("consumers - fetch heartbeats", async () => {
   const d = deferred<ConsumerStatus>();
 
   await (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       d.resolve(s);
       iter.stop();
@@ -363,7 +363,7 @@ Deno.test("consumers - discard notifications", async () => {
       // nothing
     }
   })().then();
-  for await (const s of await iter.status()) {
+  for await (const s of iter.status()) {
     console.log(s);
     if (s.type === ConsumerDebugEvents.Discard) {
       const r = s.data as Record<string, number>;
@@ -371,7 +371,7 @@ Deno.test("consumers - discard notifications", async () => {
       break;
     }
   }
-  await iter.stop();
+  iter.stop();
   await cleanup(ns, nc);
 });
 
@@ -400,7 +400,7 @@ Deno.test("consumers - threshold_messages", async () => {
 
   let next: PullOptions[] = [];
   const done = (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       if (s.type === ConsumerDebugEvents.Next) {
         next.push(s.data as PullOptions);
       }
@@ -457,7 +457,7 @@ Deno.test("consumers - threshold_messages bytes", async () => {
   const next: PullOptions[] = [];
   const discards: { msgsLeft: number; bytesLeft: number }[] = [];
   const done = (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       if (s.type === ConsumerDebugEvents.Next) {
         next.push(s.data as PullOptions);
       }
@@ -549,5 +549,41 @@ Deno.test("consumers - inboxPrefix is respected", async () => {
   assertStringIncludes(iter.inbox, "x.");
   iter.stop();
   await done;
+  await cleanup(ns, nc);
+});
+
+Deno.test("consumers - processed", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf(), {
+    inboxPrefix: "x",
+  });
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["hello"] });
+
+  const js = jetstream(nc);
+  await js.publish("hello");
+  await js.publish("hello");
+
+  await jsm.consumers.add("messages", {
+    durable_name: "c",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    ack_wait: nanos(3000),
+    max_waiting: 500,
+  });
+
+  const consumer = await js.consumers.get("messages", "c");
+  const iter = await consumer.consume({
+    callback: (m) => {
+      m.ack();
+      if (m.info.pending === 0) {
+        iter.stop();
+      }
+    },
+  });
+
+  await iter.closed();
+  assertEquals(iter.getProcessed(), 2);
+  assertEquals(iter.getReceived(), 2);
+
   await cleanup(ns, nc);
 });

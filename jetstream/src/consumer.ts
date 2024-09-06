@@ -22,6 +22,7 @@ import {
   timeout,
 } from "@nats-io/nats-core/internal";
 import type {
+  CallbackFn,
   MsgHdrs,
   QueuedIterator,
   Status,
@@ -163,6 +164,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
         if (isProtocol) {
           if (isHeartbeatMsg(msg)) {
+            const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
+            const natsLastStream = msg.headers?.get("Nats-Last-Stream");
+            this.notify(ConsumerDebugEvents.Heartbeat, {
+              natsLastConsumer,
+              natsLastStream,
+            });
             return;
           }
           const code = msg.headers?.code;
@@ -317,14 +324,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.pull(this.pullOptions());
   }
 
-  _push(r: JsMsg) {
+  _push(r: JsMsg | CallbackFn) {
     if (!this.callback) {
       super.push(r);
     } else {
-      const fn = typeof r === "function" ? r as () => void : null;
+      const fn = typeof r === "function" ? r as CallbackFn : null;
       try {
         if (!fn) {
-          this.callback(r);
+          const m = r as JsMsg;
+          this.callback(m);
         } else {
           fn();
         }
@@ -558,10 +566,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return args;
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 }
 
@@ -586,7 +594,7 @@ export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
       this.stop(err || undefined);
     });
     (async () => {
-      const status = await this.src.status();
+      const status = this.src.status();
       for await (const s of status) {
         this.notify(s.type, s.data);
       }
@@ -626,10 +634,10 @@ export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
     return this.iterClosed;
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 }
 
@@ -644,6 +652,14 @@ export class PullConsumerImpl implements Consumer {
     this._info = info;
     this.stream = info.stream_name;
     this.name = info.name;
+  }
+
+  isPullConsumer(): boolean {
+    return true;
+  }
+
+  isPushConsumer(): boolean {
+    return false;
   }
 
   consume(
@@ -694,7 +710,7 @@ export class PullConsumerImpl implements Consumer {
     // watch the messages for heartbeats missed
     if (to >= 60_000) {
       (async () => {
-        for await (const s of await iter.status()) {
+        for await (const s of iter.status()) {
           if (
             s.type === ConsumerEvents.HeartbeatsMissed &&
             (s.data as number) >= 2
@@ -793,6 +809,14 @@ export class OrderedPullConsumerImpl implements Consumer {
     this.cursor.stream_seq = this.startSeq > 0 ? this.startSeq - 1 : 0;
   }
 
+  isPullConsumer(): boolean {
+    return true;
+  }
+
+  isPushConsumer(): boolean {
+    return false;
+  }
+
   getConsumerOpts(seq: number): ConsumerConfig {
     // change the serial - invalidating any callback not
     // matching the serial
@@ -811,11 +835,11 @@ export class OrderedPullConsumerImpl implements Consumer {
     if (this.consumerOpts.headers_only === true) {
       config.headers_only = true;
     }
-    if (Array.isArray(this.consumerOpts.filterSubjects)) {
-      config.filter_subjects = this.consumerOpts.filterSubjects;
+    if (Array.isArray(this.consumerOpts.filter_subjects)) {
+      config.filter_subjects = this.consumerOpts.filter_subjects;
     }
-    if (typeof this.consumerOpts.filterSubjects === "string") {
-      config.filter_subject = this.consumerOpts.filterSubjects;
+    if (typeof this.consumerOpts.filter_subjects === "string") {
+      config.filter_subject = this.consumerOpts.filter_subjects;
     }
     if (this.consumerOpts.replay_policy) {
       config.replay_policy = this.consumerOpts.replay_policy;

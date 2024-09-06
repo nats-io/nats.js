@@ -137,6 +137,7 @@ Deno.test(
     const c = await js.consumers.get("A", "a");
 
     await c.delete();
+    await delay(500);
 
     const iter = await c.fetch({
       expires: 3000,
@@ -210,6 +211,7 @@ Deno.test("fetch - stream not found", async () => {
     expires: 3000,
   });
   await jsm.streams.delete("A");
+  await delay(500);
 
   await assertRejects(
     async () => {

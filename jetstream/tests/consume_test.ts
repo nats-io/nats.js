@@ -135,7 +135,7 @@ Deno.test("consume - heartbeats", async () => {
   const d = deferred<ConsumerStatus>();
 
   await (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       d.resolve(s);
       iter.stop();
@@ -176,7 +176,7 @@ Deno.test("consume - deleted consumer", async () => {
   let notFound = 0;
   const done = deferred<number>();
   (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       if (s.type === ConsumerEvents.ConsumerDeleted) {
         deleted.resolve();
@@ -422,7 +422,7 @@ Deno.test("consume - consumer bind", async () => {
   let cnf = 0;
 
   (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       switch (s.type) {
         case ConsumerEvents.HeartbeatsMissed:
           hbm++;
@@ -465,7 +465,7 @@ Deno.test("consume - exceeding max_messages will continue", async () => {
   const lock = Lock(2, 0);
   const iter = await c.consume({ max_messages: 1000, expires: 1000 });
   (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       if (s.type === ConsumerDebugEvents.DebugEvent) {
         const d = s.data as string;
