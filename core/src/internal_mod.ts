@@ -24,6 +24,7 @@ export type { Transport, TransportFactory } from "./transport.ts";
 export { Connect, INFO, ProtocolHandler } from "./protocol.ts";
 export type {
   Backoff,
+  Cancelable,
   Deferred,
   Delay,
   ErrorResult,
