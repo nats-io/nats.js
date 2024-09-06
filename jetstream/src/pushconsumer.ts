@@ -28,11 +28,11 @@ import {
 import type {
   CallbackFn,
   QueuedIterator,
+  Status,
   Subscription,
   SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import { isFlowControlMsg, isHeartbeatMsg } from "./mod.ts";
-import type { Status } from "../../core/src/core.ts";
 
 export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
