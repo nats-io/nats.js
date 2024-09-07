@@ -20,8 +20,9 @@ const {
 } = require(
   "../index",
 );
-const { resolve, join } = require("path");
-const { readFileSync } = require("fs");
+const process = require("node:process");
+const { resolve, join } = require("node:path");
+const { readFileSync } = require("node:fs");
 const { Lock } = require("./helpers/lock");
 const { NatsServer } = require("./helpers/launcher");
 const { buildAuthenticator, extend, Connect } = require(

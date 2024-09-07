@@ -12,8 +12,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const path = require("path");
-const http = require("http");
+const path = require("node:path");
+const http = require("node:http");
+const process = require("node:process");
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
 const { check } = require("./delay");
 const {
   deferred,
@@ -22,10 +26,6 @@ const {
   nuid,
 } = require("@nats-io/nats-core/internal");
 
-const { spawn } = require("child_process");
-
-const fs = require("fs");
-const os = require("os");
 const { Lock } = require("./lock");
 
 const ServerSignals = new Map();
