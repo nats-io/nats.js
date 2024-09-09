@@ -54,7 +54,6 @@ export type {
   Authenticator,
   Backoff,
   BenchOpts,
-  Cancelable,
   Codec,
   ConnectionOptions,
   Deferred,

@@ -27,6 +27,7 @@ import {
 } from "@nats-io/nats-core/internal";
 import type {
   CallbackFn,
+  Delay,
   QueuedIterator,
   Status,
   Subscription,
@@ -49,6 +50,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   serial: number;
   createFails!: number;
   statusIterator!: QueuedIteratorImpl<Status>;
+  cancelables: Delay[];
 
   constructor(
     c: PushConsumerImpl,
@@ -59,6 +61,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.consumer = c;
     this.monitor = null;
     this.listeners = [];
+    this.cancelables = [];
     this.abortOnMissingResource =
       userOptions.abort_on_missing_resource === true;
     this.callback = userOptions.callback || null;
@@ -119,12 +122,20 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         this.stop(err);
       }
       const bo = backoff();
-      delay(bo.backoff(this.createFails))
-        .then(() => {
-          if (!this.done) {
-            this.reset();
-          }
+      const c = delay(bo.backoff(this.createFails));
+      c.then(() => {
+        const idx = this.cancelables.indexOf(c);
+        if (idx !== -1) {
+          this.cancelables = this.cancelables.splice(idx, idx);
+        }
+        if (!this.done) {
+          this.reset();
+        }
+      })
+        .catch((_) => {
+          // canceled
         });
+      this.cancelables.push(c);
     });
   }
 
@@ -161,6 +172,11 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.statusIterator?.stop();
     this.monitor?.cancel();
     this.monitor = null;
+    // if we have delays, stop them
+    this.cancelables.forEach((c) => {
+      c.cancel();
+    });
+    this.cancelables = [];
     this._push(() => {
       super.stop(err);
       this.listeners.forEach((n) => {
