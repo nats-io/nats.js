@@ -6,7 +6,7 @@
     "test_helpers": "./test_helpers/mod.ts"
   },
   "tasks": {
-    "clean": "rm -Rf ./coverage core/lib jetstream/lib services/lib kv/lib obj/lib transport-node/lib transport-ws/lib",
+    "clean": "rm -Rf ./coverage core/lib core/build jetstream/lib jetstream/build services/lib services/build kv/lib kv/build obj/lib obj/build transport-node/lib transport-ws/lib",
     "test": "deno task clean && deno task lint && deno task test-all",
     "test-all": "deno task test-core && deno task test-jetstream && deno task test-kv && deno task test-obj && deno task test-services && deno task test-unsafe",
     "test-unsafe": "deno test -A --parallel --reload --quiet --unsafely-ignore-certificate-errors --coverage=coverage core/unsafe_tests",

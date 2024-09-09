@@ -61,11 +61,7 @@ export function render(frame: Uint8Array): string {
     .replace(/\r/g, cr);
 }
 
-export interface Cancelable {
-  cancel: () => void;
-}
-
-export interface Timeout<T> extends Promise<T>, Cancelable {
+export interface Timeout<T> extends Promise<T> {
   cancel: () => void;
 }
 
@@ -94,7 +90,7 @@ export function timeout<T>(ms: number, asyncTraces = true): Timeout<T> {
   return Object.assign(p, methods) as Timeout<T>;
 }
 
-export interface Delay extends Promise<void>, Cancelable {
+export interface Delay extends Promise<void> {
   cancel: () => void;
 }
 
@@ -107,6 +103,7 @@ export function delay(ms = 0): Delay {
     const cancel = (): void => {
       if (timer) {
         clearTimeout(timer);
+        resolve();
       }
     };
     methods = { cancel };

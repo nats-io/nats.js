@@ -3,6 +3,7 @@
 const parse = require("minimist");
 const { Nuid, connect } = require("../index");
 const { Bench, Metric } = require("../lib/nats-base-client/bench");
+const { process } = require("node:process");
 
 const defaults = {
   s: "127.0.0.1:4222",

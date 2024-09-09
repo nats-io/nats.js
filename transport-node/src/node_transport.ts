@@ -28,12 +28,13 @@ import {
 } from "./nats-base-client";
 
 import type { ConnectionOptions } from "./nats-base-client";
-import { createConnection, Socket } from "net";
-import { connect as tlsConnect, TlsOptions, TLSSocket } from "tls";
-const { resolve } = require("path");
-const { readFile, existsSync } = require("fs");
-const dns = require("dns");
-const { version } = require("./version");
+import { createConnection, Socket } from "node:net";
+import { connect as tlsConnect, TlsOptions, TLSSocket } from "node:tls";
+import { resolve } from "node:path";
+import { existsSync, readFile } from "node:fs";
+import dns from "node:dns";
+import { Buffer } from "node:buffer";
+import { version } from "./version";
 export const VERSION = version;
 const LANG = "nats.js";
 

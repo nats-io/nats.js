@@ -24,7 +24,6 @@ import {
   jetstreamServerConf,
   notCompatible,
 } from "test_helpers";
-import { deferred } from "@nats-io/nats-core";
 import type {
   PushConsumerImpl,
   PushConsumerMessagesImpl,
@@ -74,7 +73,6 @@ Deno.test("ordered push consumers - consume reset", async () => {
   assertExists(oc);
 
   const seen: number[] = new Array(3).fill(0);
-  const done = deferred();
 
   const iter = await oc.consume({
     callback: (m: JsMsg) => {
@@ -87,11 +85,10 @@ Deno.test("ordered push consumers - consume reset", async () => {
       }
       if (m.info.pending === 0) {
         iter.stop();
-        done.resolve();
       }
     },
   }) as PushConsumerMessagesImpl;
-  await done;
+  await iter.closed();
 
   assertEquals(seen, [2, 2, 1]);
   assertEquals(oc.serial, 3);
@@ -151,6 +148,7 @@ Deno.test("ordered push consumers - filters consume", async () => {
     }
   }
 
+  await iter.closed();
   assertEquals(iter.getProcessed(), 1);
 
   await cleanup(ns, nc);

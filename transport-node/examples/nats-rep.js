@@ -4,7 +4,8 @@ const parse = require("minimist");
 const { connect, StringCodec, headers, credsAuthenticator } = require(
   "../index",
 );
-const fs = require("fs");
+const fs = require("node:fs");
+const { process } = require("node:process");
 
 const argv = parse(
   process.argv.slice(2),

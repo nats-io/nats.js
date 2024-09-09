@@ -20,7 +20,8 @@ const {
   "../index",
 );
 
-const { resolve, join } = require("path");
+const process = require("node:process");
+const { resolve, join } = require("node:path");
 const { Lock } = require("./helpers/lock");
 const { NatsServer } = require("./helpers/launcher");
 
