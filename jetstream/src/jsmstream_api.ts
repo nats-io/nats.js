@@ -144,7 +144,8 @@ export class ConsumersImpl implements Consumers {
     } else if (name === undefined) {
       return this.getOrderedPushConsumer(stream);
     } else if (isOrderedPushConsumerOptions(name)) {
-      return this.getOrderedPushConsumer(stream, name);
+      const opts = name as OrderedPushConsumerOptions;
+      return this.getOrderedPushConsumer(stream, opts);
     }
 
     return Promise.reject(new Error("unsupported push consumer type"));
@@ -169,7 +170,8 @@ export class ConsumersImpl implements Consumers {
 
     name_prefix = name_prefix || `oc_${nuid.next()}`;
     minValidation("name_prefix", name_prefix);
-    deliver_prefix = deliver_prefix || createInbox();
+    deliver_prefix = deliver_prefix ||
+      createInbox((this.api as ConsumerAPIImpl).nc.options.inboxPrefix);
     minValidation("deliver_prefix", name_prefix);
 
     const cc = Object.assign({}, opts) as ConsumerConfig;

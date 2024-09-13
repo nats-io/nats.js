@@ -788,6 +788,50 @@ export class Bucket implements KV, KvRemove {
     opts: { key?: string | string[]; headers_only?: boolean } = {},
   ): Promise<QueuedIterator<KvEntry>> {
     const k = opts.key ?? ">";
+    const co = {} as ConsumerConfig;
+    co.headers_only = opts.headers_only || false;
+
+    const qi = new QueuedIteratorImpl<KvEntry>();
+    const fn = () => {
+      qi.stop();
+    };
+
+    const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info(true);
+
+    if (info.num_pending === 0) {
+      qi.push(fn);
+      return qi;
+    }
+
+    const iter = await oc.consume({
+      callback: (m) => {
+        const e = this.jmToEntry(m);
+        qi.push(e);
+        qi.received++;
+        if (m.info.pending === 0) {
+          qi.push(fn);
+        }
+      },
+    });
+
+    iter.closed().then(() => {
+      qi.push(fn);
+    });
+
+    // if they break from the iterator stop the consumer
+    qi.iterClosed.then(() => {
+      iter.stop();
+    });
+
+    return qi;
+  }
+
+  async __history(
+    opts: { key?: string | string[]; headers_only?: boolean } = {},
+  ): Promise<QueuedIterator<KvEntry>> {
+    const k = opts.key ?? ">";
     const qi = new QueuedIteratorImpl<KvEntry>();
     const co = {} as ConsumerConfig;
     co.headers_only = opts.headers_only || false;
@@ -799,6 +843,7 @@ export class Bucket implements KV, KvRemove {
     let count = 0;
 
     const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
+    console.log(cc);
     const subj = cc.filter_subject!;
     const copts = consumerOpts(cc);
     copts.bindStream(this.stream);

@@ -379,16 +379,28 @@ Deno.test("kv - history cleanup", async () => {
   await bucket.put("b", Empty);
   await bucket.put("c", Empty);
 
+  const nci = nc as NatsConnectionImpl;
+  nci.protocol.subscriptions.subs.forEach((sub) => {
+    console.log(`> ${sub.subject}`);
+  });
+
   const h = await bucket.history();
   const done = (async () => {
     for await (const _e of h) {
+      nci.protocol.subscriptions.subs.forEach((sub) => {
+        console.log(`>> ${sub.subject}`);
+      });
       break;
     }
   })();
 
   await done;
-  const nci = nc as NatsConnectionImpl;
   // mux should be created
+
+  nci.protocol.subscriptions.subs.forEach((sub) => {
+    console.log(`< ${sub.subject}`);
+  });
+
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
   assertEquals(nci.protocol.subscriptions.subs.size, min);
 

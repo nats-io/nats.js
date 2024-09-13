@@ -28,6 +28,8 @@ import type {
   PushConsumerImpl,
   PushConsumerMessagesImpl,
 } from "../src/pushconsumer.ts";
+import { delay } from "@nats-io/nats-core/internal";
+import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("ordered push consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -203,6 +205,36 @@ Deno.test("ordered push consumers - start sequence", async () => {
       break;
     }
   })();
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered push consumers - sub leak", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+  const js = jetstream(nc);
+  await Promise.all([
+    js.publish("test.a"),
+    js.publish("test.b"),
+  ]);
+
+  const oc = await js.consumers.getPushConsumer("test");
+  const iter = await oc.consume() as PushConsumerMessagesImpl;
+  await (async () => {
+    for await (const r of iter) {
+      if (r.info.streamSequence === 2) {
+        break;
+      }
+    }
+  })();
+
+  await delay(1000);
+
+  const nci = nc as NatsConnectionImpl;
+  nci.protocol.subscriptions.subs.forEach((s) => {
+    console.log(">", s.subject);
+  });
 
   await cleanup(ns, nc);
 });

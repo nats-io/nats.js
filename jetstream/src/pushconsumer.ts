@@ -72,7 +72,9 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.serial = 1;
     if (this.ordered) {
       this.namePrefix = internalOptions.name_prefix ?? `oc_${nuid.next()}`;
-      this.deliverPrefix = internalOptions.deliver_prefix ?? createInbox();
+      // this already should be set
+      this.deliverPrefix = internalOptions.deliver_prefix ??
+        createInbox(this.consumer.api.nc.options.inboxPrefix);
       this.cursor = { stream_seq: 1, deliver_seq: 0 };
       const startSeq = c._info.config.opt_start_seq || 0;
       this.cursor.stream_seq = startSeq > 0 ? startSeq - 1 : 0;
@@ -318,6 +320,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           this.stop();
         });
       }
+    });
+
+    this.closed().then(() => {
+      this.sub?.unsubscribe();
     });
   }
 

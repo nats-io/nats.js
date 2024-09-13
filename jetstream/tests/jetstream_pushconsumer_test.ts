@@ -45,7 +45,11 @@ import {
 import { AckPolicy, DeliverPolicy, StorageType } from "../src/jsapi_types.ts";
 import type { JsMsg } from "../src/jsmsg.ts";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
-import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
+import type {
+  PushConsumerImpl,
+  PushConsumerMessagesImpl,
+} from "../src/pushconsumer.ts";
+import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("jetstream - durable", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
@@ -923,6 +927,70 @@ Deno.test("jetstream - push sync", async () => {
   const sync = syncIterator(await c.consume());
   assertExists(await sync.next());
   assertExists(await sync.next());
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - ordered push consumer honors inbox prefix", async () => {
+  const { ns, nc } = await _setup(
+    connect,
+    jetstreamServerConf(
+      {
+        authorization: {
+          users: [{
+            user: "a",
+            password: "a",
+            permission: {
+              subscribe: ["my_inbox_prefix.>", "another.>"],
+              publish: ">",
+            },
+          }],
+        },
+      },
+    ),
+    {
+      user: "a",
+      pass: "a",
+      inboxPrefix: "my_inbox_prefix",
+    },
+  );
+  const nci = nc as NatsConnectionImpl;
+  assertEquals(nci.options.inboxPrefix, "my_inbox_prefix");
+
+  const name = nuid.next();
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name,
+    subjects: [name],
+    storage: StorageType.Memory,
+  });
+
+  const js = jsm.jetstream();
+  await js.publish(name, "hello");
+
+  let c = await js.consumers.getPushConsumer(name);
+  let cc = c as PushConsumerImpl;
+  // here the create inbox added another token
+  assert(cc.opts.deliver_prefix?.startsWith("my_inbox_prefix."));
+
+  let iter = await c.consume();
+  for await (const m of iter) {
+    m.ack();
+    iter.stop();
+  }
+
+  // now check that if they gives a deliver prefix we use that
+  // over the inbox
+  c = await js.consumers.getPushConsumer(name, { deliver_prefix: "another" });
+  cc = c as PushConsumerImpl;
+  // here we are just the template
+  assert(cc.opts.deliver_prefix?.startsWith("another"));
+
+  iter = await c.consume();
+  for await (const m of iter) {
+    m.ack();
+    iter.stop();
+  }
 
   await cleanup(ns, nc);
 });
