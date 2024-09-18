@@ -31,7 +31,6 @@ import type {
   QueuedIterator,
   Status,
   Subscription,
-  SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import { isFlowControlMsg, isHeartbeatMsg } from "./mod.ts";
 
@@ -315,11 +314,9 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     this.sub.closed.then(() => {
       // for ordered consumer we cannot break the iterator
-      if ((this.sub as SubscriptionImpl).draining) {
-        this._push(() => {
-          this.stop();
-        });
-      }
+      this._push(() => {
+        this.stop();
+      });
     });
 
     this.closed().then(() => {

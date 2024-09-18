@@ -798,6 +798,7 @@ export class Bucket implements KV, KvRemove {
 
     const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    qi._data = oc;
     const info = await oc.info(true);
 
     if (info.num_pending === 0) {
@@ -843,7 +844,6 @@ export class Bucket implements KV, KvRemove {
     let count = 0;
 
     const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
-    console.log(cc);
     const subj = cc.filter_subject!;
     const copts = consumerOpts(cc);
     copts.bindStream(this.stream);
@@ -916,6 +916,91 @@ export class Bucket implements KV, KvRemove {
   }
 
   async watch(
+    opts: KvWatchOptions = {},
+  ): Promise<QueuedIterator<KvEntry>> {
+    const k = opts.key ?? ">";
+    const qi = new QueuedIteratorImpl<KvEntry>();
+    const co = {} as Partial<ConsumerConfig>;
+    co.headers_only = opts.headers_only || false;
+
+    let content = KvWatchInclude.LastValue;
+    if (opts.include === KvWatchInclude.AllHistory) {
+      content = KvWatchInclude.AllHistory;
+    } else if (opts.include === KvWatchInclude.UpdatesOnly) {
+      content = KvWatchInclude.UpdatesOnly;
+    }
+    const ignoreDeletes = opts.ignoreDeletes === true;
+
+    let fn = opts.initializedFn;
+    let count = 0;
+
+    const cc = this._buildCC(k, content, co);
+    cc.name = `KV_WATCHER_${nuid.next()}`;
+    if (opts.resumeFromRevision && opts.resumeFromRevision > 0) {
+      cc.deliver_policy = DeliverPolicy.StartSequence;
+      cc.opt_start_seq = opts.resumeFromRevision;
+    }
+
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    qi._data = oc;
+
+    const iter = await oc.consume({
+      callback: (m) => {
+        const e = this.jmToEntry(m);
+        if (ignoreDeletes && e.operation === "DEL") {
+          return;
+        }
+        qi.push(e);
+        qi.received++;
+
+        // count could have changed or has already been received
+        if (
+          fn && (count > 0 && qi.received >= count || m.info.pending === 0)
+        ) {
+          //@ts-ignore: we are injecting an unexpected type
+          qi.push(fn);
+          fn = undefined;
+        }
+      },
+    });
+
+    // by the time we are here, likely the subscription got messages
+    if (fn) {
+      // get the info used on consumer create
+      const last = await oc.info(true);
+      // this doesn't sound correct - we should be looking for a seq number instead
+      // then if we see a greater one, we are done.
+      const expect = last.num_pending + last.delivered.consumer_seq;
+      // if the iterator already queued - the only issue is other modifications
+      // did happen like stream was pruned, and the ordered consumer reset, etc
+      // we won't get what we are expecting - so the notification will never fire
+      // the sentinel ought to be coming from the server
+      if (expect === 0 || qi.received >= expect) {
+        try {
+          fn();
+        } catch (err) {
+          // fail it - there's something wrong in the user callback
+          qi.stop(err);
+        } finally {
+          fn = undefined;
+        }
+      } else {
+        count = expect;
+      }
+    }
+    iter.closed().then(() => {
+      qi.push(() => {
+        qi.stop();
+      });
+    });
+    qi.iterClosed.then(() => {
+      iter.stop();
+    });
+
+    return qi;
+  }
+
+  async _watch(
     opts: KvWatchOptions = {},
   ): Promise<QueuedIterator<KvEntry>> {
     const k = opts.key ?? ">";
