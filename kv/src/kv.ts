@@ -52,7 +52,6 @@ import {
 
 import type {
   ConsumerConfig,
-  ConsumerInfo,
   DirectStreamAPI,
   JetStreamClient,
   JetStreamClientImpl,
@@ -829,83 +828,6 @@ export class Bucket implements KV, KvRemove {
     return qi;
   }
 
-  async __history(
-    opts: { key?: string | string[]; headers_only?: boolean } = {},
-  ): Promise<QueuedIterator<KvEntry>> {
-    const k = opts.key ?? ">";
-    const qi = new QueuedIteratorImpl<KvEntry>();
-    const co = {} as ConsumerConfig;
-    co.headers_only = opts.headers_only || false;
-
-    let fn: (() => void) | undefined;
-    fn = () => {
-      qi.stop();
-    };
-    let count = 0;
-
-    const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
-    const subj = cc.filter_subject!;
-    const copts = consumerOpts(cc);
-    copts.bindStream(this.stream);
-    copts.orderedConsumer();
-    copts.callback((err, jm) => {
-      if (err) {
-        // sub done
-        qi.stop(err);
-        return;
-      }
-      if (jm) {
-        const e = this.jmToEntry(jm);
-        qi.push(e);
-        qi.received++;
-        //@ts-ignore - function will be removed
-        if (fn && count > 0 && qi.received >= count || jm.info.pending === 0) {
-          //@ts-ignore: we are injecting an unexpected type
-          qi.push(fn);
-          fn = undefined;
-        }
-      }
-    });
-
-    const sub = await this.js.subscribe(subj, copts);
-    // by the time we are here, likely the subscription got messages
-    if (fn) {
-      const { info: { last } } = sub as unknown as {
-        info: { last: ConsumerInfo };
-      };
-      // this doesn't sound correct - we should be looking for a seq number instead
-      // then if we see a greater one, we are done.
-      const expect = last.num_pending + last.delivered.consumer_seq;
-      // if the iterator already queued - the only issue is other modifications
-      // did happen like stream was pruned, and the ordered consumer reset, etc
-      // we won't get what we are expecting - so the notification will never fire
-      // the sentinel ought to be coming from the server
-      if (expect === 0 || qi.received >= expect) {
-        try {
-          fn();
-        } catch (err) {
-          // fail it - there's something wrong in the user callback
-          qi.stop(err);
-        } finally {
-          fn = undefined;
-        }
-      } else {
-        count = expect;
-      }
-    }
-    qi._data = sub;
-    qi.iterClosed.then(() => {
-      sub.unsubscribe();
-    });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err) => {
-      qi.stop(err);
-    });
-
-    return qi;
-  }
-
   canSetWatcherName(): boolean {
     //@ts-ignore: avoiding circular dependencies
     const nci = this.js.nc as NatsConnectionImpl;
@@ -995,101 +917,6 @@ export class Bucket implements KV, KvRemove {
     });
     qi.iterClosed.then(() => {
       iter.stop();
-    });
-
-    return qi;
-  }
-
-  async _watch(
-    opts: KvWatchOptions = {},
-  ): Promise<QueuedIterator<KvEntry>> {
-    const k = opts.key ?? ">";
-    const qi = new QueuedIteratorImpl<KvEntry>();
-    const co = {} as Partial<ConsumerConfig>;
-    co.headers_only = opts.headers_only || false;
-
-    let content = KvWatchInclude.LastValue;
-    if (opts.include === KvWatchInclude.AllHistory) {
-      content = KvWatchInclude.AllHistory;
-    } else if (opts.include === KvWatchInclude.UpdatesOnly) {
-      content = KvWatchInclude.UpdatesOnly;
-    }
-    const ignoreDeletes = opts.ignoreDeletes === true;
-
-    let fn = opts.initializedFn;
-    let count = 0;
-
-    const cc = this._buildCC(k, content, co);
-    const subj = cc.filter_subject!;
-    const copts = consumerOpts(cc);
-
-    if (this.canSetWatcherName()) {
-      copts.consumerName(nuid.next());
-    }
-    copts.bindStream(this.stream);
-    if (opts.resumeFromRevision && opts.resumeFromRevision > 0) {
-      copts.startSequence(opts.resumeFromRevision);
-    }
-    copts.orderedConsumer();
-    copts.callback((err, jm) => {
-      if (err) {
-        // sub done
-        qi.stop(err);
-        return;
-      }
-      if (jm) {
-        const e = this.jmToEntry(jm);
-        if (ignoreDeletes && e.operation === "DEL") {
-          return;
-        }
-        qi.push(e);
-        qi.received++;
-
-        // count could have changed or has already been received
-        if (
-          fn && (count > 0 && qi.received >= count || jm.info.pending === 0)
-        ) {
-          //@ts-ignore: we are injecting an unexpected type
-          qi.push(fn);
-          fn = undefined;
-        }
-      }
-    });
-
-    const sub = await this.js.subscribe(subj, copts);
-    // by the time we are here, likely the subscription got messages
-    if (fn) {
-      const { info: { last } } = sub as unknown as {
-        info: { last: ConsumerInfo };
-      };
-      // this doesn't sound correct - we should be looking for a seq number instead
-      // then if we see a greater one, we are done.
-      const expect = last.num_pending + last.delivered.consumer_seq;
-      // if the iterator already queued - the only issue is other modifications
-      // did happen like stream was pruned, and the ordered consumer reset, etc
-      // we won't get what we are expecting - so the notification will never fire
-      // the sentinel ought to be coming from the server
-      if (expect === 0 || qi.received >= expect) {
-        try {
-          fn();
-        } catch (err) {
-          // fail it - there's something wrong in the user callback
-          qi.stop(err);
-        } finally {
-          fn = undefined;
-        }
-      } else {
-        count = expect;
-      }
-    }
-    qi._data = sub;
-    qi.iterClosed.then(() => {
-      sub.unsubscribe();
-    });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err: Error) => {
-      qi.stop(err);
     });
 
     return qi;
