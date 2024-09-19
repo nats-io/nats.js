@@ -23,7 +23,6 @@ jobs:
 
     name: test node transport with local dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
 
     steps:
       - name: Git Checkout Core

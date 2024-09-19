@@ -3,16 +3,15 @@ name: obj release
 on:
   push:
     paths:
-      - 'obj/**'
-      - '.github/workflows/obj.yml'
-    tags: [ 'obj/*' ]
+      - "obj/**"
+      - ".github/workflows/obj.yml"
+    tags: ["obj/*"]
     branches:
-      - '*'
+      - "*"
 jobs:
   test:
     name: test obj with released dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
         deno-version: [1.45.x]
