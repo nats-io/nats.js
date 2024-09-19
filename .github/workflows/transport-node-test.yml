@@ -3,13 +3,13 @@ name: test transport-node with local modules
 on:
   push:
     paths:
-      - 'core/**'
-      - 'jetstream/**'
-      - 'kv/**'
-      - 'obj/**'
-      - 'services/**'
+      - "core/**"
+      - "jetstream/**"
+      - "kv/**"
+      - "obj/**"
+      - "services/**"
     branches:
-      - '*'
+      - "*"
   pull_request:
     branches: [main]
     types: [opened]
@@ -18,12 +18,11 @@ jobs:
   test:
     strategy:
       matrix:
-        deno-version: [ 1.45.x ]
-        node-version: [ 22.x ]
+        deno-version: [1.45.x]
+        node-version: [22.x]
 
     name: test node transport with local dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
 
     steps:
       - name: Git Checkout Core
@@ -51,7 +50,6 @@ jobs:
       - name: Disable NPM workspace
         run: |
           deno task disable-npm-workspace
-
 
       - name: Test Node Transport with specified dependencies
         working-directory: transport-node

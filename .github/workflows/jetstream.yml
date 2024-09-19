@@ -3,16 +3,15 @@ name: jetstream release
 on:
   push:
     paths:
-      - 'jetstream/**'
-      - '.github/workflows/jetstream.yml'
-    tags: [ 'jetstream/*' ]
+      - "jetstream/**"
+      - ".github/workflows/jetstream.yml"
+    tags: ["jetstream/*"]
     branches:
-      - '*'
+      - "*"
 jobs:
   test:
     name: test jetstream with released dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
         deno-version: [1.45.x]

@@ -3,16 +3,15 @@ name: services release
 on:
   push:
     paths:
-      - 'services/**'
-      - '.github/workflows/services.yml'
-    tags: [ 'services/*' ]
+      - "services/**"
+      - ".github/workflows/services.yml"
+    tags: ["services/*"]
     branches:
-      - '*'
+      - "*"
 jobs:
   test:
     name: test services with released dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
         deno-version: [1.45.x]

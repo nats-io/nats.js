@@ -3,16 +3,15 @@ name: kv release
 on:
   push:
     paths:
-      - 'kv/**'
-      - '.github/workflows/kv.yml'
-    tags: [ 'kv/*' ]
+      - "kv/**"
+      - ".github/workflows/kv.yml"
+    tags: ["kv/*"]
     branches:
-      - '*'
+      - "*"
 jobs:
   test:
     name: test kv with released dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
         deno-version: [1.45.x]
