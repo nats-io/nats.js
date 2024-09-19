@@ -21,7 +21,6 @@ import {
   nanos,
   nuid,
   parseSemVer,
-  StringCodec,
   syncIterator,
 } from "@nats-io/nats-core/internal";
 import type {
@@ -41,7 +40,7 @@ import {
 
 import type {
   JetStreamOptions,
-  JetStreamSubscriptionInfoable,
+  PushConsumer,
 } from "@nats-io/jetstream/internal";
 
 import {
@@ -220,8 +219,6 @@ Deno.test("kv - bind to existing KV", async () => {
 });
 
 async function crud(bucket: Bucket): Promise<void> {
-  const sc = StringCodec();
-
   const status = await bucket.status();
   assertEquals(status.values, 0);
   assertEquals(status.history, 10);
@@ -229,13 +226,13 @@ async function crud(bucket: Bucket): Promise<void> {
   assertEquals(status.ttl, 0);
   assertEquals(status.streamInfo.config.name, `${kvPrefix}${bucket.bucket}`);
 
-  await bucket.put("k", sc.encode("hello"));
+  await bucket.put("k", "hello");
   let r = await bucket.get("k");
-  assertEquals(sc.decode(r!.value), "hello");
+  assertEquals(r!.string(), "hello");
 
-  await bucket.put("k", sc.encode("bye"));
+  await bucket.put("k", "bye");
   r = await bucket.get("k");
-  assertEquals(sc.decode(r!.value), "bye");
+  assertEquals(r!.string(), "bye");
 
   await bucket.delete("k");
   r = await bucket.get("k");
@@ -245,7 +242,7 @@ async function crud(bucket: Bucket): Promise<void> {
   const buf: string[] = [];
   const values = await bucket.history();
   for await (const r of values) {
-    buf.push(sc.decode(r.value));
+    buf.push(r.string());
   }
   assertEquals(values.getProcessed(), 3);
   assertEquals(buf.length, 3);
@@ -367,7 +364,7 @@ Deno.test("kv - cleanups/empty", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("kv - history cleanup", async () => {
+Deno.test("kv - history and watch cleanup", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
@@ -379,18 +376,37 @@ Deno.test("kv - history cleanup", async () => {
   await bucket.put("b", Empty);
   await bucket.put("c", Empty);
 
-  const h = await bucket.history();
-  const done = (async () => {
-    for await (const _e of h) {
-      break;
-    }
-  })();
+  let h = await bucket.history();
+  for await (const _e of h) {
+    // aborted
+    break;
+  }
 
-  await done;
+  h = await bucket.history();
+  for await (const _e of h) {
+    // nothing
+  }
+
+  let w = await bucket.watch({});
+  for await (const _ of w) {
+    // aborted
+    break;
+  }
+
+  w = await bucket.watch({
+    initializedFn: () => {
+      w.stop();
+    },
+  });
+  for await (const _ of w) {
+    // nothing
+  }
+
+  // need to give some time for promises to be resolved
+  await delay(100);
   const nci = nc as NatsConnectionImpl;
-  // mux should be created
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
-  assertEquals(nci.protocol.subscriptions.subs.size, min);
+  assertEquals(nci.protocol.subscriptions.size(), min);
 
   await cleanup(ns, nc);
 });
@@ -400,7 +416,6 @@ Deno.test("kv - bucket watch", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
-  const sc = StringCodec();
   const n = nuid.next();
   const js = jetstream(nc);
   const b = await new Kvm(js).create(n, { history: 10 });
@@ -411,7 +426,7 @@ Deno.test("kv - bucket watch", async () => {
       if (r.operation === "DEL") {
         m.delete(r.key);
       } else {
-        m.set(r.key, sc.decode(r.value));
+        m.set(r.key, r.string());
       }
       if (r.key === "x") {
         break;
@@ -419,11 +434,11 @@ Deno.test("kv - bucket watch", async () => {
     }
   })();
 
-  await b.put("a", sc.encode("1"));
-  await b.put("b", sc.encode("2"));
-  await b.put("c", sc.encode("3"));
-  await b.put("a", sc.encode("2"));
-  await b.put("b", sc.encode("3"));
+  await b.put("a", "1");
+  await b.put("b", "2");
+  await b.put("c", "3");
+  await b.put("a", "2");
+  await b.put("b", "3");
   await b.delete("c");
   await b.put("x", Empty);
 
@@ -444,7 +459,6 @@ Deno.test("kv - bucket watch", async () => {
 });
 
 async function keyWatch(bucket: Bucket): Promise<void> {
-  const sc = StringCodec();
   const m: Map<string, string> = new Map();
 
   const iter = await bucket.watch({ key: "a.>" });
@@ -453,7 +467,7 @@ async function keyWatch(bucket: Bucket): Promise<void> {
       if (r.operation === "DEL") {
         m.delete(r.key);
       } else {
-        m.set(r.key, sc.decode(r.value));
+        m.set(r.key, r.string());
       }
       if (r.key === "a.x") {
         break;
@@ -461,11 +475,11 @@ async function keyWatch(bucket: Bucket): Promise<void> {
     }
   })();
 
-  await bucket.put("a.b", sc.encode("1"));
-  await bucket.put("b.b", sc.encode("2"));
-  await bucket.put("c.b", sc.encode("3"));
-  await bucket.put("a.b", sc.encode("2"));
-  await bucket.put("b.b", sc.encode("3"));
+  await bucket.put("a.b", "1");
+  await bucket.put("b.b", "2");
+  await bucket.put("c.b", "3");
+  await bucket.put("a.b", "2");
+  await bucket.put("b.b", "3");
   await bucket.delete("c.b");
   await bucket.put("a.x", Empty);
   await done;
@@ -514,13 +528,11 @@ Deno.test("kv - codec key watch", async () => {
 });
 
 async function keys(b: Bucket): Promise<void> {
-  const sc = StringCodec();
-
-  await b.put("a", sc.encode("1"));
-  await b.put("b", sc.encode("2"));
-  await b.put("c.c.c", sc.encode("3"));
-  await b.put("a", sc.encode("2"));
-  await b.put("b", sc.encode("3"));
+  await b.put("a", "1");
+  await b.put("b", "2");
+  await b.put("c.c.c", "3");
+  await b.put("a", "2");
+  await b.put("b", "3");
   await b.delete("c.c.c");
   await b.put("x", Empty);
 
@@ -573,7 +585,6 @@ Deno.test("kv - ttl", async () => {
     return;
   }
 
-  const sc = StringCodec();
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next(), { ttl: 1000 }) as Bucket;
 
@@ -582,10 +593,10 @@ Deno.test("kv - ttl", async () => {
   assertEquals(si.config.max_age, nanos(1000));
 
   assertEquals(await b.get("x"), null);
-  await b.put("x", sc.encode("hello"));
+  await b.put("x", "hello");
   const e = await b.get("x");
   assert(e);
-  assertEquals(sc.decode(e.value), "hello");
+  assertEquals(e.string(), "hello");
   await delay(2000);
   assertEquals(await b.get("x"), null);
 
@@ -597,19 +608,18 @@ Deno.test("kv - no ttl", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
-  const sc = StringCodec();
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next()) as Bucket;
 
-  await b.put("x", sc.encode("hello"));
+  await b.put("x", "hello");
   let e = await b.get("x");
   assert(e);
-  assertEquals(sc.decode(e.value), "hello");
+  assertEquals(e.string(), "hello");
 
   await delay(1500);
   e = await b.get("x");
   assert(e);
-  assertEquals(sc.decode(e.value), "hello");
+  assertEquals(e.string(), "hello");
 
   await cleanup(ns, nc);
 });
@@ -619,13 +629,12 @@ Deno.test("kv - complex key", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
-  const sc = StringCodec();
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next()) as Bucket;
 
-  await b.put("x.y.z", sc.encode("hello"));
+  await b.put("x.y.z", "hello");
   const e = await b.get("x.y.z");
-  assertEquals(e?.value, sc.encode("hello"));
+  assertEquals(e?.string(), "hello");
 
   const d = deferred<KvEntry>();
   let iter = await b.watch({ key: "x.y.>" });
@@ -637,7 +646,7 @@ Deno.test("kv - complex key", async () => {
   })();
 
   const vv = await d;
-  assertEquals(vv.value, sc.encode("hello"));
+  assertEquals(vv.string(), "hello");
 
   const dd = deferred<KvEntry>();
   iter = await b.history({ key: "x.y.>" });
@@ -649,7 +658,7 @@ Deno.test("kv - complex key", async () => {
   })();
 
   const vvv = await dd;
-  assertEquals(vvv.value, sc.encode("hello"));
+  assertEquals(vvv.string(), "hello");
 
   const nci = nc as NatsConnectionImpl;
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
@@ -663,14 +672,13 @@ Deno.test("kv - remove key", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
-  const sc = StringCodec();
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next()) as Bucket;
 
-  await b.put("a.b", sc.encode("ab"));
+  await b.put("a.b", "ab");
   let v = await b.get("a.b");
   assert(v);
-  assertEquals(sc.decode(v.value), "ab");
+  assertEquals(v.string(), "ab");
 
   await b.purge("a.b");
   v = await b.get("a.b");
@@ -714,11 +722,10 @@ Deno.test("kv - create key", async () => {
   }
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next()) as Bucket;
-  const sc = StringCodec();
   await b.create("a", Empty);
   await assertRejects(
     async () => {
-      await b.create("a", sc.encode("a"));
+      await b.create("a", "a");
     },
     Error,
     "wrong last sequence: 1",
@@ -735,18 +742,17 @@ Deno.test("kv - update key", async () => {
   }
   const js = jetstream(nc);
   const b = await new Kvm(js).create(nuid.next()) as Bucket;
-  const sc = StringCodec();
   const seq = await b.create("a", Empty);
   await assertRejects(
     async () => {
-      await b.update("a", sc.encode("a"), 100);
+      await b.update("a", "a", 100);
     },
     Error,
     "wrong last sequence: 1",
     undefined,
   );
 
-  await b.update("a", sc.encode("b"), seq);
+  await b.update("a", "b", seq);
 
   await cleanup(ns, nc);
 });
@@ -761,8 +767,8 @@ Deno.test("kv - internal consumer", async () => {
     const js = jetstream(nc);
     const b = await new Kvm(js).create(name) as Bucket;
     const watch = await b.watch() as QueuedIteratorImpl<unknown>;
-    const sub = watch._data as JetStreamSubscriptionInfoable;
-    return sub?.info?.last?.num_pending || 0;
+    const ci = await (watch._data as PushConsumer).info(true);
+    return ci.num_pending || 0;
   }
 
   const name = nuid.next();
@@ -852,8 +858,7 @@ Deno.test("kv - watch and history headers only", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const js = jetstream(nc);
   const b = await new Kvm(js).create("bucket") as Bucket;
-  const sc = StringCodec();
-  await b.put("key1", sc.encode("aaa"));
+  await b.put("key1", "aaa");
 
   async function getEntry(
     qip: Promise<QueuedIterator<KvEntry>>,
@@ -907,13 +912,12 @@ Deno.test("kv - mem and file", async () => {
 Deno.test("kv - example", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const js = jetstream(nc);
-  const sc = StringCodec();
 
   const kv = await new Kvm(js).create("testing", { history: 5 });
 
   // create an entry - this is similar to a put, but will fail if the
   // key exists
-  await kv.create("hello.world", sc.encode("hi"));
+  await kv.create("hello.world", "hi");
 
   // Values in KV are stored as KvEntries:
   // {
@@ -940,13 +944,13 @@ Deno.test("kv - example", async () => {
   })().then();
 
   // update the entry
-  await kv.put("hello.world", sc.encode("world"));
+  await kv.put("hello.world", "world");
   // retrieve the KvEntry storing the value
   // returns null if the value is not found
   const e = await kv.get("hello.world");
   assert(e);
   // initial value of "hi" was overwritten above
-  assertEquals(sc.decode(e.value), "world");
+  assertEquals(e.string(), "world");
 
   const buf: string[] = [];
   const keys = await kv.keys();
@@ -1057,9 +1061,8 @@ Deno.test("kv - cross account history", async () => {
     user: "a",
     pass: "a",
   });
-  const sc = StringCodec();
-  await kva.put("A", sc.encode("A"));
-  await kva.put("B", sc.encode("B"));
+  await kva.put("A", "A");
+  await kva.put("B", "B");
   await kva.delete("B");
 
   const { nc: ncb, kv: kvb } = await makeKvAndClient({
@@ -1068,7 +1071,7 @@ Deno.test("kv - cross account history", async () => {
     pass: "b",
     inboxPrefix: "forb",
   }, { apiPrefix: "froma" });
-  await kvb.put("C", sc.encode("C"));
+  await kvb.put("C", "C");
 
   await Promise.all([checkHistory(kva), checkHistory(kvb)]);
 
@@ -1124,10 +1127,9 @@ Deno.test("kv - cross account watch", async () => {
   const proms = [checkWatch(kva), checkWatch(kvb)];
   await Promise.all([nca.flush(), ncb.flush()]);
 
-  const sc = StringCodec();
-  await kva.put("A", sc.encode("A"));
-  await kva.put("B", sc.encode("B"));
-  await kvb.put("C", sc.encode("C"));
+  await kva.put("A", "A");
+  await kva.put("B", "B");
+  await kvb.put("C", "C");
   await Promise.all(proms);
 
   await cleanup(ns, nca, ncb);
@@ -1238,8 +1240,8 @@ Deno.test("kv - initialized watch with modifications", async () => {
   await lock;
 
   //@ts-ignore: testing
-  const sub = iter._data as JetStreamSubscriptionImpl;
-  const ci = await sub.consumerInfo();
+  const oc = iter._data as PushConsumer;
+  const ci = await oc.info();
   assertEquals(ci.num_pending, 0);
   assertEquals(ci.delivered.consumer_seq, 103);
 
@@ -1278,7 +1280,6 @@ Deno.test("kv - watch init callback exceptions terminate the iterator", async ()
 Deno.test("kv - get revision", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const js = jetstream(nc);
-  const sc = StringCodec();
 
   const b = await new Kvm(js).create(nuid.next(), { history: 3 }) as Bucket;
 
@@ -1287,13 +1288,13 @@ Deno.test("kv - get revision", async () => {
     if (value === null) {
       assertEquals(e, null);
     } else {
-      assertEquals(sc.decode(e!.value), value);
+      assertEquals(e!.string(), value);
     }
   }
 
-  await b.put("A", sc.encode("a"));
-  await b.put("A", sc.encode("b"));
-  await b.put("A", sc.encode("c"));
+  await b.put("A", "a");
+  await b.put("A", "b");
+  await b.put("A", "c");
 
   // expect null, as sequence 1, holds "A"
   await check("B", null, 1);
@@ -1302,7 +1303,7 @@ Deno.test("kv - get revision", async () => {
   await check("A", "a", 1);
   await check("A", "b", 2);
 
-  await b.put("A", sc.encode("d"));
+  await b.put("A", "d");
   await check("A", "d");
   await check("A", null, 1);
 
@@ -1400,12 +1401,11 @@ Deno.test("kv - direct message", async () => {
   }
 
   const js = jetstream(nc);
-  const sc = StringCodec();
 
   const kv = await new Kvm(js).create("a", { allow_direct: true, history: 3 });
   assertEquals(await kv.get("a"), null);
 
-  await kv.put("a", sc.encode("hello"));
+  await kv.put("a", "hello");
 
   const m = await kv.get("a");
   assert(m !== null);
@@ -1425,8 +1425,8 @@ Deno.test("kv - direct message", async () => {
   assertEquals(d.operation, "DEL");
   assertEquals(d.bucket, "a");
 
-  await kv.put("c", sc.encode("hi"));
-  await kv.put("c", sc.encode("hello"));
+  await kv.put("c", "hi");
+  await kv.put("c", "hello");
 
   // should not fail
   await kv.get("c");
@@ -1452,18 +1452,16 @@ Deno.test("kv - republish", async () => {
     },
   }) as Bucket;
 
-  const sc = StringCodec();
-
   const sub = nc.subscribe("republished-kv.>", { max: 1 });
   (async () => {
     for await (const m of sub) {
       assertEquals(m.subject, `republished-kv.${kv.subjectForKey("hello")}`);
-      assertEquals(sc.decode(m.data), "world");
+      assertEquals(m.string(), "world");
       assertEquals(m.headers?.get(DirectMsgHeaders.Stream), kv.bucketName());
     }
   })().then();
 
-  await kv.put("hello", sc.encode("world"));
+  await kv.put("hello", "world");
   await sub.closed;
   await cleanup(ns, nc);
 });
@@ -1492,8 +1490,7 @@ Deno.test("kv - size", async () => {
   assertEquals(status.size, 0);
   assertEquals(status.size, status.streamInfo.state.bytes);
 
-  const sc = StringCodec();
-  await b.put("a", sc.encode("hello"));
+  await b.put("a", "hello");
   status = await b.status();
   assert(status.size > 0);
   assertEquals(status.size, status.streamInfo.state.bytes);
@@ -1528,7 +1525,6 @@ Deno.test("kv - mirror cross domain", async () => {
   // setup a KV
   const js = jetstream(nc);
   const kv = await new Kvm(js).create("TEST");
-  const sc = StringCodec();
   const m = new Map<string, KvEntry[]>();
 
   // watch notifications on a on "name"
@@ -1546,15 +1542,15 @@ Deno.test("kv - mirror cross domain", async () => {
 
   watch(kv, "test", "name").then();
 
-  await kv.put("name", sc.encode("derek"));
-  await kv.put("age", sc.encode("22"));
-  await kv.put("v", sc.encode("v"));
+  await kv.put("name", "derek");
+  await kv.put("age", "22");
+  await kv.put("v", "v");
   await kv.delete("v");
   await nc.flush();
   let a = m.get("test");
   assert(a);
   assertEquals(a.length, 1);
-  assertEquals(sc.decode(a[0].value), "derek");
+  assertEquals(a[0].string(), "derek");
 
   const ljs = jetstream(lnc);
   await new Kvm(ljs).create("MIRROR", {
@@ -1580,7 +1576,7 @@ Deno.test("kv - mirror cross domain", async () => {
     assert(e);
     assertEquals(e.operation, op);
     if (value !== "") {
-      assertEquals(sc.decode(e.value), value);
+      assertEquals(e.string(), value);
     }
   }
 
@@ -1599,10 +1595,10 @@ Deno.test("kv - mirror cross domain", async () => {
       assertEquals(hist.length, 0);
     }
 
-    await kv.put("name", sc.encode(name));
+    await kv.put("name", name);
     await checkEntry(kv, "name", name, "PUT");
 
-    await kv.put("v", sc.encode("v"));
+    await kv.put("v", "v");
     await checkEntry(kv, "v", "v", "PUT");
 
     await kv.delete("v");
@@ -1624,7 +1620,7 @@ Deno.test("kv - mirror cross domain", async () => {
   a = m.get("mirror");
   assert(a);
   assertEquals(a.length, 2);
-  assertEquals(sc.decode(a[1].value), "rip");
+  assertEquals(a[1].string(), "rip");
 
   // access the origin kv via the leafnode
   const rjs = jetstream(lnc, { domain: "HUB" });
@@ -1636,7 +1632,7 @@ Deno.test("kv - mirror cross domain", async () => {
   a = m.get("origin");
   assert(a);
   assertEquals(a.length, 2);
-  assertEquals(sc.decode(a[1].value), "ivan");
+  assertEquals(a[1].string(), "ivan");
 
   // shutdown the server
   await cleanup(ns, nc);
@@ -1672,7 +1668,7 @@ Deno.test("kv - encoded entry", async () => {
   }
   const js = jetstream(nc);
   const kv = await new Kvm(js).create("K");
-  await kv.put("a", StringCodec().encode("hello"));
+  await kv.put("a", "hello");
   await kv.put("b", JSONCodec().encode(5));
   await kv.put("c", JSONCodec().encode(["hello", 5]));
 
@@ -2090,85 +2086,6 @@ Deno.test("kv - watcher on server restart", async () => {
   await d;
   await cleanup(ns, nc);
 });
-
-// FIXME: this is a sanity example
-// Deno.test("jetstream - can access kv", async () => {
-//   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-//   if (await notCompatible(ns, nc, "2.6.2")) {
-//     return;
-//   }
-//   const sc = StringCodec();
-//
-//   const js = jetstream(nc);
-//   // create the named KV or bind to it if it exists:
-//   const kv = await new Kv(js).create("testing", { history: 5 });
-//
-//   // create an entry - this is similar to a put, but will fail if the
-//   // key exists
-//   await kv.create("hello.world", sc.encode("hi"));
-//
-//   // Values in KV are stored as KvEntries:
-//   // {
-//   //   bucket: string,
-//   //   key: string,
-//   //   value: Uint8Array,
-//   //   created: Date,
-//   //   revision: number,
-//   //   delta?: number,
-//   //   operation: "PUT"|"DEL"|"PURGE"
-//   // }
-//   // The operation property specifies whether the value was
-//   // updated (PUT), deleted (DEL) or purged (PURGE).
-//
-//   // you can monitor values modification in a KV by watching.
-//   // You can watch specific key subset or everything.
-//   // Watches start with the latest value for each key in the
-//   // set of keys being watched - in this case all keys
-//   const watch = await kv.watch();
-//   (async () => {
-//     for await (const _e of watch) {
-//       // do something with the change
-//     }
-//   })().then();
-//
-//   // update the entry
-//   await kv.put("hello.world", sc.encode("world"));
-//   // retrieve the KvEntry storing the value
-//   // returns null if the value is not found
-//   const e = await kv.get("hello.world");
-//   assert(e);
-//   // initial value of "hi" was overwritten above
-//   assertEquals(sc.decode(e.value), "world");
-//
-//   const keys = await collect<string>(await kv.keys());
-//   assertEquals(keys.length, 1);
-//   assertEquals(keys[0], "hello.world");
-//
-//   const h = await kv.history({ key: "hello.world" });
-//   (async () => {
-//     for await (const _e of h) {
-//       // do something with the historical value
-//       // you can test e.operation for "PUT", "DEL", or "PURGE"
-//       // to know if the entry is a marker for a value set
-//       // or for a deletion or purge.
-//     }
-//   })().then();
-//
-//   // deletes the key - the delete is recorded
-//   await kv.delete("hello.world");
-//
-//   // purge is like delete, but all history values
-//   // are dropped and only the purge remains.
-//   await kv.purge("hello.world");
-//
-//   // stop the watch operation above
-//   watch.stop();
-//
-//   // danger: destroys all values in the KV!
-//   await kv.destroy();
-//
-//   await cleanup(ns, nc);
-// });
 
 Deno.test("kv - kv rejects in older servers", async () => {
   const { ns, nc } = await _setup(

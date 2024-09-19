@@ -483,6 +483,7 @@ export type DirectMsgRequest =
   | LastForMsgRequest
   | NextMsgRequest;
 
+// FIXME: new options on the server
 export type DirectBatchOptions = {
   batch?: number;
   max_bytes?: number;

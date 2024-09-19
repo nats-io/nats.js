@@ -692,6 +692,7 @@ export function isOrderedPushConsumerOptions(
     return "name_prefix" in v ||
       "deliver_subject_prefix" in v ||
       "filter_subjects" in v ||
+      "filter_subject" in v ||
       "deliver_policy" in v ||
       "opt_start_seq" in v ||
       "opt_start_time" in v ||

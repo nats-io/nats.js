@@ -34,7 +34,7 @@ import type {
 } from "@nats-io/nats-core/internal";
 
 import {
-  consumerOpts,
+  DeliverPolicy,
   DiscardPolicy,
   JsHeaders,
   ListerImpl,
@@ -44,6 +44,7 @@ import {
 } from "@nats-io/jetstream/internal";
 
 import type {
+  ConsumerConfig,
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
@@ -635,15 +636,16 @@ export class ObjectStoreImpl implements ObjectStore {
       return Promise.resolve(r as ObjectResult);
     }
 
+    const sha = new SHA256();
     let controller: ReadableStreamDefaultController;
 
-    const oc = consumerOpts();
-    oc.orderedConsumer();
-    const sha = new SHA256();
-    const subj = `$O.${this.name}.C.${info.nuid}`;
-    const sub = await this.js.subscribe(subj, oc);
+    const cc: Partial<ConsumerConfig> = {};
+    cc.filter_subject = `$O.${this.name}.C.${info.nuid}`;
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const iter = await oc.consume();
+
     (async () => {
-      for await (const jm of sub) {
+      for await (const jm of iter) {
         if (jm.data.length > 0) {
           sha.update(jm.data);
           controller!.enqueue(jm.data);
@@ -663,7 +665,7 @@ export class ObjectStoreImpl implements ObjectStore {
           } else {
             controller!.close();
           }
-          sub.unsubscribe();
+          break;
         }
       }
     })()
@@ -680,7 +682,7 @@ export class ObjectStoreImpl implements ObjectStore {
         controller = c;
       },
       cancel() {
-        sub.unsubscribe();
+        iter.stop();
       },
     });
 
@@ -817,24 +819,24 @@ export class ObjectStoreImpl implements ObjectStore {
         qi.stop(err);
       }
     }
-    const jc = JSONCodec<ObjectInfo>();
-    const copts = consumerOpts();
-    copts.orderedConsumer();
+    const cc: Partial<ConsumerConfig> = {};
+    cc.name = `OBJ_WATCHER_${nuid.next()}`;
+    cc.filter_subject = subj;
     if (opts.includeHistory) {
-      copts.deliverLastPerSubject();
+      cc.deliver_policy = DeliverPolicy.LastPerSubject;
     } else {
       // FIXME: Go's implementation doesn't seem correct - if history is not desired
       //  the watch should only be giving notifications on new entries
       initialized = true;
-      copts.deliverNew();
+      cc.deliver_policy = DeliverPolicy.New;
     }
-    copts.callback((err: NatsError | null, jm: JsMsg | null) => {
-      if (err) {
-        qi.stop(err);
-        return;
-      }
-      if (jm !== null) {
-        const oi = jc.decode(jm.data);
+
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    qi._data = oc;
+
+    const iter = await oc.consume({
+      callback: (jm: JsMsg) => {
+        const oi = jm.json<ObjectInfo>();
         if (oi.deleted && opts.ignoreDeletes === true) {
           // do nothing
         } else {
@@ -844,18 +846,16 @@ export class ObjectStoreImpl implements ObjectStore {
           initialized = true;
           qi.push(null);
         }
-      }
+      },
     });
 
-    const sub = await this.js.subscribe(subj, copts);
-    qi._data = sub;
-    qi.iterClosed.then(() => {
-      sub.unsubscribe();
+    iter.closed().then(() => {
+      qi.push(() => {
+        qi.stop();
+      });
     });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err) => {
-      qi.stop(err);
+    qi.iterClosed.then(() => {
+      iter.stop();
     });
 
     return qi;
