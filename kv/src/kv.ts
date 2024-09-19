@@ -38,7 +38,6 @@ import type {
 
 import {
   AckPolicy,
-  consumerOpts,
   DeliverPolicy,
   DiscardPolicy,
   JsHeaders,
@@ -57,7 +56,6 @@ import type {
   JetStreamClientImpl,
   JetStreamManager,
   JetStreamPublishOptions,
-  JetStreamSubscriptionInfoable,
   JsMsg,
   Lister,
   ListerFieldFilter,
@@ -927,35 +925,37 @@ export class Bucket implements KV, KvRemove {
     const cc = this._buildCC(k, KvWatchInclude.LastValue, {
       headers_only: true,
     });
-    const subj = Array.isArray(k) ? ">" : cc.filter_subject!;
-    const copts = consumerOpts(cc);
-    copts.bindStream(this.stream);
-    copts.orderedConsumer();
 
-    const sub = await this.js.subscribe(subj, copts);
-    (async () => {
-      for await (const jm of sub) {
-        const op = jm.headers?.get(kvOperationHdr);
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    keys._data = oc;
+
+    const iter = await oc.consume({
+      callback: (m) => {
+        const op = m.headers?.get(kvOperationHdr);
         if (op !== "DEL" && op !== "PURGE") {
-          const key = this.decodeKey(jm.subject.substring(this.prefixLen));
+          const key = this.decodeKey(m.subject.substring(this.prefixLen));
           keys.push(key);
         }
-        if (jm.info.pending === 0) {
-          sub.unsubscribe();
+        if (m.info.pending === 0) {
+          iter.stop();
         }
-      }
-    })()
-      .then(() => {
-        keys.stop();
-      })
-      .catch((err) => {
-        keys.stop(err);
-      });
+      },
+    });
 
-    const si = sub as unknown as JetStreamSubscriptionInfoable;
-    if (si.info!.last.num_pending === 0) {
-      sub.unsubscribe();
+    // get the info used on consumer create
+    const last = await oc.info(true);
+    if (last.num_pending === 0) {
+      keys.stop();
     }
+    iter.closed().then(() => {
+      keys.push(() => {
+        keys.stop();
+      });
+    });
+    keys.iterClosed.then(() => {
+      iter.stop();
+    });
+
     return keys;
   }
 
