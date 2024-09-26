@@ -517,14 +517,14 @@ export class Parser {
       (this.state === State.MSG_ARG || this.state === State.MINUS_ERR_ARG ||
         this.state === State.INFO_ARG) && !this.argBuf
     ) {
-      this.argBuf = new DenoBuffer(buf.subarray(this.as, i - this.drop));
+      this.argBuf = new DenoBuffer(buf.subarray(this.as, i - this.drop).buffer);
     }
 
     if (this.state === State.MSG_PAYLOAD && !this.msgBuf) {
       if (!this.argBuf) {
         this.cloneMsgArg();
       }
-      this.msgBuf = new DenoBuffer(buf.subarray(this.as));
+      this.msgBuf = new DenoBuffer(buf.subarray(this.as).buffer);
     }
   }
 
@@ -536,7 +536,7 @@ export class Parser {
     if (this.ma.reply) {
       buf.set(this.ma.reply, s);
     }
-    this.argBuf = new DenoBuffer(buf);
+    this.argBuf = new DenoBuffer(buf.buffer);
     this.ma.subject = buf.subarray(0, s);
     if (this.ma.reply) {
       this.ma.reply = buf.subarray(s);

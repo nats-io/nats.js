@@ -76,7 +76,7 @@ export class DenoBuffer implements Reader, Writer {
   _buf: Uint8Array; // contents are the bytes _buf[off : len(_buf)]
   _off: number; // read at _buf[off], write at _buf[_buf.byteLength]
 
-  constructor(ab?: ArrayBuffer) {
+  constructor(ab?: ArrayBufferLike) {
     this._off = 0;
     if (ab == null) {
       this._buf = new Uint8Array(0);
