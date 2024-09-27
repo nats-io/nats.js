@@ -521,22 +521,17 @@ Deno.test("jetstream - source", async () => {
   // source will not process right away?
   await delay(1000);
 
-  const ci = await jsm.consumers.add("work", {
+  await jsm.consumers.add("work", {
     ack_policy: AckPolicy.Explicit,
     durable_name: "worker",
     filter_subject: `${stream}.B`,
-    deliver_subject: createInbox(),
   });
 
-  const sub = await js.subscribe(`${stream}.B`, { config: ci.config });
-  for await (const m of sub) {
+  const c = await js.consumers.get("work", "worker");
+  const iter = await c.fetch({ max_messages: 10 });
+  for await (const m of iter) {
     m.ack();
-    if (m.info.pending === 0) {
-      break;
-    }
   }
-
-  // give the server a chance to process the ack's and cleanup
   await nc.flush();
 
   const si = await jsm.streams.info("work");

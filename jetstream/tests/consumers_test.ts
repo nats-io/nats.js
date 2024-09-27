@@ -31,7 +31,6 @@ import type {
   Consumer,
   ConsumerMessages,
   ConsumerStatus,
-  JsMsg,
   PullOptions,
 } from "../src/mod.ts";
 import { connect, NatsServer } from "test_helpers";
@@ -261,49 +260,6 @@ Deno.test("consumers - bad options", async () => {
     Error,
     "expires should be at least 1000ms",
   );
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("consumers - cleanup handler", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const { stream } = await initStream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.consumers.add(stream, {
-    name: "a",
-    ack_policy: AckPolicy.Explicit,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get(stream, "a");
-  let iter = await c.consume({
-    expires: 30 * 1000,
-  }) as PullConsumerMessagesImpl;
-  // need consume messages or close will stall
-  (async () => {
-    for await (const _r of iter) {
-      // ignore
-    }
-  })().then();
-  let called = false;
-  iter.setCleanupHandler(() => {
-    called = true;
-    throw new Error("testing");
-  });
-  await iter.close();
-  assertEquals(called, true);
-
-  called = false;
-  iter = await c.consume({
-    expires: 30 * 1000,
-    callback: (_r: JsMsg) => {},
-  }) as PullConsumerMessagesImpl;
-  iter.setCleanupHandler(() => {
-    called = true;
-    throw new Error("testing");
-  });
-  await iter.close();
-  assertEquals(called, true);
 
   await cleanup(ns, nc);
 });

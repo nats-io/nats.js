@@ -135,15 +135,14 @@ Deno.test(
     await c.delete();
     await delay(1000);
 
-    const exited = assertRejects(
-      async () => {
-        await c.next({ expires: 1000 });
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
       },
       Error,
       "consumer not found",
     );
 
-    await exited;
     await cleanup(ns, nc);
   }),
 );
