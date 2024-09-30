@@ -98,14 +98,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   timeout: Timeout<unknown> | null;
   listeners: QueuedIterator<ConsumerStatus>[];
   statusIterator?: QueuedIteratorImpl<Status>;
-  forOrderedConsumer: boolean;
-  resetHandler?: () => void;
   abortOnMissingResource?: boolean;
   bind: boolean;
   inboxPrefix: string;
   inbox!: string;
-
-  ordered: boolean;
   cancelables: Delay[];
 
   // callback: ConsumerCallbackFn;
@@ -122,9 +118,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
 
     const ocs = {} as OrderedConsumerState;
-    this.ordered = c.ordered;
-    if (this.ordered) {
-      this.forOrderedConsumer = true;
+    if (this.consumer.ordered) {
       if (this.consumer.orderedConsumerState === undefined) {
         // FIXME: - if we are ordered, we need to move the state from the consumer
         //  reset() needs to clear the state so we know we have an empty state, otherwise
@@ -141,7 +135,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       }
     } else {
       this.consumer.orderedConsumerState = {} as OrderedConsumerState;
-      this.forOrderedConsumer = false;
     }
 
     const copts = opts as ConsumeOptions;
@@ -244,16 +237,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         } else {
           // push the user message
           const m = toJsMsg(msg, this.consumer.api.timeout);
-          if (this.ordered) {
+          if (this.consumer.ordered) {
             const cursor = this.consumer.orderedConsumerState!.cursor;
             const dseq = m.info.deliverySequence;
             const sseq = m.info.streamSequence;
             const expected_dseq = cursor.deliver_seq + 1;
-            console.log({ expected_dseq, got: { dseq, sseq } });
             if (
               dseq !== expected_dseq
             ) {
-              console.log({ cursor: cursor });
+              console.log({ expected_dseq, got: { dseq, sseq }, cursor });
               this.reset();
               return;
             }
@@ -508,18 +500,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         } else if (err.message === "consumer not found") {
           notFound++;
           this.notify(ConsumerEvents.ConsumerNotFound, notFound);
-          if (this.resetHandler) {
-            try {
-              this.resetHandler();
-            } catch (_) {
-              // ignored
-            }
-          }
           if (!this.refilling || this.abortOnMissingResource) {
             this.stop(err);
             return false;
           }
-          if (this.forOrderedConsumer) {
+          if (this.consumer.ordered) {
             return false;
           }
         } else {
@@ -543,9 +528,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     const nc = this.consumer.api.nc;
     //@ts-ignore: iterator will pull
+    const subj =
+      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer._info.name}`;
     this._push(() => {
       nc.publish(
-        `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer._info.name}`,
+        subj,
         this.consumer.api.jc.encode(opts),
         { reply: this.inbox },
       );
@@ -759,6 +746,7 @@ export class PullConsumerImpl implements Consumer {
   ) {
     this.api = api as ConsumerAPIImpl;
     this._info = info;
+    this.name = info.name;
     this.stream = info.stream_name;
     this.ordered = opts !== null;
     this.opts = opts || {};
@@ -808,7 +796,7 @@ export class PullConsumerImpl implements Consumer {
     );
   }
 
-  async fetch(
+  fetch(
     opts: FetchOptions = {
       max_messages: 100,
       expires: 30_000,
@@ -829,11 +817,9 @@ export class PullConsumerImpl implements Consumer {
         );
       }
       if (this.orderedConsumerState?.cursor?.deliver_seq) {
-        // update info we have?
-        this._info.config.opt_start_seq! += this.orderedConsumerState?.cursor
-          ?.deliver_seq;
-
-        // await this._reset();
+        // make the start sequence one than have been seen
+        this._info.config.opt_start_seq! =
+          this.orderedConsumerState?.cursor.stream_seq + 1;
       }
       this.type = PullConsumerType.Fetch;
     }
@@ -890,18 +876,20 @@ export class PullConsumerImpl implements Consumer {
 
   getConsumerOpts(): ConsumerConfig {
     const ocs = this.orderedConsumerState!;
-    const src = Object.assign({}, this._info.config);
     this.serial++;
     this.name = `${ocs.namePrefix}_${this.serial}`;
 
-    return Object.assign(src, {
-      name,
+    const conf = Object.assign({}, this._info.config, {
+      name: this.name,
       deliver_policy: DeliverPolicy.StartSequence,
       opt_start_seq: ocs.cursor.stream_seq + 1,
       ack_policy: AckPolicy.None,
       inactive_threshold: nanos(5 * 60 * 1000),
       num_replicas: 1,
     });
+
+    delete conf.metadata;
+    return conf;
   }
 
   async _reset(): Promise<ConsumerInfo> {
