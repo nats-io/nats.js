@@ -928,7 +928,6 @@ Deno.test("ordered consumers - fetch reset", async () => {
   function countResets(iter: ConsumerMessages): Promise<void> {
     return (async () => {
       for await (const s of iter.status()) {
-        console.log(s);
         if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
           recreates++;
         }
@@ -992,7 +991,6 @@ Deno.test("ordered consumers - consume reset", async () => {
   countRecreates(iter).catch();
   const sequences = [];
   for await (const m of iter) {
-    console.log(m.seq);
     sequences.push(m.json());
     // mess with the internal state to cause a reset
     if (m.seq === 1) {
@@ -1032,12 +1030,11 @@ Deno.test("ordered consumers - next reset", async () => {
   assertEquals(m.json(), 1);
 
   // force a reset
-  c.orderedConsumerState!.cursor.deliver_seq = 3;
-  await js.publish("a", JSON.stringify(2));
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
 
   m = await c.next({ expires: 1000 });
-
-  assertEquals(m, null);
+  assertExists(m)
+  assertEquals(m.json(), 2);
   assertEquals(c.serial, 2);
 
   await cleanup(ns, nc);
@@ -1055,18 +1052,13 @@ Deno.test("ordered consumers - no reset on next", async () => {
   await nc.flush();
 
   const c = await js.consumers.get("A") as PullConsumerImpl;
-  c.debug();
-  //@ts-ignore: test
-  nc.options.debug = true;
   let m = await c.next();
-  c.debug();
-
-  console.log(m?.string());
+  assertExists(m);
 
   m = await c.next();
-  c.debug();
+  assertExists(m);
 
-  console.log(m?.string());
+  assertEquals(c.serial, 1);
 
   await cleanup(ns, nc);
 });
@@ -1095,6 +1087,95 @@ Deno.test("ordered consumers - initial creation fails, consumer fails", async ()
     Error,
     "stream not found",
   );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - stale reference recovers", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jsm.jetstream();
+  await js.publish("a", JSON.stringify(1));
+  await js.publish("a", JSON.stringify(2));
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  let m = await c.next({ expires: 1000 });
+  assertExists(m);
+  assertEquals(m.json<number>(), 1);
+  assert(await jsm.consumers.delete("A", c.name));
+
+  // continue until the server says the consumer doesn't exist
+  while (true) {
+    try {
+      await c.info();
+    } catch (_) {
+      break;
+    }
+  }
+
+  // so should get that error once
+  await assertRejects(
+    () => {
+      return c.next({ expires: 1000 });
+    },
+    Error,
+    "consumer not found",
+  );
+
+  // but now it will be created in line
+
+  m = await c.next({ expires: 1000 });
+  assertExists(m);
+  assertEquals(m.json<number>(), 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - consume stale reference recovers", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  await js.publish("a", JSON.stringify(1));
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  await c.delete();
+  while (true) {
+    try {
+      await c.info();
+    } catch (_) {
+      // if we are here, consumer not found
+      break;
+    }
+  }
+
+  const iter = await c.consume({ idle_heartbeat: 1_000, expires: 30_000 });
+
+  let recreates = 0;
+  function countRecreates(iter: ConsumerMessages): Promise<void> {
+    return (async () => {
+      for await (const s of iter.status()) {
+        if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
+          recreates++;
+        }
+      }
+    })();
+  }
+
+  const done = countRecreates(iter);
+
+  await (async () => {
+    for await (const m of iter) {
+      assertEquals(m.json<number>(), 1);
+      break;
+    }
+  })();
+
+  await done;
+
+  assertEquals(c.serial, 2);
 
   await cleanup(ns, nc);
 });

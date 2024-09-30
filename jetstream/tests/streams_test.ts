@@ -16,7 +16,7 @@
 import { connect, notCompatible } from "test_helpers";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
-import { createInbox, JSONCodec } from "@nats-io/nats-core";
+import { JSONCodec } from "@nats-io/nats-core";
 
 import {
   assertEquals,
@@ -100,10 +100,6 @@ Deno.test("streams - consumers", async () => {
   assertEquals(d.hello, "world");
 
   await cleanup(ns, nc);
-});
-
-Deno.test("xxxx - createInbox", () => {
-  console.log(createInbox());
 });
 
 Deno.test("streams - delete message", async () => {

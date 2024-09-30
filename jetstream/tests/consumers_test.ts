@@ -320,7 +320,6 @@ Deno.test("consumers - discard notifications", async () => {
     }
   })().then();
   for await (const s of iter.status()) {
-    console.log(s);
     if (s.type === ConsumerDebugEvents.Discard) {
       const r = s.data as Record<string, number>;
       assertEquals(r.msgsLeft, 100);

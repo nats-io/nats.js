@@ -79,6 +79,7 @@ export type OrderedConsumerState = {
   maxInitialReset: number;
   opts: Partial<OrderedConsumerOptions>;
   createFails: number;
+  needsReset?: boolean;
 };
 
 export type PullConsumerInternalOptions = {
@@ -93,7 +94,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
   pending: { msgs: number; bytes: number; requests: number };
-  refilling: boolean;
+  isConsume: boolean;
   callback: ConsumerCallbackFn | null;
   timeout: Timeout<unknown> | null;
   listeners: QueuedIterator<ConsumerStatus>[];
@@ -112,18 +113,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   ) {
     super();
     this.consumer = c;
-    this.refilling = refilling;
+    this.isConsume = refilling;
     this.cancelables = [];
     this.inboxPrefix = createInbox(this.consumer.api.nc.options.inboxPrefix);
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
 
-    const ocs = {} as OrderedConsumerState;
     if (this.consumer.ordered) {
       if (this.consumer.orderedConsumerState === undefined) {
-        // FIXME: - if we are ordered, we need to move the state from the consumer
-        //  reset() needs to clear the state so we know we have an empty state, otherwise
-        //  we need to copy the state here, so delivery sequences simply continue
-
+        // initialize the state for the order consumer
+        const ocs = {} as OrderedConsumerState;
         const iopts = c.opts;
         ocs.namePrefix = iopts.name_prefix ?? `oc_${nuid.next()}`;
         ocs.opts = iopts;
@@ -133,12 +131,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         ocs.createFails = 0;
         this.consumer.orderedConsumerState = ocs;
       }
-    } else {
-      this.consumer.orderedConsumerState = {} as OrderedConsumerState;
     }
 
     const copts = opts as ConsumeOptions;
-    this.opts = this.parseOptions(opts, this.refilling);
+    this.opts = this.parseOptions(opts, this.isConsume);
     this.callback = copts.callback || null;
     this.noIterator = typeof this.callback === "function";
     this.monitor = null;
@@ -171,8 +167,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           return;
         }
         this.monitor?.work();
-        const isProtocol = msg.subject === this.inbox;
 
+        const isProtocol = msg.subject === this.inbox;
         if (isProtocol) {
           if (isHeartbeatMsg(msg)) {
             const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
@@ -193,6 +189,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             this.pending.requests--;
             this.notify(ConsumerDebugEvents.Discard, { msgsLeft, bytesLeft });
           } else {
+            // Examine the error codes
             // FIXME: 408 can be a Timeout or bad request,
             //  or it can be sent if a nowait request was
             //  sent when other waiting requests are pending
@@ -210,7 +207,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
                 ConsumerEvents.ConsumerDeleted,
                 `${code} ${description}`,
               );
-              if (!this.refilling || this.abortOnMissingResource) {
+              if (!this.isConsume || this.abortOnMissingResource) {
                 const error = new NatsError(description, `${code}`);
                 this.stop(error);
                 return;
@@ -222,7 +219,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
                 ConsumerDebugEvents.DebugEvent,
                 `${code} ${description}`,
               );
-              if (!this.refilling) {
+              if (!this.isConsume) {
                 const error = new NatsError(description, `${code}`);
                 this.stop(error);
                 return;
@@ -235,8 +232,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             }
           }
         } else {
-          // push the user message
+          // convert to JsMsg
           const m = toJsMsg(msg, this.consumer.api.timeout);
+          // if we are ordered, check
           if (this.consumer.ordered) {
             const cursor = this.consumer.orderedConsumerState!.cursor;
             const dseq = m.info.deliverySequence;
@@ -245,13 +243,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             if (
               dseq !== expected_dseq
             ) {
-              console.log({ expected_dseq, got: { dseq, sseq }, cursor });
+              // got a message out of order, have to recreate
               this.reset();
               return;
             }
+            // update the state
             cursor.deliver_seq = dseq;
             cursor.stream_seq = sseq;
           }
+          // yield the message
           this._push(m);
           this.received++;
           if (this.pending.msgs) {
@@ -266,11 +266,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         if (this.pending.msgs === 0 && this.pending.bytes === 0) {
           this.pending.requests = 0;
         }
-        if (this.refilling) {
+        if (this.isConsume) {
           // FIXME: this could result in  1/4 = 0
           if (
-            (max_messages &&
-              this.pending.msgs <= threshold_messages) ||
+            (max_messages && this.pending.msgs <= threshold_messages) ||
             (max_bytes && this.pending.bytes <= threshold_bytes)
           ) {
             const batch = this.pullOptions();
@@ -352,6 +351,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   reset() {
+    // stop the monitoring if running
+    this.monitor?.cancel();
+
     const ocs = this.consumer.orderedConsumerState!;
     const { name } = this.consumer._info?.config;
     if (name) {
@@ -380,6 +382,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       ocs.createFails = 0;
       this.consumer._info = ci;
       this.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
+      this.monitor?.restart();
+      this.pull(this.pullOptions());
     }).catch((err) => {
       ocs.createFails++;
       if (err.message === "stream not found") {
@@ -493,18 +497,23 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         if (err.message === "stream not found") {
           streamNotFound++;
           this.notify(ConsumerEvents.StreamNotFound, streamNotFound);
-          if (!this.refilling || this.abortOnMissingResource) {
+          if (!this.isConsume || this.abortOnMissingResource) {
             this.stop(err);
             return false;
           }
         } else if (err.message === "consumer not found") {
           notFound++;
           this.notify(ConsumerEvents.ConsumerNotFound, notFound);
-          if (!this.refilling || this.abortOnMissingResource) {
+          if (!this.isConsume || this.abortOnMissingResource) {
+            if (this.consumer.ordered) {
+              const ocs = this.consumer.orderedConsumerState!;
+              ocs.needsReset = true;
+            }
             this.stop(err);
             return false;
           }
           if (this.consumer.ordered) {
+            this.reset();
             return false;
           }
         } else {
@@ -796,7 +805,7 @@ export class PullConsumerImpl implements Consumer {
     );
   }
 
-  fetch(
+  async fetch(
     opts: FetchOptions = {
       max_messages: 100,
       expires: 30_000,
@@ -816,11 +825,17 @@ export class PullConsumerImpl implements Consumer {
           new Error("ordered consumer doesn't support concurrent fetch"),
         );
       }
-      if (this.orderedConsumerState?.cursor?.deliver_seq) {
-        // make the start sequence one than have been seen
-        this._info.config.opt_start_seq! =
-          this.orderedConsumerState?.cursor.stream_seq + 1;
+      if (this.ordered) {
+        if (this.orderedConsumerState?.cursor?.deliver_seq) {
+          // make the start sequence one than have been seen
+          this._info.config.opt_start_seq! =
+            this.orderedConsumerState?.cursor.stream_seq + 1;
+        }
+        if (this.orderedConsumerState?.needsReset === true) {
+          await this._reset();
+        }
       }
+
       this.type = PullConsumerType.Fetch;
     }
 
