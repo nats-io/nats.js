@@ -1033,7 +1033,7 @@ Deno.test("ordered consumers - next reset", async () => {
   c.orderedConsumerState!.cursor.deliver_seq = 100;
 
   m = await c.next({ expires: 1000 });
-  assertExists(m)
+  assertExists(m);
   assertEquals(m.json(), 2);
   assertEquals(c.serial, 2);
 
