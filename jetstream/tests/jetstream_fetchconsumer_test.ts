@@ -279,7 +279,6 @@ Deno.test("jetstream - fetch one - no wait breaks fast", async () => {
 
   await done;
   sw.mark();
-  // console.log({ duration: sw.duration() });
   const duration = sw.duration();
   assert(150 > duration, `${duration}`);
   assertEquals(batch.getReceived(), 1);

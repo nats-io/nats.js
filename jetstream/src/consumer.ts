@@ -667,74 +667,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return iter;
   }
 }
-//
-// export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
-//   implements ConsumerMessages {
-//   src!: PullConsumerMessagesImpl;
-//   listeners: QueuedIterator<ConsumerStatus>[];
-//
-//   constructor() {
-//     super();
-//     this.listeners = [];
-//   }
-//
-//   setSource(src: PullConsumerMessagesImpl) {
-//     if (this.src) {
-//       this.src.resetHandler = undefined;
-//       this.src.setCleanupHandler();
-//       this.src.stop();
-//     }
-//     this.src = src;
-//     this.src.setCleanupHandler((err) => {
-//       this.stop(err || undefined);
-//     });
-//     (async () => {
-//       const status = this.src.status();
-//       for await (const s of status) {
-//         this.notify(s.type, s.data);
-//       }
-//     })().catch(() => {});
-//   }
-//
-//   notify(type: ConsumerEvents | ConsumerDebugEvents, data: unknown) {
-//     if (this.listeners.length > 0) {
-//       (() => {
-//         this.listeners.forEach((l) => {
-//           const qi = l as QueuedIteratorImpl<ConsumerStatus>;
-//           if (!qi.done) {
-//             qi.push({ type, data });
-//           }
-//         });
-//       })();
-//     }
-//   }
-//
-//   stop(err?: Error): void {
-//     if (this.done) {
-//       return;
-//     }
-//     this.src?.stop(err);
-//     super.stop(err);
-//     this.listeners.forEach((n) => {
-//       n.stop();
-//     });
-//   }
-//
-//   close(): Promise<void | Error> {
-//     this.stop();
-//     return this.iterClosed;
-//   }
-//
-//   closed(): Promise<void | Error> {
-//     return this.iterClosed;
-//   }
-//
-//   status(): AsyncIterable<ConsumerStatus> {
-//     const iter = new QueuedIteratorImpl<ConsumerStatus>();
-//     this.listeners.push(iter);
-//     return iter;
-//   }
-// }
 
 export class PullConsumerImpl implements Consumer {
   api: ConsumerAPIImpl;
@@ -866,22 +798,10 @@ export class PullConsumerImpl implements Consumer {
     fopts.max_messages = 1;
 
     const iter = await this.fetch(fopts);
-    let msg: JsMsg | null = null;
-    const d = deferred<JsMsg | null>();
-    (async () => {
-      for await (const m of iter) {
-        msg = m;
-        break;
-      }
-    })().then(() => {
-      d.resolve(msg);
-    }).catch((err) => {
-      if (err) {
-        d.reject(err);
-      }
-    });
-
-    return d;
+    for await (const m of iter) {
+      return m;
+    }
+    return null;
   }
 
   delete(): Promise<boolean> {

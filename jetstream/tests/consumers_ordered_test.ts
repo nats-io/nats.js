@@ -27,7 +27,7 @@ import {
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
-import type { ConsumerMessages } from "../src/mod.ts";
+import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import {
   _setup,
   cleanup,
@@ -35,11 +35,12 @@ import {
   jetstreamServerConf,
   notCompatible,
 } from "test_helpers";
-import { deadline, delay } from "@nats-io/nats-core";
+import { deadline, deferred, delay } from "@nats-io/nats-core";
 import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
 } from "../src/consumer.ts";
+import { fail } from "node:assert";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -66,77 +67,79 @@ Deno.test("ordered consumers - get", async () => {
 
   await cleanup(ns, nc);
 });
-//
-// Deno.test("ordered consumers - fetch", async () => {
-//   const { ns, nc } = await _setup(connect, jetstreamServerConf());
-//   const js = jetstream(nc);
-//
-//   const jsm = await jetstreamManager(nc);
-//   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
-//   await js.publish("test.a");
-//   await js.publish("test.b");
-//   await js.publish("test.c");
-//
-//   const oc = await js.consumers.get("test") as PullConsumerImpl;
-//   assertExists(oc);
-//
-//   let iter = await oc.fetch({ max_messages: 1 });
-//   for await (const m of iter) {
-//     assertEquals(m.subject, "test.a");
-//     assertEquals(m.seq, 1);
-//   }
-//
-//   iter = await oc.fetch({ max_messages: 1 });
-//   for await (const m of iter) {
-//     assertEquals(m.subject, "test.b");
-//     assertEquals(m.seq, 2);
-//   }
-//
-//   await cleanup(ns, nc);
-// });
-//
-// Deno.test("ordered consumers - consume reset", async () => {
-//   const { ns, nc } = await _setup(connect, jetstreamServerConf());
-//   const js = jetstream(nc);
-//
-//   const jsm = await jetstreamManager(nc);
-//   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
-//   await js.publish("test.a");
-//   await js.publish("test.b");
-//   await js.publish("test.c");
-//
-//   const oc = await js.consumers.get("test") as PullConsumerImpl;
-//   assertExists(oc);
-//
-//   const seen: number[] = new Array(3).fill(0);
-//   const done = deferred();
-//
-//   const callback = (r: JsMsg) => {
-//     const idx = r.seq - 1;
-//     seen[idx]++;
-//     // mess with the internals so we see these again
-//     if (seen[idx] === 1) {
-//       oc..cursor.deliver_seq--;
-//       oc.cursor.stream_seq--;
-//     }
-//     if (r.info.pending === 0) {
-//       iter.stop();
-//       done.resolve();
-//     }
-//   };
-//
-//   const iter = await oc.consume({
-//     max_messages: 1,
-//     callback,
-//   });
-//   await done;
-//
-//   assertEquals(seen, [2, 2, 1]);
-//   assertEquals(oc.serial, 3);
-//
-//   await cleanup(ns, nc);
-// });
-//
+
+Deno.test("ordered consumers - fetch", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const js = jetstream(nc);
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+  await js.publish("test.a");
+  await js.publish("test.b");
+  await js.publish("test.c");
+
+  const oc = await js.consumers.get("test") as PullConsumerImpl;
+  assertExists(oc);
+
+  let iter = await oc.fetch({ max_messages: 1 });
+  for await (const m of iter) {
+    assertEquals(m.subject, "test.a");
+    assertEquals(m.seq, 1);
+  }
+
+  iter = await oc.fetch({ max_messages: 1 });
+  for await (const m of iter) {
+    assertEquals(m.subject, "test.b");
+    assertEquals(m.seq, 2);
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - consume reset", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const js = jetstream(nc);
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+  await js.publish("test.a");
+  await js.publish("test.b");
+  await js.publish("test.c");
+
+  const oc = await js.consumers.get("test") as PullConsumerImpl;
+  assertExists(oc);
+
+  const seen: number[] = new Array(3).fill(0);
+  const done = deferred();
+
+  const callback = (r: JsMsg) => {
+    const idx = r.seq - 1;
+    seen[idx]++;
+    // mess with the internals so we see these again
+    if (seen[idx] === 1) {
+      const state = oc.orderedConsumerState!;
+      const cursor = state.cursor;
+      cursor.deliver_seq--;
+      cursor.stream_seq--;
+    }
+    if (r.info.pending === 0) {
+      iter.stop();
+      done.resolve();
+    }
+  };
+
+  const iter = await oc.consume({
+    max_messages: 1,
+    callback,
+  });
+  await done;
+
+  assertEquals(seen, [2, 2, 1]);
+  assertEquals(oc.serial, 3);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("ordered consumers - consume", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
   const js = jetstream(nc);
@@ -1104,14 +1107,19 @@ Deno.test("ordered consumers - stale reference recovers", async () => {
   let m = await c.next({ expires: 1000 });
   assertExists(m);
   assertEquals(m.json<number>(), 1);
-  assert(await jsm.consumers.delete("A", c.name));
+  assert(await c.delete());
 
   // continue until the server says the consumer doesn't exist
   while (true) {
     try {
       await c.info();
-    } catch (_) {
-      break;
+      await delay(20);
+    } catch (err) {
+      if (err.message === "consumer not found") {
+        break;
+      } else {
+        fail(err.message);
+      }
     }
   }
 
@@ -1141,13 +1149,18 @@ Deno.test("ordered consumers - consume stale reference recovers", async () => {
   await js.publish("a", JSON.stringify(1));
 
   const c = await js.consumers.get("A") as PullConsumerImpl;
-  await c.delete();
+  assert(await c.delete());
+  // continue until the server says the consumer doesn't exist
   while (true) {
     try {
       await c.info();
-    } catch (_) {
-      // if we are here, consumer not found
-      break;
+      await delay(20);
+    } catch (err) {
+      if (err.message === "consumer not found") {
+        break;
+      } else {
+        fail(err.message);
+      }
     }
   }
 
