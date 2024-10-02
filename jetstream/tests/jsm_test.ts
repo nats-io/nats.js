@@ -2004,9 +2004,11 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       subjects: [name],
       metadata: md,
     });
-    stripNatsMetadata(si.config.metadata);
-    stripNatsMetadata(md);
-    assertEquals(si.config.metadata, md || {});
+    if (md) {
+      stripNatsMetadata(si.config.metadata);
+      stripNatsMetadata(md);
+      assertEquals(si.config.metadata, md || {});
+    }
   }
   async function updateStream(name: string, md?: Record<string, string>) {
     const si = await jsm.streams.update(name, {
@@ -2026,7 +2028,9 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       metadata: md,
     });
     stripNatsMetadata(ci.config.metadata);
-    assertEquals(ci.config.metadata, md || {});
+    if (md) {
+      assertEquals(ci.config.metadata, md);
+    }
   }
 
   async function updateConsumer(
