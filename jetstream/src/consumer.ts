@@ -27,7 +27,6 @@ import type {
 import {
   backoff,
   createInbox,
-  deferred,
   delay,
   Events,
   IdleHeartbeatMonitor,
