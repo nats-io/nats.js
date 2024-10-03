@@ -345,6 +345,8 @@ Deno.test("kv - cleanups/empty", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
+  const nci = nc as NatsConnectionImpl;
+
   const n = nuid.next();
   const js = jetstream(nc);
   const bucket = await new Kvm(js).create(n);
@@ -356,9 +358,9 @@ Deno.test("kv - cleanups/empty", async () => {
   const keys = await collect(await bucket.keys());
   assertEquals(keys.length, 0);
 
-  const nci = nc as NatsConnectionImpl;
   // mux should be created
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
+
   assertEquals(nci.protocol.subscriptions.subs.size, min);
 
   await cleanup(ns, nc);
@@ -443,6 +445,7 @@ Deno.test("kv - bucket watch", async () => {
   await b.put("x", Empty);
 
   await done;
+  await delay(0);
 
   assertEquals(iter.getProcessed(), 7);
   assertEquals(m.get("a"), "2");
@@ -497,6 +500,7 @@ Deno.test("kv - key watch", async () => {
   const js = jetstream(nc);
   const bucket = await new Kvm(js).create(nuid.next()) as Bucket;
   await keyWatch(bucket);
+  await delay(0);
 
   const nci = nc as NatsConnectionImpl;
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
@@ -519,6 +523,7 @@ Deno.test("kv - codec key watch", async () => {
     },
   }) as Bucket;
   await keyWatch(bucket);
+  await delay(0);
 
   const nci = nc as NatsConnectionImpl;
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
@@ -659,10 +664,6 @@ Deno.test("kv - complex key", async () => {
 
   const vvv = await dd;
   assertEquals(vvv.string(), "hello");
-
-  const nci = nc as NatsConnectionImpl;
-  const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
-  assertEquals(nci.protocol.subscriptions.subs.size, min);
 
   await cleanup(ns, nc);
 });

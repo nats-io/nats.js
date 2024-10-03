@@ -177,13 +177,19 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.cancelables.forEach((c) => {
       c.cancel();
     });
-    this.cancelables = [];
-    this._push(() => {
-      super.stop(err);
-      this.listeners.forEach((n) => {
-        n.stop();
+    Promise.all(this.cancelables)
+      .then(() => {
+        this.cancelables = [];
+      })
+      .catch(() => {})
+      .finally(() => {
+        this._push(() => {
+          super.stop(err);
+          this.listeners.forEach((n) => {
+            n.stop();
+          });
+        });
       });
-    });
   }
 
   _push(r: JsMsg | CallbackFn) {

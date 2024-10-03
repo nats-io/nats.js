@@ -77,7 +77,7 @@ import type {
   StreamUpdateConfig,
   SuccessResponse,
 } from "./jsapi_types.ts";
-import { OrderedPullConsumerImpl, PullConsumerImpl } from "./consumer.ts";
+import { PullConsumerImpl } from "./consumer.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 import type { PushConsumerInternalOptions } from "./pushconsumer.ts";
 import { PushConsumerImpl } from "./pushconsumer.ts";
@@ -238,21 +238,79 @@ export class ConsumersImpl implements Consumers {
 
   async ordered(
     stream: string,
-    opts?: Partial<OrderedConsumerOptions>,
+    opts: Partial<OrderedConsumerOptions> = {},
   ): Promise<Consumer> {
     await this.checkVersion();
 
     const impl = this.api as ConsumerAPIImpl;
     const sapi = new StreamAPIImpl(impl.nc, impl.opts);
-    return sapi.info(stream)
-      .then((_si) => {
-        return Promise.resolve(
-          new OrderedPullConsumerImpl(this.api, stream, opts),
-        );
-      })
-      .catch((err) => {
-        return Promise.reject(err);
-      });
+    await sapi.info(stream);
+
+    if (typeof opts.name_prefix === "string") {
+      minValidation("name_prefix", opts.name_prefix);
+    }
+    opts.name_prefix = opts.name_prefix || nuid.next();
+    const name = `${opts.name_prefix}_1`;
+
+    const config = {
+      name,
+      deliver_policy: DeliverPolicy.StartSequence,
+      opt_start_seq: opts.opt_start_seq || 1,
+      ack_policy: AckPolicy.None,
+      inactive_threshold: nanos(5 * 60 * 1000),
+      num_replicas: 1,
+      max_deliver: 1,
+      mem_storage: true,
+    } as ConsumerConfig;
+
+    if (opts.headers_only === true) {
+      config.headers_only = true;
+    }
+
+    if (Array.isArray(opts.filter_subjects)) {
+      config.filter_subjects = opts.filter_subjects;
+    }
+    if (typeof opts.filter_subjects === "string") {
+      config.filter_subject = opts.filter_subjects;
+    }
+    if (opts.replay_policy) {
+      config.replay_policy = opts.replay_policy;
+    }
+
+    config.deliver_policy = opts.deliver_policy ||
+      DeliverPolicy.StartSequence;
+    if (
+      opts.deliver_policy === DeliverPolicy.LastPerSubject ||
+      opts.deliver_policy === DeliverPolicy.New ||
+      opts.deliver_policy === DeliverPolicy.Last
+    ) {
+      delete config.opt_start_seq;
+      config.deliver_policy = opts.deliver_policy;
+    }
+    // this requires a filter subject - we only set if they didn't
+    // set anything, and to be pre-2.10 we set it as filter_subject
+    if (config.deliver_policy === DeliverPolicy.LastPerSubject) {
+      if (
+        typeof config.filter_subjects === "undefined" &&
+        typeof config.filter_subject === "undefined"
+      ) {
+        config.filter_subject = ">";
+      }
+    }
+    if (opts.opt_start_time) {
+      delete config.opt_start_seq;
+      config.deliver_policy = DeliverPolicy.StartTime;
+      config.opt_start_time = opts.opt_start_time;
+    }
+    if (opts.inactive_threshold) {
+      config.inactive_threshold = nanos(opts.inactive_threshold);
+    }
+
+    const ci = await this.api.add(stream, config);
+
+    return Promise.resolve(
+      new PullConsumerImpl(this.api, ci, opts),
+    );
   }
 }
 

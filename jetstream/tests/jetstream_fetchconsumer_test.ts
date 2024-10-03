@@ -214,8 +214,7 @@ Deno.test("jetstream - fetch none - breaks after expires", async () => {
     expires: 1000,
   });
   const done = (async () => {
-    for await (const m of batch) {
-      console.log(m.info);
+    for await (const _m of batch) {
       fail("expected no messages");
     }
   })();
@@ -280,7 +279,6 @@ Deno.test("jetstream - fetch one - no wait breaks fast", async () => {
 
   await done;
   sw.mark();
-  console.log({ duration: sw.duration() });
   const duration = sw.duration();
   assert(150 > duration, `${duration}`);
   assertEquals(batch.getReceived(), 1);

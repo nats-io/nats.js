@@ -374,8 +374,6 @@ Deno.test("jetstream - cross account subscribe", async () => {
 
   const acks: Promise<boolean>[] = [];
 
-  //@ts-ignore: test
-  nc.options.debug = true;
   const sub = await js.consumers.getPushConsumer(stream, ci.name);
   const messages = await sub.consume();
   await (async () => {

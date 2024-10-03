@@ -208,7 +208,7 @@ Deno.test("fetch - stream not found", async () => {
   const js = jetstream(nc);
   const c = await js.consumers.get("A", "a");
   const iter = await c.fetch({
-    expires: 3000,
+    idle_heartbeat: 1_000,
   });
   await jsm.streams.delete("A");
   await delay(500);

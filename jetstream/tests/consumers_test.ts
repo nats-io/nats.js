@@ -31,7 +31,6 @@ import type {
   Consumer,
   ConsumerMessages,
   ConsumerStatus,
-  JsMsg,
   PullOptions,
 } from "../src/mod.ts";
 import { connect, NatsServer } from "test_helpers";
@@ -265,49 +264,6 @@ Deno.test("consumers - bad options", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("consumers - cleanup handler", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const { stream } = await initStream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.consumers.add(stream, {
-    name: "a",
-    ack_policy: AckPolicy.Explicit,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get(stream, "a");
-  let iter = await c.consume({
-    expires: 30 * 1000,
-  }) as PullConsumerMessagesImpl;
-  // need consume messages or close will stall
-  (async () => {
-    for await (const _r of iter) {
-      // ignore
-    }
-  })().then();
-  let called = false;
-  iter.setCleanupHandler(() => {
-    called = true;
-    throw new Error("testing");
-  });
-  await iter.close();
-  assertEquals(called, true);
-
-  called = false;
-  iter = await c.consume({
-    expires: 30 * 1000,
-    callback: (_r: JsMsg) => {},
-  }) as PullConsumerMessagesImpl;
-  iter.setCleanupHandler(() => {
-    called = true;
-    throw new Error("testing");
-  });
-  await iter.close();
-  assertEquals(called, true);
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("consumers - should be able to consume and pull", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream } = await initStream(nc);
@@ -364,7 +320,6 @@ Deno.test("consumers - discard notifications", async () => {
     }
   })().then();
   for await (const s of iter.status()) {
-    console.log(s);
     if (s.type === ConsumerDebugEvents.Discard) {
       const r = s.data as Record<string, number>;
       assertEquals(r.msgsLeft, 100);

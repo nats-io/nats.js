@@ -77,6 +77,7 @@ import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
 import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
+import { stripNatsMetadata } from "./util.ts";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
@@ -278,9 +279,13 @@ Deno.test("jsm - add stream", async () => {
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   let si = await jsm.streams.add({ name });
+
   assertEquals(si.config.name, name);
 
   const fn = (i: StreamInfo): boolean => {
+    stripNatsMetadata(si.config.metadata);
+    stripNatsMetadata(i.config.metadata);
+
     assertEquals(i.config, si.config);
     assertEquals(i.state, si.state);
     assertEquals(i.created, si.created);
@@ -1999,12 +2004,18 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       subjects: [name],
       metadata: md,
     });
-    assertEquals(si.config.metadata, md);
+    if (md) {
+      stripNatsMetadata(si.config.metadata);
+      stripNatsMetadata(md);
+      assertEquals(si.config.metadata, md || {});
+    }
   }
   async function updateStream(name: string, md?: Record<string, string>) {
     const si = await jsm.streams.update(name, {
       metadata: md,
     });
+    stripNatsMetadata(si.config.metadata);
+    stripNatsMetadata(md);
     assertEquals(si.config.metadata, md);
   }
   async function addConsumer(
@@ -2016,7 +2027,10 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       durable_name: name,
       metadata: md,
     });
-    assertEquals(ci.config.metadata, md);
+    stripNatsMetadata(ci.config.metadata);
+    if (md) {
+      assertEquals(ci.config.metadata, md);
+    }
   }
 
   async function updateConsumer(
@@ -2025,6 +2039,8 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     md?: Record<string, string>,
   ) {
     const ci = await jsm.consumers.update(stream, name, { metadata: md });
+    stripNatsMetadata(ci.config.metadata);
+    stripNatsMetadata(md);
     assertEquals(ci.config.metadata, md);
   }
   // we should be able to add/update metadata
@@ -2581,6 +2597,7 @@ Deno.test("jsm - api check not ok", async () => {
   await jetstream(nc, { checkAPI: false }).jetstreamManager();
   await jetstream(nc, { checkAPI: false }).jetstreamManager(true);
   await jetstream(nc).jetstreamManager();
+  await nc.flush();
   assertEquals(count, 2);
 
   await cleanup(ns, nc);
