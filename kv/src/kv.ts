@@ -852,7 +852,6 @@ export class Bucket implements KV, KvRemove {
     const ignoreDeletes = opts.ignoreDeletes === true;
 
     let fn = opts.initializedFn;
-    let count = 0;
 
     const cc = this._buildCC(k, content, co);
     cc.name = `KV_WATCHER_${nuid.next()}`;
@@ -862,8 +861,19 @@ export class Bucket implements KV, KvRemove {
     }
 
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
-    qi._data = oc;
+    const info = await oc.info(true);
+    const count = info.num_pending;
+    if (count === 0 && fn) {
+      try {
+        fn();
+      } catch (_err) {
+        // ignoring
+      } finally {
+        fn = undefined;
+      }
+    }
 
+    qi._data = oc;
     const iter = await oc.consume({
       callback: (m) => {
         const e = this.jmToEntry(m);
@@ -884,37 +894,13 @@ export class Bucket implements KV, KvRemove {
       },
     });
 
-    // by the time we are here, likely the subscription got messages
-    if (fn) {
-      // get the info used on consumer create
-      const last = await oc.info(true);
-      // this doesn't sound correct - we should be looking for a seq number instead
-      // then if we see a greater one, we are done.
-      const expect = last.num_pending + last.delivered.consumer_seq;
-      // if the iterator already queued - the only issue is other modifications
-      // did happen like stream was pruned, and the ordered consumer reset, etc
-      // we won't get what we are expecting - so the notification will never fire
-      // the sentinel ought to be coming from the server
-      if (expect === 0 || qi.received >= expect) {
-        try {
-          fn();
-        } catch (err) {
-          // fail it - there's something wrong in the user callback
-          qi.stop(err);
-        } finally {
-          fn = undefined;
-        }
-      } else {
-        count = expect;
-      }
-    }
+    qi.iterClosed.then(() => {
+      iter.stop();
+    });
     iter.closed().then(() => {
       qi.push(() => {
         qi.stop();
       });
-    });
-    qi.iterClosed.then(() => {
-      iter.stop();
     });
 
     return qi;
@@ -927,6 +913,12 @@ export class Bucket implements KV, KvRemove {
     });
 
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info();
+    if (info.num_pending === 0) {
+      keys.stop();
+      return keys;
+    }
+
     keys._data = oc;
 
     const iter = await oc.consume({
@@ -942,11 +934,6 @@ export class Bucket implements KV, KvRemove {
       },
     });
 
-    // get the info used on consumer create
-    const last = await oc.info(true);
-    if (last.num_pending === 0) {
-      keys.stop();
-    }
     iter.closed().then(() => {
       keys.push(() => {
         keys.stop();
