@@ -378,7 +378,7 @@ Deno.test("kv - history and watch cleanup", async () => {
   await bucket.put("b", Empty);
   await bucket.put("c", Empty);
 
-  let h = await bucket.history();
+  const h = await bucket.history();
   for await (const _e of h) {
     // aborted
     break;
@@ -1162,10 +1162,9 @@ Deno.test("kv - initialized watch empty", async () => {
   const js = jetstream(nc);
 
   const b = await new Kvm(js).create("a") as Bucket;
-  const d = deferred();
   const iter = await b.watch();
   const done = (async () => {
-    for await (const e of iter) {
+    for await (const _e of iter) {
       // nothing
     }
   })();
