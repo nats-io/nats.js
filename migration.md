@@ -123,6 +123,17 @@ await kvm.create("mykv");
 await kvm.open("mykv");
 ```
 
+### KvWatchOption.initializedFn has been removed
+
+Previous versions of `Kv.watch()` allowed the client to specify a function that
+was called when the watch was done providing history values. In this version,
+you can find out if a watch is yielding an update by examining into
+`KvEntry.isUpdate`. Note that an empty Kv will not yield any watch information.
+You can test for this initial condition, by getting the status of the KV, and
+inspecting the `values` property, which will state the number of entries in the
+Kv. Also note that watches with the option to do updates only, cannot notify
+until there's an update.
+
 ## Changes to ObjectStore
 
 > [!CAUTION]

@@ -15,7 +15,6 @@
 
 import {
   compare,
-  deferred,
   Empty,
   ErrorCode,
   Feature,
@@ -81,6 +80,7 @@ import type {
   KvPutOptions,
   KvRemove,
   KvStatus,
+  KvWatchEntry,
   KvWatchOptions,
 } from "./types.ts";
 
@@ -555,9 +555,9 @@ export class Bucket implements KV, KvRemove {
     return new KvStoredEntryImpl(this.bucket, this.prefixLen, sm);
   }
 
-  jmToEntry(jm: JsMsg): KvEntry {
+  jmToWatchEntry(jm: JsMsg, isUpdate: boolean): KvWatchEntry {
     const key = this.decodeKey(jm.subject.substring(this.prefixLen));
-    return new KvJsMsgEntryImpl(this.bucket, key, jm);
+    return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
   }
 
   async create(k: string, data: Payload): Promise<number> {
@@ -667,22 +667,17 @@ export class Bucket implements KV, KvRemove {
   async purgeDeletes(
     olderMillis: number = 30 * 60 * 1000,
   ): Promise<PurgeResponse> {
-    const done = deferred();
     const buf: KvEntry[] = [];
-    const i = await this.watch({
+    const i = await this.history({
       key: ">",
-      initializedFn: () => {
-        done.resolve();
-      },
     });
-    (async () => {
+    await (async () => {
       for await (const e of i) {
         if (e.operation === "DEL" || e.operation === "PURGE") {
           buf.push(e);
         }
       }
     })().then();
-    await done;
     i.stop();
     const min = Date.now() - olderMillis;
     const proms = buf.map((e) => {
@@ -783,12 +778,12 @@ export class Bucket implements KV, KvRemove {
 
   async history(
     opts: { key?: string | string[]; headers_only?: boolean } = {},
-  ): Promise<QueuedIterator<KvEntry>> {
+  ): Promise<QueuedIterator<KvWatchEntry>> {
     const k = opts.key ?? ">";
     const co = {} as ConsumerConfig;
     co.headers_only = opts.headers_only || false;
 
-    const qi = new QueuedIteratorImpl<KvEntry>();
+    const qi = new QueuedIteratorImpl<KvWatchEntry>();
     const fn = () => {
       qi.stop();
     };
@@ -797,7 +792,6 @@ export class Bucket implements KV, KvRemove {
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
     qi._data = oc;
     const info = await oc.info(true);
-
     if (info.num_pending === 0) {
       qi.push(fn);
       return qi;
@@ -805,7 +799,7 @@ export class Bucket implements KV, KvRemove {
 
     const iter = await oc.consume({
       callback: (m) => {
-        const e = this.jmToEntry(m);
+        const e = this.jmToWatchEntry(m, false);
         qi.push(e);
         qi.received++;
         if (m.info.pending === 0) {
@@ -837,9 +831,9 @@ export class Bucket implements KV, KvRemove {
 
   async watch(
     opts: KvWatchOptions = {},
-  ): Promise<QueuedIterator<KvEntry>> {
+  ): Promise<QueuedIterator<KvWatchEntry>> {
     const k = opts.key ?? ">";
-    const qi = new QueuedIteratorImpl<KvEntry>();
+    const qi = new QueuedIteratorImpl<KvWatchEntry>();
     const co = {} as Partial<ConsumerConfig>;
     co.headers_only = opts.headers_only || false;
 
@@ -851,8 +845,6 @@ export class Bucket implements KV, KvRemove {
     }
     const ignoreDeletes = opts.ignoreDeletes === true;
 
-    let fn = opts.initializedFn;
-
     const cc = this._buildCC(k, content, co);
     cc.name = `KV_WATCHER_${nuid.next()}`;
     if (opts.resumeFromRevision && opts.resumeFromRevision > 0) {
@@ -863,34 +855,20 @@ export class Bucket implements KV, KvRemove {
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
     const info = await oc.info(true);
     const count = info.num_pending;
-    if (count === 0 && fn) {
-      try {
-        fn();
-      } catch (_err) {
-        // ignoring
-      } finally {
-        fn = undefined;
-      }
-    }
+    let isUpdate = content === KvWatchInclude.UpdatesOnly || count === 0;
 
     qi._data = oc;
     const iter = await oc.consume({
       callback: (m) => {
-        const e = this.jmToEntry(m);
+        if (!isUpdate) {
+          isUpdate = qi.received >= count;
+        }
+        const e = this.jmToWatchEntry(m, isUpdate);
         if (ignoreDeletes && e.operation === "DEL") {
           return;
         }
         qi.push(e);
         qi.received++;
-
-        // count could have changed or has already been received
-        if (
-          fn && (count > 0 && qi.received >= count || m.info.pending === 0)
-        ) {
-          //@ts-ignore: we are injecting an unexpected type
-          qi.push(fn);
-          fn = undefined;
-        }
       },
     });
 
@@ -1106,15 +1084,17 @@ class KvStoredEntryImpl implements KvEntry {
   }
 }
 
-class KvJsMsgEntryImpl implements KvEntry {
+class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
   bucket: string;
   key: string;
   sm: JsMsg;
+  update: boolean;
 
-  constructor(bucket: string, key: string, sm: JsMsg) {
+  constructor(bucket: string, key: string, sm: JsMsg, isUpdate: boolean) {
     this.bucket = bucket;
     this.key = key;
     this.sm = sm;
+    this.update = isUpdate;
   }
 
   get value(): Uint8Array {
@@ -1143,6 +1123,10 @@ class KvJsMsgEntryImpl implements KvEntry {
       return parseInt(slen, 10);
     }
     return this.sm.data.length;
+  }
+
+  get isUpdate(): boolean {
+    return this.update;
   }
 
   json<T>(): T {

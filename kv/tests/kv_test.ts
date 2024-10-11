@@ -52,7 +52,7 @@ import {
   assertThrows,
 } from "jsr:@std/assert";
 
-import type { KV, KvEntry, KvOptions } from "../src/types.ts";
+import type { KV, KvEntry, KvOptions, KvWatchEntry } from "../src/types.ts";
 
 import type { Bucket } from "../src/mod.ts";
 
@@ -382,30 +382,20 @@ Deno.test("kv - history and watch cleanup", async () => {
   await bucket.put("b", Empty);
   await bucket.put("c", Empty);
 
-  let h = await bucket.history();
+  const h = await bucket.history();
   for await (const _e of h) {
     // aborted
     break;
   }
 
-  h = await bucket.history();
-  for await (const _e of h) {
-    // nothing
-  }
-
-  let w = await bucket.watch({});
-  for await (const _ of w) {
-    // aborted
-    break;
-  }
-
-  w = await bucket.watch({
-    initializedFn: () => {
-      w.stop();
-    },
-  });
-  for await (const _ of w) {
-    // nothing
+  const w = await bucket.watch({});
+  setTimeout(() => {
+    bucket.put("hello", "world");
+  }, 250);
+  for await (const e of w) {
+    if (e.isUpdate) {
+      break;
+    }
   }
 
   // need to give some time for promises to be resolved
@@ -1176,38 +1166,17 @@ Deno.test("kv - initialized watch empty", async () => {
   const js = jetstream(nc);
 
   const b = await new Kvm(js).create("a") as Bucket;
-  const d = deferred();
-  await b.watch({
-    initializedFn: () => {
-      d.resolve();
-    },
-  });
-
-  await d;
-  await cleanup(ns, nc);
-});
-
-Deno.test("kv - initialized watch with messages", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-
-  const b = await new Kvm(js).create("a") as Bucket;
-  await b.put("A", Empty);
-  await b.put("B", Empty);
-  await b.put("C", Empty);
-  const d = deferred<number>();
-  const iter = await b.watch({
-    initializedFn: () => {
-      d.resolve();
-    },
-  });
-
-  (async () => {
+  const iter = await b.watch();
+  const done = (async () => {
     for await (const _e of iter) {
-      // ignore
+      // nothing
     }
-  })().then();
-  await d;
+  })();
+
+  await delay(250);
+  assertEquals(0, iter.getReceived());
+  iter.stop();
+  await done;
   await cleanup(ns, nc);
 });
 
@@ -1220,28 +1189,28 @@ Deno.test("kv - initialized watch with modifications", async () => {
   await b.put("A", Empty);
   await b.put("B", Empty);
   await b.put("C", Empty);
-  const d = deferred<number>();
+
   setTimeout(async () => {
     for (let i = 0; i < 100; i++) {
       await b.put(i.toString(), Empty);
     }
   });
-  const iter = await b.watch({
-    initializedFn: () => {
-      d.resolve(iter.getProcessed());
-    },
-  });
+  const iter = await b.watch();
+
+  let history = 0;
 
   // we are expecting 103
   const lock = Lock(103);
   (async () => {
-    for await (const _e of iter) {
+    for await (const e of iter) {
+      if (!e.isUpdate) {
+        history++;
+      }
       lock.unlock();
     }
   })().then();
-  const when = await d;
   // we don't really know when this happened
-  assert(103 > when);
+  assert(103 > history);
   await lock;
 
   //@ts-ignore: testing
@@ -1250,35 +1219,6 @@ Deno.test("kv - initialized watch with modifications", async () => {
   assertEquals(ci.num_pending, 0);
   assertEquals(ci.delivered.consumer_seq, 103);
 
-  await cleanup(ns, nc);
-});
-
-Deno.test("kv - watch init callback exceptions terminate the iterator", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const js = jetstream(nc);
-
-  const b = await new Kvm(js).create("a") as Bucket;
-  for (let i = 0; i < 10; i++) {
-    await b.put(i.toString(), Empty);
-  }
-  const iter = await b.watch({
-    initializedFn: () => {
-      throw new Error("crash");
-    },
-  });
-
-  const d = deferred<Error>();
-  try {
-    await (async () => {
-      for await (const _e of iter) {
-        // awaiting the iterator
-      }
-    })();
-  } catch (err) {
-    d.resolve(err as Error);
-  }
-  const err = await d;
-  assertEquals(err.message, "crash");
   await cleanup(ns, nc);
 });
 
@@ -1746,26 +1686,25 @@ Deno.test("kv - watch updates only", async () => {
   await kv.put("a", "a");
   await kv.put("b", "b");
 
-  const d = deferred();
   const iter = await kv.watch({
     include: KvWatchInclude.UpdatesOnly,
-    initializedFn: () => {
-      d.resolve();
-    },
   });
 
-  const notifications: string[] = [];
-  (async () => {
+  const notifications: KvWatchEntry[] = [];
+  const done = (async () => {
     for await (const e of iter) {
-      notifications.push(e.key);
+      notifications.push(e);
+      if (e.isUpdate) {
+        break;
+      }
     }
-  })().then();
-  await d;
+  })();
   await kv.put("c", "c");
-  await delay(1000);
 
+  await done;
   assertEquals(notifications.length, 1);
-  assertEquals(notifications[0], "c");
+  assertEquals(notifications[0].isUpdate, true);
+  assertEquals(notifications[0].key, "c");
 
   await cleanup(ns, nc);
 });
@@ -1780,21 +1719,19 @@ Deno.test("kv - watch multiple keys", async () => {
   await kv.put("b", "b");
   await kv.put("c", "c");
 
-  const d = deferred();
   const iter = await kv.watch({
     key: ["a", "c"],
-    initializedFn: () => {
-      d.resolve();
-    },
   });
 
   const notifications: string[] = [];
-  (async () => {
+  await (async () => {
     for await (const e of iter) {
       notifications.push(e.key);
+      if (e.delta === 0) {
+        break;
+      }
     }
-  })().then();
-  await d;
+  })();
 
   assertEquals(notifications.length, 2);
   assertArrayIncludes(notifications, ["a", "c"]);

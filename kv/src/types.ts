@@ -44,6 +44,10 @@ export interface KvEntry {
   string(): string;
 }
 
+export interface KvWatchEntry extends KvEntry {
+  isUpdate: boolean;
+}
+
 /**
  * An interface for encoding and decoding values
  * before they are stored or returned to the client.
@@ -233,11 +237,6 @@ export type KvWatchOptions = {
    */
   headers_only?: boolean;
   /**
-   * A callback that notifies when the watch has yielded all the initial values.
-   * Subsequent notifications are updates since the initial watch was established.
-   */
-  initializedFn?: () => void;
-  /**
    * Skips notifying deletes.
    * @default: false
    */
@@ -270,7 +269,9 @@ export interface RoKV {
    * Note you can specify multiple keys if running on server 2.10.x or better.
    * @param opts
    */
-  history(opts?: { key?: string | string[] }): Promise<QueuedIterator<KvEntry>>;
+  history(
+    opts?: { key?: string | string[] },
+  ): Promise<QueuedIterator<KvWatchEntry>>;
 
   /**
    * Returns an iterator that will yield KvEntry updates as they happen.
@@ -278,7 +279,7 @@ export interface RoKV {
    */
   watch(
     opts?: KvWatchOptions,
-  ): Promise<QueuedIterator<KvEntry>>;
+  ): Promise<QueuedIterator<KvWatchEntry>>;
 
   /**
    * @deprecated - this api is removed.
