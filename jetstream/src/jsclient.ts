@@ -191,7 +191,7 @@ export class JetStreamManagerImpl extends BaseApiClientImpl
           const kind = chunks[chunks.length - 1];
           iter.push({ kind: kind as AdvisoryKind, data: d });
         } catch (err) {
-          iter.stop(err);
+          iter.stop(err as Error);
         }
       },
     });
@@ -676,7 +676,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         }
       } catch (err) {
         //consumer doesn't exist
-        if (err.code !== "404") {
+        if ((err as NatsError).code !== "404") {
           throw err;
         }
       }

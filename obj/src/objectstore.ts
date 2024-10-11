@@ -368,7 +368,7 @@ export class ObjectStoreImpl implements ObjectStore {
       soi.revision = m.seq;
       return soi;
     } catch (err) {
-      if (err.code === "404") {
+      if ((err as NatsError).code === "404") {
         return null;
       }
       return Promise.reject(err);
@@ -812,11 +812,11 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       await this.jsm.streams.getMessage(this.stream, { last_by_subj: subj });
     } catch (err) {
-      if (err.code === "404") {
+      if ((err as NatsError).code === "404") {
         qi.push(null);
         initialized = true;
       } else {
-        qi.stop(err);
+        qi.stop(err as Error);
       }
     }
     const cc: Partial<ConsumerConfig> = {};
@@ -903,7 +903,7 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       await this.jsm.streams.info(sc.name);
     } catch (err) {
-      if (err.message === "stream not found") {
+      if ((err as Error).message === "stream not found") {
         await this.jsm.streams.add(sc);
       }
     }

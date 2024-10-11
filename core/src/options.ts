@@ -125,7 +125,7 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
     try {
       createInbox(options.inboxPrefix);
     } catch (err) {
-      throw new NatsError(err.message, ErrorCode.ApiError);
+      throw new NatsError((err as Error).message, ErrorCode.ApiError);
     }
   }
 

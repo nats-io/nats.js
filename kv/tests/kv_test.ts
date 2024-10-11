@@ -116,7 +116,9 @@ Deno.test("kv - key validation", () => {
       validateKey(v);
     } catch (err) {
       throw new Error(
-        `expected '${v}' to be a valid key, but was rejected: ${err.message}`,
+        `expected '${v}' to be a valid key, but was rejected: ${
+          (err as Error).message
+        }`,
       );
     }
   }
@@ -147,7 +149,9 @@ Deno.test("kv - bucket name validation", () => {
       validateBucket(v);
     } catch (err) {
       throw new Error(
-        `expected '${v}' to be a valid bucket name, but was rejected: ${err.message}`,
+        `expected '${v}' to be a valid bucket name, but was rejected: ${
+          (err as Error).message
+        }`,
       );
     }
   }
@@ -1271,7 +1275,7 @@ Deno.test("kv - watch init callback exceptions terminate the iterator", async ()
       }
     })();
   } catch (err) {
-    d.resolve(err);
+    d.resolve(err as Error);
   }
   const err = await d;
   assertEquals(err.message, "crash");

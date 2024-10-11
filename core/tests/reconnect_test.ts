@@ -80,7 +80,7 @@ Deno.test("reconnect - events", async () => {
   try {
     await nc.closed();
   } catch (err) {
-    assertErrorCode(err, ErrorCode.ConnectionRefused);
+    assertErrorCode(err as NatsError, ErrorCode.ConnectionRefused);
   }
   assertEquals(disconnects, 1);
   assertEquals(reconnecting, 10);

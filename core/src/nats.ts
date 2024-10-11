@@ -292,7 +292,7 @@ export class NatsConnectionImpl implements NatsConnection {
       try {
         this.publish(subject, data, { reply: sub.getSubject() });
       } catch (err) {
-        cancel(err);
+        cancel(err as NatsError);
       }
 
       let timer = setTimeout(() => {
@@ -328,7 +328,7 @@ export class NatsConnectionImpl implements NatsConnection {
           },
         );
       } catch (err) {
-        r.cancel(err);
+        r.cancel(err as NatsError);
       }
     }
 
@@ -418,7 +418,7 @@ export class NatsConnectionImpl implements NatsConnection {
           },
         );
       } catch (err) {
-        r.cancel(err);
+        r.cancel(err as NatsError);
       }
 
       const p = Promise.race([r.timer, r.deferred]);

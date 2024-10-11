@@ -429,7 +429,7 @@ export class Bucket implements KV, KvRemove {
         this.direct = false;
       }
     } catch (err) {
-      if (err.message === "stream not found") {
+      if ((err as Error).message === "stream not found") {
         info = await this.jsm.streams.add(sc);
       } else {
         throw err;
@@ -567,7 +567,7 @@ export class Bucket implements KV, KvRemove {
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
-      if (err?.api_error?.err_code !== 10071) {
+      if ((err as NatsError)?.api_error?.err_code !== 10071) {
         return Promise.reject(err);
       }
     }
@@ -648,7 +648,7 @@ export class Bucket implements KV, KvRemove {
       return ke;
     } catch (err) {
       if (
-        err.code === ErrorCode.JetStream404NoMessages
+        (err as NatsError).code === ErrorCode.JetStream404NoMessages
       ) {
         return null;
       }

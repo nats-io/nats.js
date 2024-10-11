@@ -167,8 +167,8 @@ export function flakyTest(
     for (let i = 0; i < count; i++) {
       try {
         return await fn();
-      } catch (error) {
-        errors.push(error);
+      } catch (err) {
+        errors.push(err as Error);
       }
     }
     throw new AggregateError(errors);

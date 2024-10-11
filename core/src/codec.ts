@@ -63,7 +63,7 @@ export function JSONCodec<T = unknown>(
         }
         return TE.encode(JSON.stringify(d));
       } catch (err) {
-        throw NatsError.errorForCode(ErrorCode.BadJson, err);
+        throw NatsError.errorForCode(ErrorCode.BadJson, err as Error);
       }
     },
 
@@ -71,7 +71,7 @@ export function JSONCodec<T = unknown>(
       try {
         return JSON.parse(TD.decode(a), reviver);
       } catch (err) {
-        throw NatsError.errorForCode(ErrorCode.BadJson, err);
+        throw NatsError.errorForCode(ErrorCode.BadJson, err as Error);
       }
     },
   };

@@ -383,8 +383,8 @@ export class ServiceImpl implements Service {
         try {
           handler(err, new ServiceMsgImpl(msg));
         } catch (err) {
-          sv.stats.countError(err);
-          msg?.respond(Empty, { headers: this.errorToHeader(err) });
+          sv.stats.countError(err as Error);
+          msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
         } finally {
           sv.stats.countLatency(start);
         }
@@ -441,7 +441,7 @@ export class ServiceImpl implements Service {
         try {
           h.stats.data = await this.config.statsHandler(h);
         } catch (err) {
-          h.stats.countError(err);
+          h.stats.countError(err as Error);
         }
       }
       endpoints.push(h.stats.stats(h.qi));

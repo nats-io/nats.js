@@ -665,7 +665,7 @@ Deno.test("jetstream - pull errors", async () => {
     try {
       await js.pull(stream, "me", expires);
     } catch (err) {
-      assertEquals(err.code, code);
+      assertEquals((err as NatsError).code, code);
     }
   }
 
@@ -705,8 +705,8 @@ Deno.test("jetstream - pull error: max_waiting", async () => {
     try {
       await js.pull(stream, "me", expires);
     } catch (err) {
-      d.resolve(err);
-      assertEquals(err.code, code);
+      d.resolve(err as NatsError);
+      assertEquals((err as NatsError).code, code);
     }
     return d;
   }
@@ -729,7 +729,7 @@ Deno.test("jetstream - pull error: js not enabled", async () => {
     try {
       await js.pull("stream", "me", expires);
     } catch (err) {
-      noMsgs.resolve(err);
+      noMsgs.resolve(err as NatsError);
     }
     const ne = await noMsgs;
     assertEquals(ne.code, code);
@@ -868,7 +868,7 @@ Deno.test("jetstream - pull on stopped server doesn't close client", async () =>
     try {
       await js.pull(stream, "dur", 500);
     } catch (err) {
-      switch (err.code) {
+      switch ((err as NatsError).code) {
         case ErrorCode.Timeout:
           // js is not ready
           continue;
@@ -876,7 +876,7 @@ Deno.test("jetstream - pull on stopped server doesn't close client", async () =>
           requestTimeouts++;
           break;
         default:
-          fail(`unexpected error: ${err.message}`);
+          fail(`unexpected error: ${(err as Error).message}`);
           break;
       }
     }

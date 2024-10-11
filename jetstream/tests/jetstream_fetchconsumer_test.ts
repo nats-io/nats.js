@@ -506,7 +506,7 @@ Deno.test("jetstream - fetch on stopped server doesn't close client", async () =
         break;
       }
     } catch (err) {
-      fail(`shouldn't have errored: ${err.message}`);
+      fail(`shouldn't have errored: ${(err as Error).message}`);
     }
   }
   await cleanup(ns, nc);
