@@ -555,7 +555,7 @@ export class Bucket implements KV, KvRemove {
     return new KvStoredEntryImpl(this.bucket, this.prefixLen, sm);
   }
 
-  jmToWatchEntry(jm: JsMsg, isUpdate = false): KvWatchEntry {
+  jmToWatchEntry(jm: JsMsg, isUpdate: boolean): KvWatchEntry {
     const key = this.decodeKey(jm.subject.substring(this.prefixLen));
     return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
   }
