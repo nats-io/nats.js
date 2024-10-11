@@ -94,7 +94,7 @@ export class DenoTransport implements Transport {
       }
     } catch (err) {
       this.conn?.close();
-      throw err.name === "ConnectionRefused"
+      throw (err as NatsError)?.name === "ConnectionRefused"
         ? NatsError.errorForCode(ErrorCode.ConnectionRefused)
         : err;
     }
@@ -190,7 +190,7 @@ export class DenoTransport implements Transport {
           yield frame;
         }
       } catch (err) {
-        reason = err;
+        reason = err as Error;
         break;
       }
     }

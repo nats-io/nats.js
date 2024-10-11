@@ -166,7 +166,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return this.iterClosed;
   }
 
-  stop(err?: Error) {
+  override stop(err?: Error) {
     if (this.done) {
       return;
     }
@@ -207,7 +207,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           fn();
         }
       } catch (err) {
-        this.stop(err);
+        this.stop(err as Error);
       }
     }
   }

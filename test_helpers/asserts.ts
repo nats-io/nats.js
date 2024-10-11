@@ -51,7 +51,7 @@ export async function assertThrowsAsyncErrorCode<T = void>(
     await fn();
     fail("expected to throw");
   } catch (err) {
-    assertErrorCode(err, ...codes);
+    assertErrorCode(err as Error, ...codes);
   }
 }
 

@@ -38,7 +38,6 @@ import {
   StringCodec,
 } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { crypto } from "https://deno.land/std@0.221.0/crypto/mod.ts";
 import type { ObjectInfo, ObjectStoreMeta } from "../src/types.ts";
 import { jetstreamManager, StorageType } from "@nats-io/jetstream";
 import { equals } from "https://deno.land/std@0.221.0/bytes/mod.ts";

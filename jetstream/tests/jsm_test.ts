@@ -2201,7 +2201,7 @@ Deno.test("jsm - validate stream name in operations", async () => {
         const m = v === ""
           ? "stream name required"
           : `invalid stream name - stream name cannot contain '${v}'`;
-        assertEquals(err.message, m, `${test.name} - ${m}`);
+        assertEquals((err as Error).message, m, `${test.name} - ${m}`);
       }
     }
   }
@@ -2232,7 +2232,7 @@ Deno.test("jsm - validate consumer name", async () => {
       if (v === "\n") v = "\\n";
       if (v === "\t") v = "\\t";
       const m = `invalid durable name - durable name cannot contain '${v}'`;
-      assertEquals(err.message, m);
+      assertEquals((err as Error).message, m);
     }
   }
 
@@ -2249,7 +2249,7 @@ Deno.test("jsm - validate consumer name", async () => {
       if (v === "\n") v = "\\n";
       if (v === "\t") v = "\\t";
       const m = `consumer 'name' cannot contain '${v}'`;
-      assertEquals(err.message, m);
+      assertEquals((err as Error).message, m);
     }
   }
 
@@ -2300,7 +2300,7 @@ Deno.test("jsm - validate consumer name in operations", async () => {
         const m = v === ""
           ? "durable name required"
           : `invalid durable name - durable name cannot contain '${v}'`;
-        assertEquals(err.message, m, `${test.name} - ${m}`);
+        assertEquals((err as Error).message, m, `${test.name} - ${m}`);
       }
     }
   }

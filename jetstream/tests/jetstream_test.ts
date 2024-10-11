@@ -1271,8 +1271,8 @@ Deno.test("jetstream - ordered consumer reset", async () => {
       ack = await js.publish(subj);
       break;
     } catch (err) {
-      if (err.code !== ErrorCode.Timeout) {
-        fail(err.message);
+      if ((err as NatsError).code !== ErrorCode.Timeout) {
+        fail((err as Error).message);
       }
       await delay(1000);
     }

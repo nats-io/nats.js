@@ -89,7 +89,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
         minValidation("name", name);
       } catch (err) {
         // if we have a cannot contain the message, massage a bit
-        const m = err.message;
+        const m = (err as Error).message;
         const idx = m.indexOf("cannot contain");
         if (idx !== -1) {
           throw new Error(`consumer 'name' ${m.substring(idx)}`);
