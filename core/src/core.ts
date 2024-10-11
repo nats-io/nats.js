@@ -139,8 +139,6 @@ export class Messages {
 const messages: Messages = new Messages();
 
 export class NatsError extends Error {
-  name: string;
-  message: string;
   // TODO: on major version this should change to a number/enum
   code: string;
   permissionContext?: { operation: string; subject: string; queue?: string };

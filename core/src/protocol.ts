@@ -583,7 +583,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       if (timer) {
         timer.cancel();
       }
-      await this.transport.close(err);
+      await this.transport.close(err as Error);
       throw err;
     }
   }
@@ -608,7 +608,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         // if here we connected
         return;
       } catch (err) {
-        lastErr = err;
+        lastErr = err as Error;
       }
     }
     // if we are here, we failed, and we have no additional
@@ -659,7 +659,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
           await this._doDial(srv);
           break;
         } catch (err) {
-          lastError = err;
+          lastError = err as Error;
           if (!this.connectedOnce) {
             if (this.options.waitOnFirstConnect) {
               continue;
@@ -839,7 +839,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         this.transport.send(PING_CMD);
       } catch (err) {
         // if we are dying here, this is likely some an authenticator blowing up
-        this._close(err);
+        this._close(err as Error);
       }
     }
     if (updates) {

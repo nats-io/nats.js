@@ -202,15 +202,15 @@ export class TypedSubscription<T> extends QueuedIteratorImpl<T>
     return this.sub.getSubject();
   }
 
-  getReceived(): number {
+  override getReceived(): number {
     return this.sub.getReceived();
   }
 
-  getProcessed(): number {
+  override getProcessed(): number {
     return this.sub.getProcessed();
   }
 
-  getPending(): number {
+  override getPending(): number {
     return this.sub.getPending();
   }
 

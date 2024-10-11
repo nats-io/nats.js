@@ -435,7 +435,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           fn();
         }
       } catch (err) {
-        this.stop(err);
+        this.stop(err as Error);
       }
     }
   }
@@ -493,14 +493,14 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         return true;
       } catch (err) {
         // game over
-        if (err.message === "stream not found") {
+        if ((err as Error).message === "stream not found") {
           streamNotFound++;
           this.notify(ConsumerEvents.StreamNotFound, streamNotFound);
           if (!this.isConsume || this.abortOnMissingResource) {
-            this.stop(err);
+            this.stop(err as Error);
             return false;
           }
-        } else if (err.message === "consumer not found") {
+        } else if ((err as Error).message === "consumer not found") {
           notFound++;
           this.notify(ConsumerEvents.ConsumerNotFound, notFound);
           if (!this.isConsume || this.abortOnMissingResource) {
@@ -508,7 +508,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
               const ocs = this.consumer.orderedConsumerState!;
               ocs.needsReset = true;
             }
-            this.stop(err);
+            this.stop(err as Error);
             return false;
           }
           if (this.consumer.ordered) {
@@ -595,7 +595,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.timeout = null;
   }
 
-  stop(err?: Error) {
+  override stop(err?: Error) {
     if (this.done) {
       return;
     }

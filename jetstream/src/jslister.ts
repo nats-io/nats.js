@@ -77,7 +77,7 @@ export class ListerImpl<T> implements Lister<T>, AsyncIterable<T> {
       this.offset += count;
       return this.filter(r);
     } catch (err) {
-      this.err = err;
+      this.err = err as Error;
       throw err;
     }
   }

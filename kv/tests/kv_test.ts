@@ -116,7 +116,9 @@ Deno.test("kv - key validation", () => {
       validateKey(v);
     } catch (err) {
       throw new Error(
-        `expected '${v}' to be a valid key, but was rejected: ${err.message}`,
+        `expected '${v}' to be a valid key, but was rejected: ${
+          (err as Error).message
+        }`,
       );
     }
   }
@@ -147,7 +149,9 @@ Deno.test("kv - bucket name validation", () => {
       validateBucket(v);
     } catch (err) {
       throw new Error(
-        `expected '${v}' to be a valid bucket name, but was rejected: ${err.message}`,
+        `expected '${v}' to be a valid bucket name, but was rejected: ${
+          (err as Error).message
+        }`,
       );
     }
   }

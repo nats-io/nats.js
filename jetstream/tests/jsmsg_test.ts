@@ -70,7 +70,7 @@ Deno.test("jsmsg - parse rejects subject is not 9 tokens", () => {
       }
     } catch (err) {
       if (ok) {
-        fail(`${s} shouldn't have failed to parse: ${err.message}`);
+        fail(`${s} shouldn't have failed to parse: ${(err as Error).message}`);
       }
     }
   };

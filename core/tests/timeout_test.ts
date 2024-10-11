@@ -23,7 +23,7 @@ Deno.test("timeout - request noMux stack is useful", async () => {
     await nc.request(subj, Empty, { noMux: true, timeout: 250 });
     fail("request should have failed!");
   } catch (err) {
-    assertStringIncludes(err.stack, "timeout_test");
+    assertStringIncludes((err as Error).stack || "", "timeout_test");
   }
   await nc.close();
 });
@@ -35,7 +35,7 @@ Deno.test("timeout - request stack is useful", async () => {
     await nc.request(subj, Empty, { timeout: 250 });
     fail("request should have failed!");
   } catch (err) {
-    assertStringIncludes(err.stack, "timeout_test");
+    assertStringIncludes((err as Error).stack || "", "timeout_test");
   }
   await nc.close();
 });

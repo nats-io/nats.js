@@ -83,7 +83,7 @@ Deno.test("jsm - stream update properties", async () => {
       }
     } catch (err) {
       if (!shouldFail) {
-        fail(err.message);
+        fail((err as Error).message);
       }
     }
   }

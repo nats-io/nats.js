@@ -14,7 +14,7 @@
  */
 import { assert, assertEquals, fail } from "jsr:@std/assert";
 import { createInbox, ErrorCode, StringCodec } from "../src/internal_mod.ts";
-import type { Msg } from "../src/internal_mod.ts";
+import type { Msg, NatsError } from "../src/internal_mod.ts";
 import {
   assertThrowsAsyncErrorCode,
   assertThrowsErrorCode,
@@ -160,7 +160,7 @@ Deno.test("drain - reject reqrep during connection drain", async () => {
           fail("shouldn't have been able to request");
           lock.unlock();
         } catch (err) {
-          assertEquals(err.code, ErrorCode.ConnectionDraining);
+          assertEquals((err as NatsError).code, ErrorCode.ConnectionDraining);
           lock.unlock();
         }
       }

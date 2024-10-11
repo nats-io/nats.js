@@ -282,7 +282,7 @@ export class NatsServer implements PortInfo {
       Deno.removeSync(portsFile);
     } catch (err) {
       if (!(err instanceof Deno.errors.NotFound)) {
-        console.log(err.message);
+        console.log((err as Error).message);
       }
     }
   }
@@ -292,7 +292,7 @@ export class NatsServer implements PortInfo {
       Deno.removeSync(this.configFile);
     } catch (err) {
       if (!(err instanceof Deno.errors.NotFound)) {
-        console.log(err.message);
+        console.log((err as Error).message);
       }
     }
   }
@@ -303,7 +303,7 @@ export class NatsServer implements PortInfo {
         Deno.removeSync(this.config.jetstream.store_dir, { recursive: true });
       } catch (err) {
         if (!(err instanceof Deno.errors.NotFound)) {
-          console.log(err.message);
+          console.log((err as Error).message);
         }
       }
     }
@@ -484,7 +484,7 @@ export class NatsServer implements PortInfo {
     proms: Promise<NatsServer>[],
     debug = false,
   ): Promise<NatsServer[]> {
-    const errs = 0;
+    let errs = 0;
     let servers: NatsServer[] = [];
     const statusProms: Promise<JSZ>[] = [];
     const leaders: string[] = [];
@@ -537,7 +537,7 @@ export class NatsServer implements PortInfo {
           }
         }
       } catch (err) {
-        err++;
+        errs++;
         if (errs > 10) {
           throw err;
         }

@@ -90,7 +90,7 @@ export class ServiceClientImpl implements ServiceClient {
         } catch (err) {
           // @ts-ignore: pushing fn
           iter.push(() => {
-            iter.stop(err);
+            iter.stop(err as Error);
           });
         }
       }

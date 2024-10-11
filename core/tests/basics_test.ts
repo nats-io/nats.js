@@ -110,7 +110,7 @@ Deno.test("basics - no publish without subject", async () => {
     nc.publish("");
     fail("should not be able to publish without a subject");
   } catch (err) {
-    assertEquals(err.code, ErrorCode.BadSubject);
+    assertEquals((err as NatsError).code, ErrorCode.BadSubject);
   } finally {
     await cleanup(ns, nc);
   }
@@ -723,14 +723,14 @@ Deno.test("basics - no max_payload messages", async () => {
     nc.publish(subj, big);
     fail();
   } catch (err) {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
+    assertErrorCode(err as NatsError, ErrorCode.MaxPayloadExceeded);
   }
 
   try {
     await nc.request(subj, big).then();
     fail();
   } catch (err) {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
+    assertErrorCode(err as NatsError, ErrorCode.MaxPayloadExceeded);
   }
 
   const sub = nc.subscribe(subj);
@@ -1238,7 +1238,9 @@ Deno.test("basics - initial connect error", async () => {
     // in node we may get a disconnect which we generated
     // in deno we get the connection reset - but if running in CI this may turn out to be
     // a connection refused
-    assertArrayIncludes(["ECONNRESET", "CONNECTION_REFUSED"], [err.code]);
+    assertArrayIncludes(["ECONNRESET", "CONNECTION_REFUSED"], [
+      (err as NatsError).code,
+    ]);
   }
   listener.close();
   await done;

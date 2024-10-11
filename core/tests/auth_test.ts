@@ -75,7 +75,7 @@ Deno.test("auth - none", async () => {
     await nc.close();
     fail("shouldnt have been able to connect");
   } catch (ex) {
-    assertErrorCode(ex, ErrorCode.AuthorizationViolation);
+    assertErrorCode(ex as NatsError, ErrorCode.AuthorizationViolation);
   }
   await ns.stop();
 });
@@ -89,7 +89,7 @@ Deno.test("auth - bad", async () => {
     await nc.close();
     fail("shouldnt have been able to connect");
   } catch (ex) {
-    assertErrorCode(ex, ErrorCode.AuthorizationViolation);
+    assertErrorCode(ex as NatsError, ErrorCode.AuthorizationViolation);
   }
   await ns.stop();
 });
@@ -447,7 +447,7 @@ Deno.test("basics - bad auth", async () => {
       },
     );
   } catch (err) {
-    assertErrorCode(err, ErrorCode.AuthorizationViolation);
+    assertErrorCode(err as NatsError, ErrorCode.AuthorizationViolation);
   }
 });
 

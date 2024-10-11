@@ -17,6 +17,7 @@ import type {
   Msg,
   MsgHdrs,
   MsgImpl,
+  NatsError,
   ProtocolHandler,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
@@ -256,13 +257,13 @@ export class JsMsgImpl implements JsMsg {
             },
           );
         } catch (err) {
-          r.cancel(err);
+          r.cancel(err as NatsError);
         }
         try {
           await Promise.race([r.timer, r.deferred]);
           d.resolve(true);
         } catch (err) {
-          r.cancel(err);
+          r.cancel(err as NatsError);
           d.reject(err);
         }
       } else {

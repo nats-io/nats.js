@@ -40,7 +40,8 @@ import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
 } from "../src/consumer.ts";
-import { fail } from "node:assert";
+import { StreamImpl } from "../src/jsmstream_api.ts";
+import { delayUntilAssetNotFound } from "./util.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -769,12 +770,14 @@ Deno.test("ordered consumers - next stream not found", async () => {
 Deno.test("ordered consumers - fetch stream not found", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
 
   const js = jetstream(nc);
   const c = await js.consumers.get("A");
 
+  const s = new StreamImpl(jsm.streams, si);
   await jsm.streams.delete("A");
+  await delayUntilAssetNotFound(s);
 
   const iter = await c.fetch({
     expires: 3000,
@@ -1110,18 +1113,7 @@ Deno.test("ordered consumers - stale reference recovers", async () => {
   assert(await c.delete());
 
   // continue until the server says the consumer doesn't exist
-  while (true) {
-    try {
-      await c.info();
-      await delay(20);
-    } catch (err) {
-      if (err.message === "consumer not found") {
-        break;
-      } else {
-        fail(err.message);
-      }
-    }
-  }
+  await delayUntilAssetNotFound(c);
 
   // so should get that error once
   await assertRejects(
@@ -1151,18 +1143,7 @@ Deno.test("ordered consumers - consume stale reference recovers", async () => {
   const c = await js.consumers.get("A") as PullConsumerImpl;
   assert(await c.delete());
   // continue until the server says the consumer doesn't exist
-  while (true) {
-    try {
-      await c.info();
-      await delay(20);
-    } catch (err) {
-      if (err.message === "consumer not found") {
-        break;
-      } else {
-        fail(err.message);
-      }
-    }
-  }
+  await delayUntilAssetNotFound(c);
 
   const iter = await c.consume({ idle_heartbeat: 1_000, expires: 30_000 });
 
