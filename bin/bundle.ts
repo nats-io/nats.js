@@ -13,26 +13,31 @@
  * limitations under the License.
  */
 import { cli } from "https://deno.land/x/cobra@v0.0.9/mod.ts";
-import { bundle } from "https://deno.land/x/emit@0.26.0/mod.ts";
+import * as esbuild from "npm:esbuild@0.20.2";
+// Import the Wasm build on platforms where running subprocesses is not
+// permitted, such as Deno Deploy, or when running without `--allow-run`.
+// import * as esbuild from "https://deno.land/x/esbuild@0.20.2/wasm.js";
+
+import { denoPlugins } from "jsr:@luca/esbuild-deno-loader@^0.11.0";
 
 const root = cli({
   use: "bundle javascript/typescript",
   run: async (_cmd, _args, flags) => {
     const src = flags.value<string>("src");
     const out = flags.value<string>("out");
-    const type = flags.value<boolean>("module") ? "module" : "classic";
-    try {
-      const r = URL.canParse(src)
-        ? await bundle(new URL(src), { type })
-        : await bundle(src, { type });
-      await Deno.writeTextFile(out, r.code);
-      console.log(`wrote ${out}`);
-      return 0;
-    } catch (err) {
-      console.log(`failed to bundle: ${err.message}`);
-      console.log(err.stack);
-      return 1;
-    }
+
+    const result = await esbuild.build({
+      plugins: [...denoPlugins()],
+      entryPoints: [src],
+      outfile: out,
+      bundle: true,
+      format: "esm",
+    });
+
+    console.log(result.outputFiles || out);
+
+    esbuild.stop();
+    return 0;
   },
 });
 
