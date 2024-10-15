@@ -180,7 +180,7 @@ export class WsTransport implements Transport {
     this._closed(undefined, true);
   }
 
-  private async _closed(err?: Error, internal = true): Promise<void> {
+  private async _closed(err?: Error, _internal = true): Promise<void> {
     if (this.done) {
       try {
         this.socket.close();

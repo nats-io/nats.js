@@ -23,7 +23,6 @@ import {
 import {
   createInbox,
   DebugEvents,
-  delay,
   ErrorCode,
   Events,
   wsconnect,
