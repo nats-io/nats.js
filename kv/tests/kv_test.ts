@@ -2161,3 +2161,34 @@ Deno.test("kv - sourced", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - watch isUpdate", async () => {
+  const { ns, nc } = await _setup(
+    connect,
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+
+  const js = jetstream(nc);
+  const kvm = await new Kvm(js);
+  const kv = await kvm.create("A");
+  await kv.put("a", "hello");
+  await kv.delete("a");
+
+  const iter = await kv.watch({ ignoreDeletes: true });
+  const done = (async () => {
+    for await (const e of iter) {
+      if (e.key === "b") {
+        assertEquals(e.isUpdate, true);
+        break;
+      }
+    }
+  })();
+  await kv.put("b", "hello");
+
+  await done;
+
+  await cleanup(ns, nc);
+});

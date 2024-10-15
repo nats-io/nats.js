@@ -13,6 +13,12 @@
  * limitations under the License.
  */
 
+import type {
+  MsgHdrs,
+  NatsConnection,
+  NatsError,
+  QueuedIterator,
+} from "@nats-io/nats-core/internal";
 import {
   Base64UrlPaddedCodec,
   DataBuffer,
@@ -25,23 +31,6 @@ import {
   QueuedIteratorImpl,
   SHA256,
 } from "@nats-io/nats-core/internal";
-
-import type {
-  MsgHdrs,
-  NatsConnection,
-  NatsError,
-  QueuedIterator,
-} from "@nats-io/nats-core/internal";
-
-import {
-  DeliverPolicy,
-  DiscardPolicy,
-  JsHeaders,
-  ListerImpl,
-  PubHeaders,
-  StoreCompression,
-  toJetStreamClient,
-} from "@nats-io/jetstream/internal";
 
 import type {
   ConsumerConfig,
@@ -59,6 +48,15 @@ import type {
   StreamInfoRequestOptions,
   StreamListResponse,
 } from "@nats-io/jetstream/internal";
+import {
+  DeliverPolicy,
+  DiscardPolicy,
+  JsHeaders,
+  ListerImpl,
+  PubHeaders,
+  StoreCompression,
+  toJetStreamClient,
+} from "@nats-io/jetstream/internal";
 
 import type {
   ObjectInfo,
@@ -69,6 +67,7 @@ import type {
   ObjectStoreOptions,
   ObjectStorePutOpts,
   ObjectStoreStatus,
+  ObjectWatchInfo,
 } from "./types.ts";
 
 export const osPrefix = "OBJ_";
@@ -340,13 +339,12 @@ export class ObjectStoreImpl implements ObjectStore {
     const iter = await this.watch({
       ignoreDeletes: true,
       includeHistory: true,
+      //@ts-ignore: hidden
+      historyOnly: true,
     });
+
+    // historyOnly will stop the iterator
     for await (const info of iter) {
-      // watch will give a null when it has initialized
-      // for us that is the hint we are done
-      if (info === null) {
-        break;
-      }
       buf.push(info);
     }
     return Promise.resolve(buf);
@@ -803,19 +801,17 @@ export class ObjectStoreImpl implements ObjectStore {
       ignoreDeletes?: boolean;
       includeHistory?: boolean;
     }
-  > = {}): Promise<QueuedIterator<ObjectInfo | null>> {
+  > = {}): Promise<QueuedIterator<ObjectWatchInfo>> {
     opts.includeHistory = opts.includeHistory ?? false;
     opts.ignoreDeletes = opts.ignoreDeletes ?? false;
-    let initialized = false;
-    const qi = new QueuedIteratorImpl<ObjectInfo | null>();
+    // @ts-ignore: not exposed
+    const historyOnly = opts.historyOnly ?? false;
+    const qi = new QueuedIteratorImpl<ObjectWatchInfo>();
     const subj = this._metaSubjectAll();
     try {
       await this.jsm.streams.getMessage(this.stream, { last_by_subj: subj });
     } catch (err) {
-      if ((err as NatsError).code === "404") {
-        qi.push(null);
-        initialized = true;
-      } else {
+      if ((err as NatsError).code !== "404") {
         qi.stop(err as Error);
       }
     }
@@ -827,27 +823,37 @@ export class ObjectStoreImpl implements ObjectStore {
     } else {
       // FIXME: Go's implementation doesn't seem correct - if history is not desired
       //  the watch should only be giving notifications on new entries
-      initialized = true;
       cc.deliver_policy = DeliverPolicy.New;
     }
 
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info(true);
+    const count = info.num_pending;
+    let isUpdate = cc.deliver_policy === DeliverPolicy.New || count === 0;
     qi._data = oc;
-
+    let i = 0;
     const iter = await oc.consume({
       callback: (jm: JsMsg) => {
-        const oi = jm.json<ObjectInfo>();
+        if (!isUpdate) {
+          i++;
+          isUpdate = i >= count;
+        }
+        const oi = jm.json<ObjectWatchInfo>();
+        oi.isUpdate = isUpdate;
         if (oi.deleted && opts.ignoreDeletes === true) {
           // do nothing
         } else {
           qi.push(oi);
         }
-        if (jm.info?.pending === 0 && !initialized) {
-          initialized = true;
-          qi.push(null);
+        if (historyOnly && i === count) {
+          iter.stop();
         }
       },
     });
+
+    if (historyOnly && count === 0) {
+      iter.stop();
+    }
 
     iter.closed().then(() => {
       qi.push(() => {

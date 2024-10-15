@@ -414,6 +414,48 @@ Deno.test("objectstore - list", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("objectstore - list no updates", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+  const objm = new Objm(nc);
+  const os = await objm.create("test");
+
+  let infos = await os.list();
+  assertEquals(infos.length, 0);
+
+  await os.put({ name: "a" }, readableStreamFrom(new Uint8Array(0)));
+  infos = await os.list();
+  assertEquals(infos.length, 1);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - watch isUpdate", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+  const objm = new Objm(nc);
+  const os = await objm.create("test");
+  await os.put({ name: "a" }, readableStreamFrom(new Uint8Array(0)));
+
+  const watches = await os.watch();
+  await os.put({ name: "b" }, readableStreamFrom(new Uint8Array(0)));
+
+  for await (const e of watches) {
+    if (e.name === "b") {
+      assertEquals(e.isUpdate, true);
+      break;
+    } else {
+      assertEquals(e.isUpdate, false);
+    }
+  }
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("objectstore - watch initially empty", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {

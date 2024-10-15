@@ -858,10 +858,12 @@ export class Bucket implements KV, KvRemove {
     let isUpdate = content === KvWatchInclude.UpdatesOnly || count === 0;
 
     qi._data = oc;
+    let i = 0;
     const iter = await oc.consume({
       callback: (m) => {
         if (!isUpdate) {
-          isUpdate = qi.received >= count;
+          i++;
+          isUpdate = i >= count;
         }
         const e = this.jmToWatchEntry(m, isUpdate);
         if (ignoreDeletes && e.operation === "DEL") {
