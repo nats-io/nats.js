@@ -74,8 +74,12 @@ if (argv.headers) {
 }
 
 for (let i = 1; i <= count; i++) {
-  nc.publish(subject, payload, pubopts);
-  console.log(`[${i}] ${subject}: ${payload}`);
+  let d = payload;
+  if (d === "") {
+    d = `${i}`;
+  }
+  nc.publish(subject, d, pubopts);
+  console.log(`[${i}] ${subject}: ${d}`);
   if (interval) {
     await delay(interval);
   }
