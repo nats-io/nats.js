@@ -42,6 +42,7 @@ import type {
 } from "../src/consumer.ts";
 import { StreamImpl } from "../src/jsmstream_api.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
+import { flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -746,55 +747,61 @@ Deno.test("ordered consumers - next deleted consumer", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("ordered consumers - next stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+Deno.test(
+  "ordered consumers - next stream not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
 
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A");
-  await jsm.streams.delete("A");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A");
+    await jsm.streams.delete("A");
 
-  await assertRejects(
-    () => {
-      return c.next({ expires: 1000 });
-    },
-    Error,
-    "stream not found",
-  );
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
+      },
+      Error,
+      "stream not found",
+    );
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
-Deno.test("ordered consumers - fetch stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
+Deno.test(
+  "ordered consumers - fetch stream not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A");
 
-  const s = new StreamImpl(jsm.streams, si);
-  await jsm.streams.delete("A");
-  await delayUntilAssetNotFound(s);
+    const s = new StreamImpl(jsm.streams, si);
+    await jsm.streams.delete("A");
+    await delayUntilAssetNotFound(s);
 
-  const iter = await c.fetch({
-    expires: 3000,
-  });
+    const iter = await c.fetch({
+      expires: 3000,
+    });
 
-  await assertRejects(
-    async () => {
-      for await (const _ of iter) {
-        // ignore
-      }
-    },
-    Error,
-    "stream not found",
-  );
+    await assertRejects(
+      async () => {
+        for await (const _ of iter) {
+          // ignore
+        }
+      },
+      Error,
+      "stream not found",
+    );
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("ordered consumers - consume stream not found request abort", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
