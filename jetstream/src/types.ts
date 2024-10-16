@@ -732,15 +732,6 @@ export interface JetStreamClient {
   ): Promise<PubAck>;
 
   /**
-   * Retrieves a single message from JetStream
-   * @param stream - the name of the stream
-   * @param consumer - the consumer's durable name (if durable) or name if ephemeral
-   * @param expires - the number of milliseconds to wait for a message
-   * @deprecated - use {@link Consumer#fetch()}
-   */
-  pull(stream: string, consumer: string, expires?: number): Promise<JsMsg>;
-
-  /**
    * Similar to pull, but able to configure the number of messages, etc. via PullOptions.
    * @param stream - the name of the stream
    * @param durable - the consumer's durable name (if durable) or name if ephemeral

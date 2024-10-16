@@ -98,6 +98,9 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - Consumer.status() now returns `AsyncIterable<ConsumerStatus>` instead of a
   `Promise<AsyncIterable<ConsumerStatus>>`
 
+- `JetStreamClient.pull()` was deprecated and was removed. Use
+  `Consumer.next()`.
+
 ## Changes to KV
 
 To use KV, you must install and import `@nats-io/kv`, and create an instance of
@@ -171,10 +174,9 @@ const service = await svc.add({
 
 ### Watch
 
-Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but adding the property
-`isUpdate` this property is now true when the watch is notifying of a new entry. Note that previously
-the iterator would yield `ObjectInfo | null`, the `null` signal has been removed. This means that
-when doing a watch on an empty ObjectStore you won't get an update notification until an actual value
-arrives.
-
-
+Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but
+adding the property `isUpdate` this property is now true when the watch is
+notifying of a new entry. Note that previously the iterator would yield
+`ObjectInfo | null`, the `null` signal has been removed. This means that when
+doing a watch on an empty ObjectStore you won't get an update notification until
+an actual value arrives.

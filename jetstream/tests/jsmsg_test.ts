@@ -275,7 +275,8 @@ Deno.test("jsmsg - ackAck legacy timeout", async () => {
   await js.publish("a.a");
 
   await jsm.consumers.add("A", { durable_name: "a" });
-  const jm = await js.pull("A", "a");
+  const c = await js.consumers.get("A", "a");
+  const jm = await c.next();
   // change the subject
   ((jm as JsMsgImpl).msg as MsgImpl)._reply = "xxxx";
   nc.subscribe("xxxx");
