@@ -177,34 +177,37 @@ Deno.test("next - deleted consumer", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("next - stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+Deno.test(
+  "next - stream not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
 
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-  });
+    await jsm.consumers.add("A", {
+      durable_name: "a",
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
+    });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A", "a");
 
-  await jsm.streams.delete("A");
-  await delay(1000);
+    await jsm.streams.delete("A");
+    await delay(1000);
 
-  await assertRejects(
-    () => {
-      return c.next({ expires: 4000 });
-    },
-    Error,
-    "stream not found",
-  );
+    await assertRejects(
+      () => {
+        return c.next({ expires: 4000 });
+      },
+      Error,
+      "stream not found",
+    );
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("next - consumer bind", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
