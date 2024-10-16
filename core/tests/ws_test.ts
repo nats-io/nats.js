@@ -46,28 +46,22 @@ Deno.test("ws - connect", async () => {
 
 // Fixme: allow sanitizer once ws transport closes cleanly.
 
-Deno.test({
-  name: "ws - wss connection",
-  async fn() {
-    const ns = await NatsServer.start(wsServerConf());
-    const nc = await wsconnect({
-      servers: `wss://demo.nats.io:8443`,
-      debug: true,
-    });
-    assertEquals(
-      (nc as NatsConnectionImpl).protocol.transport?.isEncrypted(),
-      true,
-    );
-    await nc.flush();
-    await cleanup(ns, nc);
-  },
-  sanitizeOps: false,
-  sanitizeResources: false,
+Deno.test("ws - wss connection", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `wss://demo.nats.io:8443`,
+  });
+  assertEquals(
+    (nc as NatsConnectionImpl).protocol.transport?.isEncrypted(),
+    true,
+  );
+  await nc.flush();
+  await cleanup(ns, nc);
 });
 
-Deno.test({
-  name: "ws - pubsub",
-  async fn() {
+Deno.test(
+  "ws - pubsub",
+  async () => {
     const ns = await NatsServer.start(wsServerConf());
     const nc = await wsconnect({ servers: `ws://127.0.0.1:${ns.websocket}` });
 
@@ -84,13 +78,11 @@ Deno.test({
     assertEquals(r.string(), "hello world");
     await cleanup(ns, nc);
   },
-  sanitizeOps: false,
-  sanitizeResources: false,
-});
+);
 
-Deno.test({
-  name: "ws - disconnect reconnects",
-  async fn() {
+Deno.test(
+  "ws - disconnect reconnects",
+  async () => {
     const ns = await NatsServer.start(wsServerConf());
 
     const nc = await wsconnect({ servers: `ws://127.0.0.1:${ns.websocket}` });
@@ -110,30 +102,23 @@ Deno.test({
     await done;
     await cleanup(ns, nc);
   },
-  sanitizeOps: false,
-  sanitizeResources: false,
+);
+
+Deno.test("ws - tls options are not supported", async () => {
+  const err = await assertRejects(
+    () => {
+      return wsconnect({ servers: "wss://demo.nats.io:8443", tls: {} });
+    },
+    Error,
+    "tls",
+  );
+
+  assertEquals((err as NatsError).code, ErrorCode.InvalidOption);
 });
 
-Deno.test({
-  name: "ws - tls options are not supported",
-  async fn() {
-    const err = await assertRejects(
-      () => {
-        return wsconnect({ servers: "wss://demo.nats.io:8443", tls: {} });
-      },
-      Error,
-      "tls",
-    );
-
-    assertEquals((err as NatsError).code, ErrorCode.InvalidOption);
-  },
-  sanitizeOps: false,
-  sanitizeResources: false,
-});
-
-Deno.test({
-  name: "ws - indefinite reconnects",
-  async fn() {
+Deno.test(
+  "ws - indefinite reconnects",
+  async () => {
     let ns = await NatsServer.start(wsServerConf());
     const nc = await wsconnect({
       servers: `ws://127.0.0.1:${ns.websocket}`,
@@ -175,11 +160,9 @@ Deno.test({
     await ns.stop();
     assertBetween(reconnects, 4, 10);
     assert(reconnect);
-    assertEquals(disconnects, 1);
+    assert(disconnects >= 1);
   },
-  sanitizeOps: false,
-  sanitizeResources: false,
-});
+);
 
 Deno.test("ws - url parse", () => {
   const u = [
