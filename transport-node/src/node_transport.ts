@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import type { ConnectionOptions } from "./nats-base-client";
 import {
   checkOptions,
   DataBuffer,
@@ -26,8 +27,6 @@ import {
   ServerInfo,
   Transport,
 } from "./nats-base-client";
-
-import type { ConnectionOptions } from "./nats-base-client";
 import { createConnection, Socket } from "node:net";
 import { connect as tlsConnect, TlsOptions, TLSSocket } from "node:tls";
 import { resolve } from "node:path";
@@ -35,6 +34,7 @@ import { existsSync, readFile } from "node:fs";
 import dns from "node:dns";
 import { Buffer } from "node:buffer";
 import { version } from "./version";
+
 export const VERSION = version;
 const LANG = "nats.js";
 
@@ -55,7 +55,6 @@ export class NodeTransport implements Transport {
     this.lang = LANG;
     this.version = VERSION;
   }
-
   async connect(
     hp: { hostname: string; port: number; tlsName: string },
     options: ConnectionOptions,
@@ -70,6 +69,10 @@ export class NodeTransport implements Transport {
       } else {
         this.socket = await this.dial(hp);
       }
+      // protocol could have terminated
+      if (this.done) {
+        this.socket?.destroy();
+      }
 
       const info = await this.peekInfo();
       checkOptions(info, options);
@@ -77,6 +80,10 @@ export class NodeTransport implements Transport {
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
         this.socket = await this.startTLS();
+      }
+
+      if (this.done) {
+        this.socket?.destroy();
       }
 
       //@ts-ignore: this is possibly a TlsSocket
@@ -103,9 +110,7 @@ export class NodeTransport implements Transport {
       const perr = code === "ECONNREFUSED"
         ? NatsError.errorForCode(ErrorCode.ConnectionRefused, err)
         : err;
-      if (this.socket) {
-        this.socket.destroy();
-      }
+      this.socket?.destroy();
       throw perr;
     }
   }
@@ -428,7 +433,10 @@ export class NodeTransport implements Transport {
   private async _closed(err?: Error, internal = true): Promise<void> {
     // if this connection didn't succeed, then ignore it.
     if (!this.connected) return;
-    if (this.done) return;
+    if (this.done) {
+      this.socket?.destroy();
+      return;
+    }
     this.closeError = err;
     // only try to flush the outbound buffer if we got no error and
     // the close is internal, if the transport closed, we are done.
@@ -444,7 +452,7 @@ export class NodeTransport implements Transport {
     try {
       if (this.socket) {
         this.socket.removeAllListeners();
-        this.socket.destroy();
+        this.socket?.destroy();
         this.socket = undefined;
       }
     } catch (err) {
