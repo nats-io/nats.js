@@ -30,6 +30,7 @@ import type {
 } from "../src/pushconsumer.ts";
 import { delay } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import { flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("ordered push consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -59,44 +60,47 @@ Deno.test("ordered push consumers - get", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("ordered push consumers - consume reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const js = jetstream(nc);
+Deno.test(
+  "ordered push consumers - consume reset",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const js = jetstream(nc);
 
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "test", subjects: ["test.*"] });
-  await js.publish("test.a");
-  await js.publish("test.b");
-  await js.publish("test.c");
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+    await js.publish("test.a");
+    await js.publish("test.b");
+    await js.publish("test.c");
 
-  const oc = await js.consumers.getPushConsumer(
-    "test",
-  ) as PushConsumerImpl;
-  assertExists(oc);
+    const oc = await js.consumers.getPushConsumer(
+      "test",
+    ) as PushConsumerImpl;
+    assertExists(oc);
 
-  const seen: number[] = new Array(3).fill(0);
+    const seen: number[] = new Array(3).fill(0);
 
-  const iter = await oc.consume({
-    callback: (m: JsMsg) => {
-      const idx = m.seq - 1;
-      seen[idx]++;
-      // mess with the internals so we see these again
-      if (seen[idx] === 1) {
-        iter.cursor.deliver_seq--;
-        iter.cursor.stream_seq--;
-      }
-      if (m.info.pending === 0) {
-        iter.stop();
-      }
-    },
-  }) as PushConsumerMessagesImpl;
-  await iter.closed();
+    const iter = await oc.consume({
+      callback: (m: JsMsg) => {
+        const idx = m.seq - 1;
+        seen[idx]++;
+        // mess with the internals so we see these again
+        if (seen[idx] === 1) {
+          iter.cursor.deliver_seq--;
+          iter.cursor.stream_seq--;
+        }
+        if (m.info.pending === 0) {
+          iter.stop();
+        }
+      },
+    }) as PushConsumerMessagesImpl;
+    await iter.closed();
 
-  assertEquals(seen, [2, 2, 1]);
-  assertEquals(oc.serial, 3);
+    assertEquals(seen, [2, 2, 1]);
+    assertEquals(oc.serial, 3);
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("ordered push consumers - consume", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());

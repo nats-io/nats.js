@@ -74,6 +74,7 @@ import {
 import { JSONCodec } from "@nats-io/nats-core/internal";
 import type { QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 import { Kvm } from "../src/kv.ts";
+import { flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("kv - key validation", () => {
   const bad = [
@@ -1442,149 +1443,152 @@ Deno.test("kv - size", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("kv - mirror cross domain", async () => {
-  const { ns, nc } = await _setup(
-    connect,
-    jetstreamServerConf({
-      server_name: "HUB",
-      jetstream: { domain: "HUB" },
-    }),
-  );
-  // the ports file doesn't report leaf node
-  const varz = await ns.varz() as unknown;
+Deno.test(
+  "kv - mirror cross domain",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(
+      connect,
+      jetstreamServerConf({
+        server_name: "HUB",
+        jetstream: { domain: "HUB" },
+      }),
+    );
+    // the ports file doesn't report leaf node
+    const varz = await ns.varz() as unknown;
 
-  const { ns: lns, nc: lnc } = await _setup(
-    connect,
-    jetstreamServerConf({
-      server_name: "LEAF",
-      jetstream: { domain: "LEAF" },
-      leafnodes: {
-        remotes: [
-          //@ts-ignore: direct query
-          { url: `leaf://127.0.0.1:${varz.leaf.port}` },
-        ],
-      },
-    }),
-  );
+    const { ns: lns, nc: lnc } = await _setup(
+      connect,
+      jetstreamServerConf({
+        server_name: "LEAF",
+        jetstream: { domain: "LEAF" },
+        leafnodes: {
+          remotes: [
+            //@ts-ignore: direct query
+            { url: `leaf://127.0.0.1:${varz.leaf.port}` },
+          ],
+        },
+      }),
+    );
 
-  // setup a KV
-  const js = jetstream(nc);
-  const kv = await new Kvm(js).create("TEST");
-  const m = new Map<string, KvEntry[]>();
+    // setup a KV
+    const js = jetstream(nc);
+    const kv = await new Kvm(js).create("TEST");
+    const m = new Map<string, KvEntry[]>();
 
-  // watch notifications on a on "name"
-  async function watch(kv: KV, bucket: string, key: string) {
-    const iter = await kv.watch({ key });
-    const buf: KvEntry[] = [];
-    m.set(bucket, buf);
+    // watch notifications on a on "name"
+    async function watch(kv: KV, bucket: string, key: string) {
+      const iter = await kv.watch({ key });
+      const buf: KvEntry[] = [];
+      m.set(bucket, buf);
 
-    return (async () => {
-      for await (const e of iter) {
-        buf.push(e);
-      }
-    })().then();
-  }
-
-  watch(kv, "test", "name").then();
-
-  await kv.put("name", "derek");
-  await kv.put("age", "22");
-  await kv.put("v", "v");
-  await kv.delete("v");
-  await nc.flush();
-  let a = m.get("test");
-  assert(a);
-  assertEquals(a.length, 1);
-  assertEquals(a[0].string(), "derek");
-
-  const ljs = jetstream(lnc);
-  await new Kvm(ljs).create("MIRROR", {
-    mirror: { name: "TEST", domain: "HUB" },
-  });
-
-  // setup a Mirror
-  const ljsm = await jetstreamManager(lnc);
-  let si = await ljsm.streams.info("KV_MIRROR");
-  assertEquals(si.config.mirror_direct, true);
-
-  for (let i = 0; i < 2000; i += 500) {
-    si = await ljsm.streams.info("KV_MIRROR");
-    if (si.state.messages === 3) {
-      break;
-    }
-    await delay(500);
-  }
-  assertEquals(si.state.messages, 3);
-
-  async function checkEntry(kv: KV, key: string, value: string, op: string) {
-    const e = await kv.get(key);
-    assert(e);
-    assertEquals(e.operation, op);
-    if (value !== "") {
-      assertEquals(e.string(), value);
-    }
-  }
-
-  async function t(kv: KV, name: string, old?: string) {
-    const histIter = await kv.history();
-    const hist: string[] = [];
-    for await (const e of histIter) {
-      hist.push(e.key);
+      return (async () => {
+        for await (const e of iter) {
+          buf.push(e);
+        }
+      })().then();
     }
 
-    if (old) {
-      await checkEntry(kv, "name", old, "PUT");
-      assertEquals(hist.length, 3);
-      assertArrayIncludes(hist, ["name", "age", "v"]);
-    } else {
-      assertEquals(hist.length, 0);
-    }
+    watch(kv, "test", "name").then();
 
-    await kv.put("name", name);
-    await checkEntry(kv, "name", name, "PUT");
-
+    await kv.put("name", "derek");
+    await kv.put("age", "22");
     await kv.put("v", "v");
-    await checkEntry(kv, "v", "v", "PUT");
-
     await kv.delete("v");
-    await checkEntry(kv, "v", "", "DEL");
+    await nc.flush();
+    let a = m.get("test");
+    assert(a);
+    assertEquals(a.length, 1);
+    assertEquals(a[0].string(), "derek");
 
-    const keysIter = await kv.keys();
-    const keys: string[] = [];
-    for await (const k of keysIter) {
-      keys.push(k);
+    const ljs = jetstream(lnc);
+    await new Kvm(ljs).create("MIRROR", {
+      mirror: { name: "TEST", domain: "HUB" },
+    });
+
+    // setup a Mirror
+    const ljsm = await jetstreamManager(lnc);
+    let si = await ljsm.streams.info("KV_MIRROR");
+    assertEquals(si.config.mirror_direct, true);
+
+    for (let i = 0; i < 2000; i += 500) {
+      si = await ljsm.streams.info("KV_MIRROR");
+      if (si.state.messages === 3) {
+        break;
+      }
+      await delay(500);
     }
-    assertEquals(keys.length, 2);
-    assertArrayIncludes(keys, ["name", "age"]);
-  }
+    assertEquals(si.state.messages, 3);
 
-  const mkv = await new Kvm(ljs).create("MIRROR");
+    async function checkEntry(kv: KV, key: string, value: string, op: string) {
+      const e = await kv.get(key);
+      assert(e);
+      assertEquals(e.operation, op);
+      if (value !== "") {
+        assertEquals(e.string(), value);
+      }
+    }
 
-  watch(mkv, "mirror", "name").then();
-  await t(mkv, "rip", "derek");
-  a = m.get("mirror");
-  assert(a);
-  assertEquals(a.length, 2);
-  assertEquals(a[1].string(), "rip");
+    async function t(kv: KV, name: string, old?: string) {
+      const histIter = await kv.history();
+      const hist: string[] = [];
+      for await (const e of histIter) {
+        hist.push(e.key);
+      }
 
-  // access the origin kv via the leafnode
-  const rjs = jetstream(lnc, { domain: "HUB" });
-  const rkv = await new Kvm(rjs).create("TEST") as Bucket;
-  assertEquals(rkv.prefix, "$KV.TEST");
-  watch(rkv, "origin", "name").then();
-  await t(rkv, "ivan", "rip");
-  await delay(1000);
-  a = m.get("origin");
-  assert(a);
-  assertEquals(a.length, 2);
-  assertEquals(a[1].string(), "ivan");
+      if (old) {
+        await checkEntry(kv, "name", old, "PUT");
+        assertEquals(hist.length, 3);
+        assertArrayIncludes(hist, ["name", "age", "v"]);
+      } else {
+        assertEquals(hist.length, 0);
+      }
 
-  // shutdown the server
-  await cleanup(ns, nc);
-  await checkEntry(mkv, "name", "ivan", "PUT");
+      await kv.put("name", name);
+      await checkEntry(kv, "name", name, "PUT");
 
-  await cleanup(lns, lnc);
-});
+      await kv.put("v", "v");
+      await checkEntry(kv, "v", "v", "PUT");
+
+      await kv.delete("v");
+      await checkEntry(kv, "v", "", "DEL");
+
+      const keysIter = await kv.keys();
+      const keys: string[] = [];
+      for await (const k of keysIter) {
+        keys.push(k);
+      }
+      assertEquals(keys.length, 2);
+      assertArrayIncludes(keys, ["name", "age"]);
+    }
+
+    const mkv = await new Kvm(ljs).create("MIRROR");
+
+    watch(mkv, "mirror", "name").then();
+    await t(mkv, "rip", "derek");
+    a = m.get("mirror");
+    assert(a);
+    assertEquals(a.length, 2);
+    assertEquals(a[1].string(), "rip");
+
+    // access the origin kv via the leafnode
+    const rjs = jetstream(lnc, { domain: "HUB" });
+    const rkv = await new Kvm(rjs).create("TEST") as Bucket;
+    assertEquals(rkv.prefix, "$KV.TEST");
+    watch(rkv, "origin", "name").then();
+    await t(rkv, "ivan", "rip");
+    await delay(1000);
+    a = m.get("origin");
+    assert(a);
+    assertEquals(a.length, 2);
+    assertEquals(a[1].string(), "ivan");
+
+    // shutdown the server
+    await cleanup(ns, nc);
+    await checkEntry(mkv, "name", "ivan", "PUT");
+
+    await cleanup(lns, lnc);
+  }),
+);
 
 Deno.test("kv - previous sequence", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));

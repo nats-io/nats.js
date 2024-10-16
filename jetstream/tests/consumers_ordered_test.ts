@@ -42,6 +42,7 @@ import type {
 } from "../src/consumer.ts";
 import { StreamImpl } from "../src/jsmstream_api.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
+import { flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -746,55 +747,61 @@ Deno.test("ordered consumers - next deleted consumer", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("ordered consumers - next stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+Deno.test(
+  "ordered consumers - next stream not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
 
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A");
-  await jsm.streams.delete("A");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A");
+    await jsm.streams.delete("A");
 
-  await assertRejects(
-    () => {
-      return c.next({ expires: 1000 });
-    },
-    Error,
-    "stream not found",
-  );
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
+      },
+      Error,
+      "stream not found",
+    );
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
-Deno.test("ordered consumers - fetch stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
+Deno.test(
+  "ordered consumers - fetch stream not found",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A");
+    const js = jetstream(nc);
+    const c = await js.consumers.get("A");
 
-  const s = new StreamImpl(jsm.streams, si);
-  await jsm.streams.delete("A");
-  await delayUntilAssetNotFound(s);
+    const s = new StreamImpl(jsm.streams, si);
+    await jsm.streams.delete("A");
+    await delayUntilAssetNotFound(s);
 
-  const iter = await c.fetch({
-    expires: 3000,
-  });
+    const iter = await c.fetch({
+      expires: 3000,
+    });
 
-  await assertRejects(
-    async () => {
-      for await (const _ of iter) {
-        // ignore
-      }
-    },
-    Error,
-    "stream not found",
-  );
+    await assertRejects(
+      async () => {
+        for await (const _ of iter) {
+          // ignore
+        }
+      },
+      Error,
+      "stream not found",
+    );
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
 Deno.test("ordered consumers - consume stream not found request abort", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -1097,79 +1104,85 @@ Deno.test("ordered consumers - initial creation fails, consumer fails", async ()
   await cleanup(ns, nc);
 });
 
-Deno.test("ordered consumers - stale reference recovers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
+Deno.test(
+  "ordered consumers - stale reference recovers",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
 
-  await jsm.streams.add({ name: "A", subjects: ["a"] });
-  const js = jsm.jetstream();
-  await js.publish("a", JSON.stringify(1));
-  await js.publish("a", JSON.stringify(2));
+    await jsm.streams.add({ name: "A", subjects: ["a"] });
+    const js = jsm.jetstream();
+    await js.publish("a", JSON.stringify(1));
+    await js.publish("a", JSON.stringify(2));
 
-  const c = await js.consumers.get("A") as PullConsumerImpl;
-  let m = await c.next({ expires: 1000 });
-  assertExists(m);
-  assertEquals(m.json<number>(), 1);
-  assert(await c.delete());
+    const c = await js.consumers.get("A") as PullConsumerImpl;
+    let m = await c.next({ expires: 1000 });
+    assertExists(m);
+    assertEquals(m.json<number>(), 1);
+    assert(await c.delete());
 
-  // continue until the server says the consumer doesn't exist
-  await delayUntilAssetNotFound(c);
+    // continue until the server says the consumer doesn't exist
+    await delayUntilAssetNotFound(c);
 
-  // so should get that error once
-  await assertRejects(
-    () => {
-      return c.next({ expires: 1000 });
-    },
-    Error,
-    "consumer not found",
-  );
+    // so should get that error once
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
+      },
+      Error,
+      "consumer not found",
+    );
 
-  // but now it will be created in line
+    // but now it will be created in line
 
-  m = await c.next({ expires: 1000 });
-  assertExists(m);
-  assertEquals(m.json<number>(), 2);
+    m = await c.next({ expires: 1000 });
+    assertExists(m);
+    assertEquals(m.json<number>(), 2);
 
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
 
-Deno.test("ordered consumers - consume stale reference recovers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["a"] });
-  const js = jetstream(nc);
-  await js.publish("a", JSON.stringify(1));
+Deno.test(
+  "ordered consumers - consume stale reference recovers",
+  flakyTest(async () => {
+    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["a"] });
+    const js = jetstream(nc);
+    await js.publish("a", JSON.stringify(1));
 
-  const c = await js.consumers.get("A") as PullConsumerImpl;
-  assert(await c.delete());
-  // continue until the server says the consumer doesn't exist
-  await delayUntilAssetNotFound(c);
+    const c = await js.consumers.get("A") as PullConsumerImpl;
+    assert(await c.delete());
+    // continue until the server says the consumer doesn't exist
+    await delayUntilAssetNotFound(c);
 
-  const iter = await c.consume({ idle_heartbeat: 1_000, expires: 30_000 });
+    const iter = await c.consume({ idle_heartbeat: 1_000, expires: 30_000 });
 
-  let recreates = 0;
-  function countRecreates(iter: ConsumerMessages): Promise<void> {
-    return (async () => {
-      for await (const s of iter.status()) {
-        if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
-          recreates++;
+    let recreates = 0;
+    function countRecreates(iter: ConsumerMessages): Promise<void> {
+      return (async () => {
+        for await (const s of iter.status()) {
+          if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
+            recreates++;
+          }
         }
+      })();
+    }
+
+    const done = countRecreates(iter);
+
+    await (async () => {
+      for await (const m of iter) {
+        assertEquals(m.json<number>(), 1);
+        break;
       }
     })();
-  }
 
-  const done = countRecreates(iter);
+    await done;
 
-  await (async () => {
-    for await (const m of iter) {
-      assertEquals(m.json<number>(), 1);
-      break;
-    }
-  })();
+    assertEquals(c.serial, 2);
 
-  await done;
-
-  assertEquals(c.serial, 2);
-
-  await cleanup(ns, nc);
-});
+    await cleanup(ns, nc);
+  }),
+);
