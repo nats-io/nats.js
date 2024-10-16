@@ -168,3 +168,13 @@ const service = await svc.add({
 
 // other manipulation as per service api...
 ```
+
+### Watch
+
+Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but adding the property
+`isUpdate` this property is now true when the watch is notifying of a new entry. Note that previously
+the iterator would yield `ObjectInfo | null`, the `null` signal has been removed. This means that
+when doing a watch on an empty ObjectStore you won't get an update notification until an actual value
+arrives.
+
+

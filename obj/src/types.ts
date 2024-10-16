@@ -56,6 +56,10 @@ export type ObjectStoreMeta = {
   metadata?: Record<string, string>;
 };
 
+export interface ObjectWatchInfo extends ObjectInfo {
+  isUpdate: boolean;
+}
+
 export interface ObjectInfo extends ObjectStoreMeta {
   /**
    * The name of the bucket where the object is stored.
@@ -316,7 +320,7 @@ export interface ObjectStore {
         includeHistory?: boolean;
       }
     >,
-  ): Promise<QueuedIterator<ObjectInfo | null>>;
+  ): Promise<QueuedIterator<ObjectWatchInfo>>;
 
   /**
    * Seals the object store preventing any further modifications.
