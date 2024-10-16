@@ -20,7 +20,11 @@ import type {
   StreamInfo,
   StreamInfoRequestOptions,
 } from "@nats-io/jetstream";
+
 import type { MsgHdrs, Nanos, QueuedIterator } from "@nats-io/nats-core";
+
+export type { Placement } from "@nats-io/jetstream";
+export { StorageType } from "@nats-io/jetstream";
 
 export type ObjectStoreLink = {
   /**
