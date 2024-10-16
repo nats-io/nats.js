@@ -22,10 +22,11 @@ import {
 } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import { delay, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
+import { delayUntilAssetNotFound } from "./util.ts";
 
 Deno.test("next - basics", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -195,7 +196,7 @@ Deno.test(
     const c = await js.consumers.get("A", "a");
 
     await jsm.streams.delete("A");
-    await delay(1000);
+    await delayUntilAssetNotFound(c);
 
     await assertRejects(
       () => {
@@ -227,14 +228,19 @@ Deno.test("next - consumer bind", async () => {
   const c = await js.consumers.get("A", "a");
   await c.delete();
 
+  // listen to see if the client does a consumer info
   const cisub = nc.subscribe("$JS.API.CONSUMER.INFO.A.a", {
-    callback: () => {},
+    callback: () => {
+      fail("saw a consumer info");
+    },
   });
 
   const msg = await c.next({
     expires: 1000,
     bind: true,
   });
+
+  await nc.flush();
 
   assertEquals(msg, null);
   assertEquals(cisub.getProcessed(), 0);
