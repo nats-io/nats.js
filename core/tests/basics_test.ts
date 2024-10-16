@@ -1504,6 +1504,47 @@ Deno.test("basics - resolve false", async () => {
   await nci.close();
 });
 
+Deno.test("basics - stats", async () => {
+  const { ns, nc } = await _setup(connect);
+
+  const cid = nc.info?.client_id || -1;
+  if (cid === -1) {
+    fail("client_id not found");
+  }
+
+  async function check(m = ""): Promise<void> {
+    await nc.flush();
+    const client = nc.stats();
+    const { in_msgs, out_msgs, in_bytes, out_bytes } =
+      (await ns.connz(cid, "detail")).connections[0];
+    const server = { in_msgs, out_msgs, in_bytes, out_bytes };
+
+    console.log(m, client, server);
+
+    assertEquals(client.outBytes, in_bytes);
+    assertEquals(client.inBytes, out_bytes);
+    assertEquals(client.outMsgs, in_msgs);
+    assertEquals(client.inMsgs, out_msgs);
+  }
+
+  await check("start");
+
+  // publish
+  nc.publish("hello", "world");
+  await check("simple publish");
+
+  nc.subscribe("hello", { callback: () => {} });
+  nc.publish("hello", "hi");
+  await check("subscribe");
+
+  const h = headers();
+  h.set("hello", "very long value that we want to add here");
+  nc.publish("hello", "hello", { headers: h });
+  await check("headers");
+
+  await cleanup(ns, nc);
+});
+
 class MM implements Msg {
   data!: Uint8Array;
   sid: number;
