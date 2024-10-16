@@ -185,6 +185,7 @@ Deno.test(
 
     const jsm = await jetstreamManager(nc);
     await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const s = await jsm.streams.get("A");
 
     await jsm.consumers.add("A", {
       durable_name: "a",
@@ -193,10 +194,11 @@ Deno.test(
     });
 
     const js = jetstream(nc);
+
     const c = await js.consumers.get("A", "a");
 
     await jsm.streams.delete("A");
-    await delayUntilAssetNotFound(c);
+    await delayUntilAssetNotFound(s);
 
     await assertRejects(
       () => {
