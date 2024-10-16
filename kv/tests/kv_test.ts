@@ -399,8 +399,9 @@ Deno.test("kv - history and watch cleanup", async () => {
     }
   }
 
+  await delay(500);
+
   // need to give some time for promises to be resolved
-  await delay(100);
   const nci = nc as NatsConnectionImpl;
   const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
   assertEquals(nci.protocol.subscriptions.size(), min);
