@@ -339,7 +339,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   /**
-   * handle the notification of the error, if
+   * Handle the notification of 409 error and whether
+   * it should reject the operation by returning an Error or null
    * @param code
    * @param description
    */
