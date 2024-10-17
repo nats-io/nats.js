@@ -198,36 +198,25 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             //  these are real bad values - so this is bad request
             //  fail on this
             // we got a bad request - no progress here
-            if (code === 400) {
-              this.stop(new NatsError(description, `${code}`));
-              return;
-            } else if (code === 409 && description === "consumer deleted") {
-              this.notify(
-                ConsumerEvents.ConsumerDeleted,
-                `${code} ${description}`,
-              );
-              if (!this.isConsume || this.abortOnMissingResource) {
-                const error = new NatsError(description, `${code}`);
-                this.stop(error);
+            switch (code) {
+              case 400:
+                this.stop(new NatsError(description, `${code}`));
                 return;
+              case 409: {
+                const err = this.handle409(code, description);
+                if (err) {
+                  this.stop(err);
+                  return;
+                }
+                // stall, missed heartbeats will resuscitate
+                // proportionally to 2 missed heartbeats
+                break;
               }
-            } else if (
-              code === 409 && description.includes("exceeded maxrequestbatch")
-            ) {
-              this.notify(
-                ConsumerDebugEvents.DebugEvent,
-                `${code} ${description}`,
-              );
-              if (!this.isConsume) {
-                const error = new NatsError(description, `${code}`);
-                this.stop(error);
-                return;
-              }
-            } else {
-              this.notify(
-                ConsumerDebugEvents.DebugEvent,
-                `${code} ${description}`,
-              );
+              default:
+                this.notify(
+                  ConsumerDebugEvents.DebugEvent,
+                  { code, description },
+                );
             }
           }
         } else {
@@ -347,6 +336,29 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     // this is the initial pull
     this.pull(this.pullOptions());
+  }
+
+  /**
+   * Handle the notification of 409 error and whether
+   * it should reject the operation by returning an Error or null
+   * @param code
+   * @param description
+   */
+  handle409(code: number, description: string): Error | null {
+    const e = description === "consumer deleted"
+      ? ConsumerEvents.ConsumerDeleted
+      : ConsumerEvents.ExceededLimit;
+    this.notify(e, { code, description });
+    if (!this.isConsume) {
+      // terminate the fetch/next
+      return new NatsError(description, `${code}`);
+    } else if (
+      e === ConsumerEvents.ConsumerDeleted && this.abortOnMissingResource
+    ) {
+      // terminate the consume if abortOnMissingResource
+      return new NatsError(description, `${code}`);
+    }
+    return null;
   }
 
   reset() {

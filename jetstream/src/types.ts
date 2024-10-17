@@ -571,6 +571,12 @@ export enum ConsumerEvents {
    * the consumer is recreated. The argument is the name of the newly created consumer.
    */
   OrderedConsumerRecreated = "ordered_consumer_recreated",
+
+  /**
+   * This notification is specific to pull consumers and will be notified whenever
+   * the pull request exceeds some limit such as maxwaiting, maxrequestbatch, etc.
+   */
+  ExceededLimit = "limit_exceeded",
 }
 
 /**
