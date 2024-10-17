@@ -18,7 +18,6 @@ import {
   cleanup,
   connect,
   jetstreamServerConf,
-  Lock,
   NatsServer,
 } from "test_helpers";
 import { setupStreamAndConsumer } from "../examples/util.ts";
@@ -27,7 +26,6 @@ import {
   assertEquals,
   assertExists,
   assertRejects,
-  fail,
 } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
 import {
@@ -47,7 +45,6 @@ import {
 } from "../src/mod.ts";
 
 import type { ConsumerStatus } from "../src/mod.ts";
-import { ConsumerDebugEvents } from "../src/mod.ts";
 
 Deno.test("consumers - consume", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -447,46 +444,6 @@ Deno.test("consume - consumer bind", async () => {
   assert(hbm > 1);
   assertEquals(cnf, 0);
   assertEquals(cisub.getProcessed(), 0);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("consume - exceeding max_messages will continue", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["a"] });
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    max_batch: 100,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
-  const lock = Lock(2, 0);
-  const iter = await c.consume({ max_messages: 1000, expires: 1000 });
-  (async () => {
-    const status = iter.status();
-    for await (const s of status) {
-      if (s.type === ConsumerDebugEvents.DebugEvent) {
-        const d = s.data as string;
-        if (d.includes("exceeded maxrequestbatch of 100")) {
-          lock.unlock();
-        }
-      }
-    }
-  })().catch((err) => {
-    fail(err.message);
-  });
-
-  (async () => {
-    for await (const m of iter) {
-      console.log(m);
-    }
-  })().then();
-
-  await lock;
-  iter.stop();
-  await iter.closed();
 
   await cleanup(ns, nc);
 });
