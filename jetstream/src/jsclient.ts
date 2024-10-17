@@ -298,34 +298,6 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     return pa;
   }
 
-  async pull(stream: string, durable: string, expires = 0): Promise<JsMsg> {
-    validateStreamName(stream);
-    validateDurableName(durable);
-
-    let timeout = this.timeout;
-    if (expires > timeout) {
-      timeout = expires;
-    }
-
-    expires = expires < 0 ? 0 : nanos(expires);
-    const pullOpts: Partial<PullOptions> = {
-      batch: 1,
-      no_wait: expires === 0,
-      expires,
-    };
-
-    const msg = await this.nc.request(
-      `${this.prefix}.CONSUMER.MSG.NEXT.${stream}.${durable}`,
-      this.jc.encode(pullOpts),
-      { noMux: true, timeout },
-    );
-    const err = checkJsError(msg);
-    if (err) {
-      throw err;
-    }
-    return toJsMsg(msg, this.timeout);
-  }
-
   /*
    * Returns available messages upto specified batch count.
    * If expires is set the iterator will wait for the specified

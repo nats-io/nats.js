@@ -98,6 +98,9 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - Consumer.status() now returns `AsyncIterable<ConsumerStatus>` instead of a
   `Promise<AsyncIterable<ConsumerStatus>>`
 
+- `JetStreamClient.pull()` was deprecated and was removed. Use
+  `Consumer.next()`.
+
 ## Changes to KV
 
 To use KV, you must install and import `@nats-io/kv`, and create an instance of

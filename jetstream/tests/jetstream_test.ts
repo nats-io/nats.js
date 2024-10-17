@@ -169,7 +169,10 @@ Deno.test("jetstream - ackAck", async () => {
   const js = jetstream(nc);
   await js.publish(subj);
 
-  const ms = await js.pull(stream, "me");
+  const c = await js.consumers.get(stream, "me");
+
+  const ms = await c.next();
+  assertExists(ms);
   assertEquals(await ms.ackAck(), true);
   assertEquals(await ms.ackAck(), false);
   await cleanup(ns, nc);
@@ -352,17 +355,16 @@ Deno.test("jetstream - ephemeral options", async () => {
 Deno.test("jetstream - publish headers", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
-  const jsm = await jetstreamManager(nc);
-  await jsm.consumers.add(stream, {
-    durable_name: "me",
-    ack_policy: AckPolicy.Explicit,
-  });
   const js = jetstream(nc);
   const h = headers();
   h.set("a", "b");
 
   await js.publish(subj, Empty, { headers: h });
-  const ms = await js.pull(stream, "me");
+
+  const c = await js.consumers.get(stream);
+
+  const ms = await c.next();
+  assertExists(ms);
   ms.ack();
   assertEquals(ms.headers!.get("a"), "b");
   await cleanup(ns, nc);
@@ -384,15 +386,17 @@ Deno.test("jetstream - JSON", async () => {
     ack_policy: AckPolicy.Explicit,
   });
 
+  const c = await js.consumers.get(stream, "me");
   for (let v of values) {
-    const m = await js.pull(stream, "me");
+    const m = await c.next();
+    assertExists(m);
     m.ack();
     // JSON doesn't serialize undefines, but if passed to the encoder
     // it becomes a null
     if (v === undefined) {
       v = null;
     }
-    assertEquals(jc.decode(m.data), v);
+    assertEquals(m.json(), v);
   }
   await cleanup(ns, nc);
 });
@@ -1311,8 +1315,9 @@ Deno.test("jetstream - jsmsg decode", async () => {
   await js.publish("a.a", StringCodec().encode("hello"));
   await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
 
-  assertEquals((await js.pull(name, "me")).string(), "hello");
-  assertEquals((await js.pull(name, "me")).json(), {
+  const c = await js.consumers.get(name, "me");
+  assertEquals((await c.next())?.string(), "hello");
+  assertEquals((await c.next())?.json(), {
     one: "two",
     a: [1, 2, 3],
   });
