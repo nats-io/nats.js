@@ -83,9 +83,6 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - `jetStream()` and `jetStreamManager()` functions on the `NatsConnection` have
   been removed. Install and import the `JetStream` library, and call
   `jetstream(nc: NatsConnection)` or `jetstreamManager(nc: NatsConnection)`
-- `services` property has been removed. Install and import the `Services`
-  library, and call `services(nc: NatsConnection)`
-
 - The `views` property in the JetStream client has been removed - install the
   `KV` or `ObjectStore` library.
 - `jetstreamManager.listKvs()` and `jetstreamManager.listObjectStores()` apis
@@ -97,9 +94,12 @@ To use JetStream, you must install and import `@nats/jetstream`.
   `OrderedConsumerOptions#filter_subjects`.
 - Consumer.status() now returns `AsyncIterable<ConsumerStatus>` instead of a
   `Promise<AsyncIterable<ConsumerStatus>>`
-
 - `JetStreamClient.pull()` was deprecated and was removed. Use
   `Consumer.next()`.
+- The utility function `consumerOpts()` and associated function
+  `isConsumerOptsBuilder()` have been removed. Along side of it
+  `ConsumerOptsBuilder` which was used by `subscribe()` and `pullSubscribe()`
+  type has been removed.
 
 ## Changes to KV
 
@@ -154,6 +154,15 @@ until there's an update.
 
 To use ObjectStore, you must install and import `@nats-io/obj`.
 
+### Watch
+
+Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but
+adding the property `isUpdate` this property is now true when the watch is
+notifying of a new entry. Note that previously the iterator would yield
+`ObjectInfo | null`, the `null` signal has been removed. This means that when
+doing a watch on an empty ObjectStore you won't get an update notification until
+an actual value arrives.
+
 ## Changes to Services Framework
 
 To use services, you must install and import `@nats-io/services`, and create an
@@ -172,11 +181,5 @@ const service = await svc.add({
 // other manipulation as per service api...
 ```
 
-### Watch
-
-Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but
-adding the property `isUpdate` this property is now true when the watch is
-notifying of a new entry. Note that previously the iterator would yield
-`ObjectInfo | null`, the `null` signal has been removed. This means that when
-doing a watch on an empty ObjectStore you won't get an update notification until
-an actual value arrives.
+- `services` property has been removed. Install and import the `Services`
+  library, and call `services(nc: NatsConnection)`
