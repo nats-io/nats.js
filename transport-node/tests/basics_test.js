@@ -18,7 +18,6 @@ const {
   connect,
   ErrorCode,
   createInbox,
-  StringCodec,
 } = require(
   "../lib/mod",
 );
@@ -101,18 +100,17 @@ describe(
     });
 
     it("basics - request", async () => {
-      const sc = StringCodec();
       const nc = await connect({ servers: u });
       const s = createInbox();
       const sub = nc.subscribe(s);
       const _ = (async () => {
         for await (const m of sub) {
-          m.respond(sc.encode("foo"));
+          m.respond("foo");
         }
       })();
       const msg = await nc.request(s);
       await nc.close();
-      assert.equal(sc.decode(msg.data), "foo");
+      assert.equal(msg.string(), "foo");
     });
 
     it("basics - socket error", async () => {
