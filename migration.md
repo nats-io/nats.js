@@ -75,6 +75,10 @@ these modules for cross-runtime consumption.
 
 - QueuedIterator type incorrectly exposed a `push()` operation - this operation
   is not public API and was removed from the interface.
+- The internal type `TypedSubscription` and associated interfaces have been
+  removed, these were supporting legacy JetStream APIs. If you were using these
+  internal types to transform the types in the subscription, take a look at
+  [messagepipeline](https://github.com/synadia-io/orbit.js/tree/main/messagepipeline).
 
 ## Changes in JetStream
 

@@ -15,6 +15,4 @@
 export type { ApiError, Dispatcher, MsgHdrs, QueuedIterator } from "./core.ts";
 export { NatsError } from "./core.ts";
 
-export type { TypedSubscriptionOptions } from "./typedsub.ts";
-
 export { Empty } from "./encoders.ts";
