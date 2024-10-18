@@ -20,12 +20,6 @@ import type { Deferred, Timeout } from "./util.ts";
 import { DataBuffer } from "./databuffer.ts";
 import { Servers } from "./servers.ts";
 import type { ServerImpl } from "./servers.ts";
-import type {
-  DispatchedFn,
-  IngestionFilterFn,
-  IngestionFilterFnResult,
-  ProtocolFilterFn,
-} from "./queued_iterator.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
 import type { MsgHdrsImpl } from "./headers.ts";
 import { MuxSubscription } from "./muxsubscription.ts";
@@ -158,41 +152,6 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
         this.closed.resolve();
         this.unsubscribe();
       });
-    }
-  }
-
-  setPrePostHandlers(
-    opts: {
-      ingestionFilterFn?: IngestionFilterFn<Msg>;
-      protocolFilterFn?: ProtocolFilterFn<Msg>;
-      dispatchedFn?: DispatchedFn<Msg>;
-    },
-  ) {
-    if (this.noIterator) {
-      const uc = this.callback;
-
-      const ingestion = opts.ingestionFilterFn
-        ? opts.ingestionFilterFn
-        : (): IngestionFilterFnResult => {
-          return { ingest: true, protocol: false };
-        };
-      const filter = opts.protocolFilterFn ? opts.protocolFilterFn : () => {
-        return true;
-      };
-      const dispatched = opts.dispatchedFn ? opts.dispatchedFn : () => {};
-      this.callback = (err: NatsError | null, msg: Msg) => {
-        const { ingest } = ingestion(msg);
-        if (!ingest) {
-          return;
-        }
-        if (filter(msg)) {
-          uc(err, msg);
-          dispatched(msg);
-        }
-      };
-    } else {
-      this.protocolFilterFn = opts.protocolFilterFn;
-      this.dispatchedFn = opts.dispatchedFn;
     }
   }
 

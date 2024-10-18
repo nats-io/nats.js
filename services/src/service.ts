@@ -607,6 +607,7 @@ export class ServiceImpl implements Service {
     e: NamedEndpoint,
   ): QueuedIterator<ServiceMsg> {
     const qi = new QueuedIteratorImpl<ServiceMsg>();
+    qi.profile = true;
     qi.noIterator = typeof e.handler === "function";
     if (!qi.noIterator) {
       e.handler = (err, msg): void => {
