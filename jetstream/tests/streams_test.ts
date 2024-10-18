@@ -16,8 +16,6 @@
 import { connect, notCompatible } from "test_helpers";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
-import { JSONCodec } from "@nats-io/nats-core";
-
 import {
   assertEquals,
   assertExists,
@@ -67,7 +65,7 @@ Deno.test("streams - consumers", async () => {
 
   // add a stream and a message
   const { stream, subj } = await initStream(nc);
-  await js.publish(subj, JSONCodec().encode({ hello: "world" }));
+  await js.publish(subj, JSON.stringify({ hello: "world" }));
 
   // retrieve the stream
   const s = await js.streams.get(stream);

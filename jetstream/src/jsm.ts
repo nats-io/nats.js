@@ -31,7 +31,6 @@ import type {
 } from "@nats-io/nats-core";
 import {
   Empty,
-  JSONCodec,
   QueuedIteratorImpl,
   RequestStrategy,
   TD,
@@ -62,7 +61,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       qq = null;
     }
 
-    const payload = qq ? this.jc.encode(qq) : Empty;
+    const payload = qq ? JSON.stringify(qq) : Empty;
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = last_by_subj
       ? `${pre}.DIRECT.GET.${stream}.${last_by_subj}`
@@ -184,7 +183,7 @@ export class DirectMsgImpl implements DirectMsg {
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
-    return JSONCodec<T>(reviver).decode(this.data);
+    return JSON.parse(new TextDecoder().decode(this.data), reviver);
   }
 
   string(): string {

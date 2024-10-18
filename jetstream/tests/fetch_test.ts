@@ -22,13 +22,7 @@ import {
 } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
-import {
-  delay,
-  Empty,
-  nanos,
-  StringCodec,
-  syncIterator,
-} from "@nats-io/nats-core";
+import { delay, Empty, nanos, syncIterator } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import {
   AckPolicy,
@@ -92,11 +86,10 @@ Deno.test("fetch - exactly messages", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
 
   const { stream, subj } = await initStream(nc);
-  const sc = StringCodec();
   const js = jetstream(nc);
   await Promise.all(
     new Array(200).fill("a").map((_, idx) => {
-      return js.publish(subj, sc.encode(`${idx}`));
+      return js.publish(subj, `${idx}`);
     }),
   );
 

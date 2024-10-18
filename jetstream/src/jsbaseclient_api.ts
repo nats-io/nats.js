@@ -19,10 +19,8 @@ import {
   Empty,
   ErrorCode,
   extend,
-  JSONCodec,
 } from "@nats-io/nats-core/internal";
 import type {
-  Codec,
   Msg,
   NatsConnection,
   NatsConnectionImpl,
@@ -58,7 +56,6 @@ export class BaseApiClientImpl {
   opts: JetStreamOptions;
   prefix: string;
   timeout: number;
-  jc: Codec<unknown>;
 
   constructor(nc: NatsConnection, opts?: JetStreamOptions) {
     this.nc = nc as NatsConnectionImpl;
@@ -66,7 +63,6 @@ export class BaseApiClientImpl {
     this._parseOpts();
     this.prefix = this.opts.apiPrefix!;
     this.timeout = this.opts.timeout!;
-    this.jc = JSONCodec();
   }
 
   getOptions(): JetStreamOptions {
@@ -95,7 +91,7 @@ export class BaseApiClientImpl {
 
     let a: Uint8Array = Empty;
     if (data) {
-      a = this.jc.encode(data);
+      a = new TextEncoder().encode(JSON.stringify(data));
     }
 
     let { retries } = opts as {
@@ -143,7 +139,7 @@ export class BaseApiClientImpl {
   }
 
   parseJsResponse(m: Msg): unknown {
-    const v = this.jc.decode(m.data);
+    const v = JSON.parse(new TextDecoder().decode(m.data));
     const r = v as ApiResponse;
     if (r.error) {
       const err = checkJsErrorCode(r.error.code, r.error.description);

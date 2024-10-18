@@ -553,7 +553,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this._push(() => {
       nc.publish(
         subj,
-        this.consumer.api.jc.encode(opts),
+        JSON.stringify(opts),
         { reply: this.inbox },
       );
       this.notify(ConsumerDebugEvents.Next, opts);

@@ -18,7 +18,6 @@ import {
   Empty,
   Feature,
   headers,
-  JSONCodec,
   MsgHdrsImpl,
   nanos,
   nuid,
@@ -695,7 +694,7 @@ export class StoredMsgImpl implements StoredMsg {
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
-    return JSONCodec<T>(reviver).decode(this.data);
+    return JSON.parse(new TextDecoder().decode(this.data), reviver);
   }
 
   string(): string {

@@ -2,6 +2,7 @@ import type {
   Msg,
   Nanos,
   NatsError,
+  Payload,
   PublishOptions,
   QueuedIterator,
 } from "@nats-io/nats-core";
@@ -10,7 +11,7 @@ export interface ServiceMsg extends Msg {
   respondError(
     code: number,
     description: string,
-    data?: Uint8Array,
+    data?: Payload,
     opts?: PublishOptions,
   ): boolean;
 }

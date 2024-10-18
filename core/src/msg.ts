@@ -15,11 +15,10 @@
 import { MsgHdrsImpl } from "./headers.ts";
 import type { MsgArg } from "./parser.ts";
 import { Empty, TD } from "./encoders.ts";
-import type { Codec } from "./codec.ts";
-import { JSONCodec } from "./codec.ts";
 import type {
   Msg,
   MsgHdrs,
+  Payload,
   Publisher,
   RequestInfo,
   ReviverFn,
@@ -43,7 +42,6 @@ export class MsgImpl implements Msg {
   _reply!: string;
   _subject!: string;
   publisher: Publisher;
-  static jc: Codec<unknown>;
 
   constructor(msg: MsgArg, data: Uint8Array, publisher: Publisher) {
     this._msg = msg;
@@ -90,7 +88,7 @@ export class MsgImpl implements Msg {
 
   // eslint-ignore-next-line @typescript-eslint/no-explicit-any
   respond(
-    data: Uint8Array = Empty,
+    data: Payload = Empty,
     opts?: { headers?: MsgHdrs; reply?: string },
   ): boolean {
     if (this.reply) {
@@ -108,7 +106,7 @@ export class MsgImpl implements Msg {
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
-    return JSONCodec<T>(reviver).decode(this.data);
+    return JSON.parse(this.string(), reviver);
   }
 
   string(): string {

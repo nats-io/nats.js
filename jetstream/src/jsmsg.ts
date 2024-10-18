@@ -24,10 +24,8 @@ import type {
 import {
   DataBuffer,
   deferred,
-  JSONCodec,
   nanos,
   RequestOne,
-  StringCodec,
 } from "@nats-io/nats-core/internal";
 import type { DeliveryInfo, PullOptions } from "./jsapi_types.ts";
 
@@ -280,9 +278,9 @@ export class JsMsgImpl implements JsMsg {
   }
 
   nak(millis?: number) {
-    let payload = NAK;
+    let payload: Uint8Array | string = NAK;
     if (millis) {
-      payload = StringCodec().encode(
+      payload = new TextEncoder().encode(
         `-NAK ${JSON.stringify({ delay: nanos(millis) })}`,
       );
     }
@@ -300,7 +298,7 @@ export class JsMsgImpl implements JsMsg {
     if (opts.expires && opts.expires > 0) {
       args.expires = nanos(opts.expires);
     }
-    const data = JSONCodec().encode(args);
+    const data = new TextEncoder().encode(JSON.stringify(args));
     const payload = DataBuffer.concat(NXT, SPACE, data);
     const reqOpts = subj ? { reply: subj } as RequestOptions : undefined;
     this.msg.respond(payload, reqOpts);
@@ -309,7 +307,7 @@ export class JsMsgImpl implements JsMsg {
   term(reason = "") {
     let term = TERM;
     if (reason?.length > 0) {
-      term = StringCodec().encode(`+TERM ${reason}`);
+      term = new TextEncoder().encode(`+TERM ${reason}`);
     }
     this.doAck(term);
   }

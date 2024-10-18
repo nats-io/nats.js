@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 import { assert, assertEquals, fail } from "jsr:@std/assert";
-import { createInbox, ErrorCode, StringCodec } from "../src/internal_mod.ts";
+import { createInbox, ErrorCode } from "../src/internal_mod.ts";
 import type { Msg, NatsError } from "../src/internal_mod.ts";
 import {
   assertThrowsAsyncErrorCode,
@@ -133,12 +133,11 @@ Deno.test("drain - reject reqrep during connection drain", async () => {
   const nc2 = await connect({ port: ns.port });
   const lock = Lock();
   const subj = createInbox();
-  const sc = StringCodec();
   // start a service for replies
   await nc.subscribe(subj, {
     callback: (_, msg: Msg) => {
       if (msg.reply) {
-        msg.respond(sc.encode("ok"));
+        msg.respond("ok");
       }
     },
   });

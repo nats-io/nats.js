@@ -23,7 +23,6 @@ import {
   MsgImpl,
   NatsError,
   Parser,
-  StringCodec,
 } from "../src/internal_mod.ts";
 import type {
   NatsConnectionImpl,
@@ -181,7 +180,7 @@ function status(code: number, description: string): Uint8Array {
     ? `NATS/1.0 ${code.toString()} ${description}`.trim()
     : "NATS/1.0";
   const line = `${status}\r\n\r\n\r\n`;
-  return StringCodec().encode(line);
+  return new TextEncoder().encode(line);
 }
 
 function checkStatus(code = 200, description = "") {

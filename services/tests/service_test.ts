@@ -29,9 +29,7 @@ import {
   createInbox,
   delay,
   ErrorCode,
-  JSONCodec,
   nuid,
-  StringCodec,
 } from "@nats-io/nats-core/internal";
 import type {
   Msg,
@@ -102,7 +100,6 @@ Deno.test("service - bad name", async () => {
 
 Deno.test("service - client", async () => {
   const { ns, nc } = await _setup(connect, {}, {});
-  const sc = StringCodec();
   const subj = createInbox();
   const svc = new Svc(nc);
 
@@ -113,7 +110,7 @@ Deno.test("service - client", async () => {
   }) as ServiceImpl;
   srv.addEndpoint("hello", {
     handler: (_err, msg) => {
-      msg?.respond(sc.encode("hello"));
+      msg?.respond("hello");
     },
     subject: subj,
   });
@@ -687,9 +684,9 @@ Deno.test("service - cross platform service test", async () => {
     subject: createInbox(),
     handler: (_err, m): void => {
       if (m.data.length === 0) {
-        m.respondError(400, "need a string", JSONCodec().encode(""));
+        m.respondError(400, "need a string", JSON.stringify(""));
       } else {
-        if (StringCodec().decode(m.data) === "error") {
+        if (m.string() === "error") {
           throw new Error("service asked to throw an error");
         }
         m.respond(m.data);
@@ -723,9 +720,9 @@ Deno.test("service - cross platform service test", async () => {
   const { success, stderr, stdout } = await cmd.output();
 
   if (!success) {
-    console.log(StringCodec().decode(stdout));
-    console.log(StringCodec().decode(stderr));
-    fail(StringCodec().decode(stderr));
+    console.log(new TextDecoder().decode(stdout));
+    console.log(new TextDecoder().decode(stderr));
+    fail(new TextDecoder().decode(stderr));
   }
 
   await nc.close();
@@ -746,7 +743,7 @@ Deno.test("service - stats name respects assigned name", async () => {
   const stats = await test.stats();
   assertEquals(stats.name, "tEsT");
   const r = await nc.request(`$SRV.PING.tEsT`);
-  const si = JSONCodec<ServiceIdentity>().decode(r.data);
+  const si = r.json<ServiceIdentity>();
   assertEquals(si.name, "tEsT");
 
   await cleanup(ns, nc);
@@ -760,21 +757,20 @@ Deno.test("service - multiple endpoints", async () => {
     name: "multi",
     version: "0.0.1",
   });
-  const sc = StringCodec();
   ms.addEndpoint("hey", (_err, m) => {
-    m.respond(sc.encode("hi"));
+    m.respond("hi");
   });
   ms.addGroup("service").addEndpoint("echo", (_err, m) => {
     m.respond(m.data);
   });
 
   let r = await nc.request(`hey`);
-  assertEquals(sc.decode(r.data), "hi");
-  r = await nc.request(`service.echo`, sc.encode("yo!"));
-  assertEquals(sc.decode(r.data), "yo!");
+  assertEquals(r.string(), "hi");
+  r = await nc.request(`service.echo`, "yo!");
+  assertEquals(r.string(), "yo!");
 
   r = await nc.request(`$SRV.STATS`);
-  const stats = JSONCodec().decode(r.data) as ServiceStats;
+  const stats = r.json<ServiceStats>();
 
   function t(name: string) {
     const v = stats.endpoints?.find((n) => {
@@ -945,7 +941,7 @@ Deno.test("service - json reviver", async () => {
     },
   });
 
-  await nc.request("group.endpoint", JSONCodec().encode({ date: Date.now() }));
+  await nc.request("group.endpoint", JSON.stringify({ date: Date.now() }));
 
   await cleanup(ns, nc);
 });

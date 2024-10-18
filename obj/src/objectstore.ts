@@ -25,7 +25,6 @@ import {
   deferred,
   Feature,
   headers,
-  JSONCodec,
   MsgHdrsImpl,
   nuid,
   QueuedIteratorImpl,
@@ -361,8 +360,7 @@ export class ObjectStoreImpl implements ObjectStore {
       const m = await this.jsm.streams.getMessage(this.stream, {
         last_by_subj: meta,
       });
-      const jc = JSONCodec<ServerObjectInfo>();
-      const soi = jc.decode(m.data) as ServerObjectInfo;
+      const soi = m.json<ServerObjectInfo>();
       soi.revision = m.seq;
       return soi;
     } catch (err) {
@@ -490,7 +488,7 @@ export class ObjectStoreImpl implements ObjectStore {
           h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
           // try to update the metadata
-          const pa = await this.js.publish(metaSubj, JSONCodec().encode(info), {
+          const pa = await this.js.publish(metaSubj, JSON.stringify(info), {
             headers: h,
             timeout,
           });
@@ -743,11 +741,10 @@ export class ObjectStoreImpl implements ObjectStore {
     info.chunks = 0;
     info.digest = "";
 
-    const jc = JSONCodec();
     const h = headers();
     h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
-    await this.js.publish(this._metaSubject(info.name), jc.encode(info), {
+    await this.js.publish(this._metaSubject(info.name), JSON.stringify(info), {
       headers: h,
     });
     return this.jsm.streams.purge(this.stream, {

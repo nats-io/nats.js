@@ -79,6 +79,11 @@ these modules for cross-runtime consumption.
   removed, these were supporting legacy JetStream APIs. If you were using these
   internal types to transform the types in the subscription, take a look at
   [messagepipeline](https://github.com/synadia-io/orbit.js/tree/main/messagepipeline).
+- The utilities `JSONCodec` and `StringCodec` have been removed, the `Msg` types
+  and derivatives can set string or Uint8Array payalods. To read payloads as
+  string or JSON use `string()` and `json()` methods. For publishing JSON
+  payloads, simply specify the output of `JSON.stringify()` to the publish
+  operation.
 
 ## Changes in JetStream
 

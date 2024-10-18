@@ -13,9 +13,6 @@
  * limitations under the License.
  */
 
-import { TD, TE } from "./encoders.ts";
-import { ErrorCode, NatsError } from "./core.ts";
-
 export interface Codec<T> {
   /**
    * Encode T to an Uint8Array suitable for including in a message payload.
@@ -28,51 +25,4 @@ export interface Codec<T> {
    * @param a
    */
   decode(a: Uint8Array): T;
-}
-
-/**
- * Returns a {@link Codec} for encoding strings to a message payload
- * and decoding message payloads into strings.
- */
-export function StringCodec(): Codec<string> {
-  return {
-    encode(d: string): Uint8Array {
-      return TE.encode(d);
-    },
-    decode(a: Uint8Array): string {
-      return TD.decode(a);
-    },
-  };
-}
-
-/**
- * Returns a {@link Codec}  for encoding JavaScript object to JSON and
- * serialize them to an Uint8Array, and conversely, from an
- * Uint8Array to JSON to a JavaScript Object.
- * @param reviver
- */
-export function JSONCodec<T = unknown>(
-  reviver?: (this: unknown, key: string, value: unknown) => unknown,
-): Codec<T> {
-  return {
-    encode(d: T): Uint8Array {
-      try {
-        if (d === undefined) {
-          // @ts-ignore: json will not handle undefined
-          d = null;
-        }
-        return TE.encode(JSON.stringify(d));
-      } catch (err) {
-        throw NatsError.errorForCode(ErrorCode.BadJson, err as Error);
-      }
-    },
-
-    decode(a: Uint8Array): T {
-      try {
-        return JSON.parse(TD.decode(a), reviver);
-      } catch (err) {
-        throw NatsError.errorForCode(ErrorCode.BadJson, err as Error);
-      }
-    },
-  };
 }
