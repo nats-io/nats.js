@@ -21,14 +21,10 @@ import {
   jetstreamServerConf,
 } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
-import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
 import type { ConsumerConfig } from "../src/jsapi_types.ts";
+import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert";
 import { Empty, nanos, nuid } from "@nats-io/nats-core";
-
-import { consumerOpts } from "../src/types.ts";
-import type { ConsumerOptsBuilderImpl } from "../src/types.ts";
-
 import { jetstream, jetstreamManager } from "../src/mod.ts";
 
 Deno.test("jetstream - pull consumer options", async () => {
@@ -63,12 +59,10 @@ Deno.test("jetstream - cross account pull", async () => {
   const admjsm = await jetstreamManager(admin);
 
   // create a durable config
-  const bo = consumerOpts() as ConsumerOptsBuilderImpl;
-  bo.manualAck();
-  bo.ackExplicit();
-  bo.durable("me");
-  const opts = bo.getOpts();
-  await admjsm.consumers.add(stream, opts.config);
+  await admjsm.consumers.add(stream, {
+    ack_policy: AckPolicy.Explicit,
+    durable_name: "me",
+  });
 
   const nc = await connect({
     port: ns.port,

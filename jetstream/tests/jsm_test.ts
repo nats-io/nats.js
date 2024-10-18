@@ -22,8 +22,9 @@ import {
   fail,
 } from "jsr:@std/assert";
 
-import { Feature } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import { Feature } from "@nats-io/nats-core/internal";
+import type { NatsConnection, NatsError } from "@nats-io/nats-core";
 import {
   deferred,
   Empty,
@@ -36,16 +37,6 @@ import {
   nuid,
   StringCodec,
 } from "@nats-io/nats-core";
-import type { NatsConnection, NatsError } from "@nats-io/nats-core";
-import {
-  AckPolicy,
-  AdvisoryKind,
-  DiscardPolicy,
-  jetstream,
-  jetstreamManager,
-  StorageType,
-} from "../src/mod.ts";
-
 import type {
   ConsumerConfig,
   ConsumerInfo,
@@ -54,6 +45,14 @@ import type {
   StreamConfig,
   StreamInfo,
   StreamSource,
+} from "../src/mod.ts";
+import {
+  AckPolicy,
+  AdvisoryKind,
+  DiscardPolicy,
+  jetstream,
+  jetstreamManager,
+  StorageType,
 } from "../src/mod.ts";
 import { initStream } from "./jstest_util.ts";
 import {
@@ -2261,8 +2260,6 @@ Deno.test("jsm - validate consumer name in operations", async () => {
   const jsm = await jetstreamManager(nc);
 
   const names = ["", ".", "*", ">", "\r", "\n", "\t", " "];
-  type fn = (name: string) => Promise<unknown>;
-  type t = { name: string; fn: fn };
   const tests = [
     {
       name: "consumer info",
@@ -2741,6 +2738,33 @@ Deno.test("jsm - batch direct get batch", async () => {
     buf.push(m);
   }
   assertEquals(buf.length, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - storage", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  let si = await jsm.streams.add({
+    name: "Mem",
+    subjects: ["a"],
+    storage: StorageType.Memory,
+  });
+  assertEquals(si.config.storage, StorageType.Memory);
+
+  let ci = await jsm.consumers.add("Mem", { name: "mc", mem_storage: true });
+  assertEquals(ci.config.mem_storage, true);
+
+  si = await jsm.streams.add({
+    name: "File",
+    subjects: ["b"],
+    storage: StorageType.File,
+  });
+  assertEquals(si.config.storage, StorageType.File);
+
+  ci = await jsm.consumers.add("File", { name: "fc", mem_storage: false });
+  assertEquals(ci.config.mem_storage, undefined);
 
   await cleanup(ns, nc);
 });

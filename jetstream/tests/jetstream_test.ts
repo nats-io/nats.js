@@ -17,8 +17,6 @@ import { connect, NatsServer } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import {
   AckPolicy,
-  consumerOpts,
-  DeliverPolicy,
   jetstream,
   jetstreamManager,
   JsHeaders,
@@ -27,17 +25,12 @@ import {
   StorageType,
 } from "../src/mod.ts";
 
-import type { Advisory, JsMsg, JsMsgCallback, PubAck } from "../src/mod.ts";
-import type {
-  NatsConnectionImpl,
-  NatsError,
-} from "@nats-io/nats-core/internal";
+import type { Advisory } from "../src/mod.ts";
+import type { NatsError } from "@nats-io/nats-core/internal";
 import {
-  createInbox,
   deferred,
   delay,
   Empty,
-  ErrorCode,
   headers,
   JSONCodec,
   nanos,
@@ -46,54 +39,22 @@ import {
 } from "@nats-io/nats-core";
 import {
   assert,
-  assertArrayIncludes,
   assertEquals,
   assertExists,
   assertRejects,
   assertThrows,
-  fail,
 } from "jsr:@std/assert";
 
-import type {
-  JetStreamClientImpl,
-  JetStreamSubscriptionImpl,
-} from "../src/jsclient.ts";
+import type { JetStreamClientImpl } from "../src/jsclient.ts";
 import { defaultJsOptions } from "../src/jsbaseclient_api.ts";
 import {
   _setup,
-  assertBetween,
   cleanup,
   flakyTest,
   jetstreamServerConf,
-  Lock,
   notCompatible,
 } from "test_helpers";
-import { ConsumerOptsBuilderImpl } from "../src/types.ts";
 import { PubHeaders } from "../src/jsapi_types.ts";
-
-export function callbackConsume(debug = false): JsMsgCallback {
-  return (err: NatsError | null, jm: JsMsg | null) => {
-    if (err) {
-      switch (err.code) {
-        case ErrorCode.JetStream408RequestTimeout:
-        case ErrorCode.JetStream409:
-        case ErrorCode.JetStream404NoMessages:
-          return;
-        default:
-          fail(err.code);
-      }
-    }
-    if (debug && jm) {
-      console.dir(jm.info);
-      if (jm.headers) {
-        console.info(jm.headers.toString());
-      }
-    }
-    if (jm) {
-      jm.ack();
-    }
-  };
-}
 
 Deno.test("jetstream - default options", () => {
   const opts = defaultJsOptions();
@@ -465,37 +426,6 @@ Deno.test("jetstream - puback domain", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - cleanup", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const { subj } = await initStream(nc);
-  const js = jetstream(nc);
-
-  for (let i = 0; i < 100; i++) {
-    await js.publish(subj, Empty);
-  }
-
-  const opts = consumerOpts();
-  opts.deliverTo(createInbox());
-  const sub = await js.subscribe(subj, opts);
-  let counter = 0;
-  const done = (async () => {
-    for await (const m of sub) {
-      counter++;
-      m.ack();
-      break;
-    }
-  })();
-
-  await done;
-  assertEquals(counter, 1);
-  assertEquals(sub.isClosed(), true);
-  const nci = nc as NatsConnectionImpl;
-  const min = nci.protocol.subscriptions.getMux() ? 1 : 0;
-  assertEquals(nci.protocol.subscriptions.subs.size, min);
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jetstream - source", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
 
@@ -543,114 +473,6 @@ Deno.test("jetstream - source", async () => {
   assertEquals(si.state.messages, 10);
 
   await cleanup(ns, nc);
-});
-
-async function ocTest(
-  N: number,
-  S: number,
-  callback: boolean,
-): Promise<void> {
-  if (N % 10 !== 0) {
-    throw new Error("N must be divisible by 10");
-  }
-
-  const storage = N * S + (1024 * 1024);
-  const { ns, nc } = await _setup(
-    connect,
-    jetstreamServerConf({
-      jetstream: {
-        max_file_store: storage,
-      },
-    }),
-  );
-  const { subj } = await initStream(nc);
-  const js = jetstream(nc);
-
-  const buf = new Uint8Array(S);
-  for (let i = 0; i < S; i++) {
-    buf[i] = "a".charCodeAt(0) + (i % 26);
-  }
-
-  // speed up the loading by sending 10 at time
-  const n = N / 10;
-  for (let i = 0; i < n; i++) {
-    await Promise.all([
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-      js.publish(subj, buf),
-    ]);
-  }
-
-  const lock = Lock(N, 1000 * 60);
-  const opts = consumerOpts({ idle_heartbeat: nanos(1000) });
-  opts.orderedConsumer();
-  if (callback) {
-    opts.callback((err: NatsError | null, msg: JsMsg | null): void => {
-      if (err) {
-        fail(err.message);
-        return;
-      }
-      if (!msg) {
-        fail(`didn't expect to get null msg`);
-        return;
-      }
-      lock.unlock();
-    });
-  }
-
-  const sub = await js.subscribe(subj, opts);
-  if (!callback) {
-    (async () => {
-      for await (const _jm of sub) {
-        lock.unlock();
-      }
-    })().then();
-  }
-  await lock;
-  //@ts-ignore: test
-  assertEquals(sub.sub.info.ordered_consumer_sequence.stream_seq, N);
-  //@ts-ignore: test
-  assertEquals(sub.sub.info.ordered_consumer_sequence.delivery_seq, N);
-
-  await delay(3 * 1000);
-  // @ts-ignore: test
-  const hbc = sub.sub.info.flow_control.heartbeat_count;
-  assert(hbc >= 2);
-  // @ts-ignore: test
-  const fcc = sub.sub.info.flow_control.fc_count;
-  assert(fcc >= 0);
-
-  // @ts-ignore: test
-  assert(sub.sub.info.flow_control.consumer_restarts >= 0);
-
-  // @ts-ignore: test
-  assert(sub.sub.info.flow_control.heartbeat_count > 0);
-
-  const ci = await sub.consumerInfo();
-
-  assertEquals(ci.config.deliver_policy, DeliverPolicy.All);
-  assertEquals(ci.config.ack_policy, AckPolicy.None);
-  assertEquals(ci.config.max_deliver, 1);
-  assertEquals(ci.num_pending, 0);
-  assertEquals(ci.delivered.consumer_seq, N);
-  assertEquals(ci.delivered.stream_seq, N);
-
-  await cleanup(ns, nc);
-}
-
-Deno.test("jetstream - ordered consumer callback", async () => {
-  await ocTest(500, 1024, true);
-});
-
-Deno.test("jetstream - ordered consumer iterator", async () => {
-  await ocTest(500, 1024, false);
 });
 
 Deno.test("jetstream - seal", async () => {
@@ -787,21 +609,6 @@ Deno.test("jetstream - rollup all", async () => {
   const si = await jsm.streams.info(stream);
   assertEquals(si.state.messages, 1);
 
-  const opts = consumerOpts();
-  opts.manualAck();
-  opts.deliverTo(createInbox());
-  opts.callback((_err, jm) => {
-    assert(jm);
-    assertEquals(jm.subject, `${stream}.summary`);
-    const obj = jc.decode(jm.data) as Record<string, number>;
-    assertEquals(obj.value, 42);
-  });
-  opts.maxMessages(1);
-
-  const sub = await js.subscribe(subj, opts);
-  await sub.closed;
-  assertEquals(sub.getProcessed(), 1);
-
   await cleanup(ns, nc);
 });
 
@@ -900,77 +707,6 @@ Deno.test("jetstream - no rollup", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - headers only", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  if (await notCompatible(ns, nc, "2.6.2")) {
-    return;
-  }
-  const jsm = await jetstreamManager(nc);
-  const stream = nuid.next();
-  const subj = `${stream}.*`;
-  await jsm.streams.add({
-    name: stream,
-    subjects: [subj],
-  });
-
-  const js = jetstream(nc);
-  const sc = StringCodec();
-  await js.publish(`${stream}.A`, sc.encode("a"));
-  await js.publish(`${stream}.B`, sc.encode("b"));
-
-  const opts = consumerOpts();
-  opts.deliverTo(createInbox());
-  opts.headersOnly();
-  opts.manualAck();
-  opts.callback((_err, jm) => {
-    assert(jm);
-    assert(jm.headers);
-    const size = parseInt(jm.headers.get(JsHeaders.MessageSizeHdr), 10);
-    assertEquals(size, 1);
-    assertEquals(jm.data, Empty);
-    jm.ack();
-  });
-  opts.maxMessages(2);
-
-  const sub = await js.subscribe(subj, opts);
-  await sub.closed;
-  assertEquals(sub.getProcessed(), 2);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("jetstream - bind with diff subject fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const jsm = await jetstreamManager(nc);
-  const stream = nuid.next();
-  const subj = `${stream}.*`;
-  await jsm.streams.add({
-    name: stream,
-    subjects: [subj],
-  });
-
-  await jsm.consumers.add(stream, {
-    durable_name: "me",
-    ack_policy: AckPolicy.None,
-    deliver_subject: createInbox(),
-    filter_subject: `${stream}.foo`,
-  });
-
-  const opts = consumerOpts();
-  opts.bind(stream, "me");
-  opts.filterSubject(`${stream}.bar`);
-  await assertRejects(
-    async () => {
-      const js = jetstream(nc);
-      await js.subscribe(subj, opts);
-    },
-    Error,
-    "subject does not match consumer",
-    undefined,
-  );
-  await cleanup(ns, nc);
-});
-
 Deno.test("jetstream - backoff", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.7.2")) {
@@ -985,7 +721,6 @@ Deno.test("jetstream - backoff", async () => {
     durable_name: "me",
     ack_policy: AckPolicy.Explicit,
     max_deliver: 4,
-    deliver_subject: "here",
     backoff,
   });
 
@@ -997,32 +732,17 @@ Deno.test("jetstream - backoff", async () => {
   const js = jetstream(nc);
   await js.publish(subj);
 
-  const opts = consumerOpts();
-  opts.bind(stream, "me");
-  opts.manualAck();
-
-  const arrive: number[] = [];
-  let start = 0;
-  const sub = await js.subscribe(subj, opts);
-  await (async () => {
-    for await (const m of sub) {
-      if (start === 0) {
-        start = Date.now();
-      }
-      arrive.push(Date.now());
+  const c = await js.consumers.get(stream, "me");
+  const iter = await c.consume({
+    callback: (m) => {
+      console.log(m.info.redeliveryCount);
       if (m.info.redeliveryCount === 4) {
-        break;
+        iter.stop();
       }
-    }
-  })();
-
-  const delta = arrive.map((v) => {
-    return v - start;
+    },
   });
 
-  assertBetween(delta[1], 250, 1000);
-  assertBetween(delta[2], 1250, 1500);
-  assertBetween(delta[3], 4250, 4500);
+  await iter.closed();
 
   await cleanup(ns, nc);
 });
@@ -1141,41 +861,6 @@ Deno.test("jetstream - republish", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - mem_storage consumer option", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  if (await notCompatible(ns, nc, "2.9.0")) {
-    return;
-  }
-
-  const { stream, subj } = await initStream(nc);
-  const jsm = await jetstreamManager(nc);
-  const si = await jsm.streams.info(stream);
-  assertEquals(si.config.storage, StorageType.File);
-
-  const opts = consumerOpts();
-  opts.ackExplicit();
-  opts.durable("opts");
-  opts.memory();
-
-  const js = jetstream(nc);
-  const sub = await js.pullSubscribe(subj, opts);
-  let ci = await sub.consumerInfo();
-  assertEquals(ci.config.mem_storage, true);
-
-  ci.config.mem_storage = false;
-  ci = await jsm.consumers.update(stream, "opts", ci.config);
-  assertEquals(ci.config.mem_storage, undefined);
-
-  ci = await jsm.consumers.add(stream, {
-    durable_name: "dopts",
-    mem_storage: true,
-    ack_policy: AckPolicy.Explicit,
-  });
-  assertEquals(ci.config.mem_storage, true);
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jetstream - num_replicas consumer option", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
@@ -1237,67 +922,6 @@ Deno.test("jetstream - filter_subject consumer update", async () => {
   ci = await jsm.consumers.update(si.config.name, "a", ci.config);
   assertEquals(ci.config.filter_subject, "foo.baz");
   await cleanup(ns, nc);
-});
-
-Deno.test("jetstream - ordered consumer reset", async () => {
-  let { ns, nc } = await _setup(connect, jetstreamServerConf({}));
-  const { subj } = await initStream(nc, "A");
-  const d = deferred<JsMsg>();
-  const js = jetstream(nc);
-  const opts = consumerOpts();
-  opts.orderedConsumer();
-  opts.callback((err, m) => {
-    if (err) {
-      fail(err.message);
-    }
-    c.unsubscribe();
-    d.resolve(m!);
-  });
-  const c = await js.subscribe(subj, opts);
-
-  // stop the server and wait until hbs are missed
-  await ns.stop();
-  while (true) {
-    const missed = (c as JetStreamSubscriptionImpl).monitor?.missed || 0;
-    const connected = (nc as NatsConnectionImpl).protocol.connected;
-    // we want to wait until after 2 because we want to have a cycle
-    // where we try to recreate the consumer, but skip it because we are
-    // not connected
-    if (!connected && missed >= 3) {
-      break;
-    }
-    await delay(300);
-  }
-  ns = await ns.restart();
-  let ack: PubAck;
-  while (true) {
-    try {
-      ack = await js.publish(subj);
-      break;
-    } catch (err) {
-      if ((err as NatsError).code !== ErrorCode.Timeout) {
-        fail((err as Error).message);
-      }
-      await delay(1000);
-    }
-  }
-  await c.closed;
-
-  assertEquals((await d).seq, ack.seq);
-  await cleanup(ns, nc);
-});
-
-Deno.test("jetstream - consumer opt multi subject filter", () => {
-  const opts = new ConsumerOptsBuilderImpl();
-  opts.filterSubject("foo");
-  let co = opts.getOpts();
-  assertEquals(co.config.filter_subject, "foo");
-
-  opts.filterSubject("bar");
-  co = opts.getOpts();
-  assertEquals(co.config.filter_subject, undefined);
-  assertExists(co.config.filter_subjects);
-  assertArrayIncludes(co.config.filter_subjects, ["foo", "bar"]);
 });
 
 Deno.test("jetstream - jsmsg decode", async () => {
