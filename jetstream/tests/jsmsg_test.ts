@@ -20,7 +20,7 @@ import {
   StorageType,
 } from "../src/mod.ts";
 
-import { createInbox, Empty, nanos, StringCodec } from "@nats-io/nats-core";
+import { createInbox, Empty, nanos } from "@nats-io/nats-core";
 import type { Msg } from "@nats-io/nats-core";
 import type { MsgImpl } from "@nats-io/nats-core/internal";
 
@@ -133,7 +133,7 @@ Deno.test("jsmsg - acks", async () => {
   await nc.flush();
 
   assertEquals(replies.length, 4);
-  const sc = StringCodec();
+  const sc = new TextDecoder();
   assertEquals(sc.decode(replies[0].data), "-NAK");
   assertEquals(sc.decode(replies[1].data), "+WPI");
   assertEquals(sc.decode(replies[2].data), "+TERM");

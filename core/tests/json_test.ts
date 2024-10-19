@@ -14,27 +14,14 @@
  */
 import { connect } from "./connect.ts";
 import { assertEquals } from "jsr:@std/assert";
-import { createInbox, ErrorCode, JSONCodec } from "../src/internal_mod.ts";
+import { createInbox } from "../src/internal_mod.ts";
 import type { Msg, NatsError } from "../src/internal_mod.ts";
 import { Lock } from "test_helpers";
-import { assertThrowsErrorCode } from "../../test_helpers/asserts.ts";
 import { _setup, cleanup } from "test_helpers";
-
-Deno.test("json - bad json error in callback", () => {
-  const o = {};
-  //@ts-ignore: bad json
-  o.a = o;
-
-  const jc = JSONCodec();
-  assertThrowsErrorCode(() => {
-    jc.encode(o);
-  }, ErrorCode.BadJson);
-});
 
 function macro(input: unknown) {
   return async () => {
     const { ns, nc } = await _setup(connect);
-    const jc = JSONCodec();
     const lock = Lock();
     const subj = createInbox();
     nc.subscribe(subj, {
@@ -44,13 +31,13 @@ function macro(input: unknown) {
         if (input === undefined) {
           input = null;
         }
-        assertEquals(jc.decode(msg.data), input);
+        assertEquals(msg.json(), input);
         lock.unlock();
       },
       max: 1,
     });
 
-    nc.publish(subj, jc.encode(input));
+    nc.publish(subj, JSON.stringify(input));
     await nc.flush();
     await lock;
     await cleanup(ns, nc);
@@ -60,7 +47,6 @@ function macro(input: unknown) {
 Deno.test("json - string", macro("helloworld"));
 Deno.test("json - empty", macro(""));
 Deno.test("json - null", macro(null));
-Deno.test("json - undefined", macro(undefined));
 Deno.test("json - number", macro(10));
 Deno.test("json - false", macro(false));
 Deno.test("json - true", macro(true));

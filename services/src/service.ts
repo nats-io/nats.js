@@ -16,7 +16,6 @@ import {
   deferred,
   Empty,
   headers,
-  JSONCodec,
   nanos,
   nuid,
   parseSemVer,
@@ -130,7 +129,7 @@ export class ServiceMsgImpl implements ServiceMsg {
   respondError(
     code: number,
     description: string,
-    data?: Uint8Array,
+    data?: Payload,
     opts?: PublishOptions,
   ): boolean {
     opts = opts || {};
@@ -488,14 +487,13 @@ export class ServiceImpl implements Service {
   }
 
   start(): Promise<Service> {
-    const jc = JSONCodec();
     const statsHandler = (err: Error | null, msg: Msg): Promise<void> => {
       if (err) {
         this.close(err);
         return Promise.reject(err);
       }
       return this.stats().then((s) => {
-        msg?.respond(jc.encode(s));
+        msg?.respond(JSON.stringify(s));
         return Promise.resolve();
       });
     };
@@ -505,11 +503,11 @@ export class ServiceImpl implements Service {
         this.close(err);
         return Promise.reject(err);
       }
-      msg?.respond(jc.encode(this.info()));
+      msg?.respond(JSON.stringify(this.info()));
       return Promise.resolve();
     };
 
-    const ping = jc.encode(this.ping());
+    const ping = JSON.stringify(this.ping());
     const pingHandler = (err: Error | null, msg: Msg): Promise<void> => {
       if (err) {
         this.close(err).then().catch();

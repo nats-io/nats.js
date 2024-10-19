@@ -35,7 +35,6 @@ import {
   nanos,
   nuid,
   SHA256,
-  StringCodec,
 } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import type { ObjectInfo, ObjectStoreMeta } from "../src/types.ts";
@@ -216,8 +215,7 @@ Deno.test("objectstore - multi content", async () => {
     { name: "a.js", options: { max_chunk_size: 1 } },
     readableStreamFrom(a),
   );
-  const sc = StringCodec();
-  const b = sc.encode("hello world from object store");
+  const b = new TextEncoder().encode("hello world from object store");
   await os.put(
     { name: "b.js", options: { max_chunk_size: nc.info!.max_payload } },
     readableStreamFrom(b),
@@ -293,17 +291,15 @@ Deno.test("objectstore - multi with delete", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test", { storage: StorageType.Memory });
 
-  const sc = StringCodec();
-
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a!")),
+    readableStreamFrom(new TextEncoder().encode("a!")),
   );
 
   const si = await os.status({ subjects_filter: ">" });
   await os.put(
     { name: "b", options: { max_chunk_size: nc.info!.max_payload } },
-    readableStreamFrom(sc.encode("b!")),
+    readableStreamFrom(new TextEncoder().encode("b!")),
   );
 
   await os.get("b");
@@ -323,14 +319,31 @@ Deno.test("objectstore - object names", async () => {
   }
   const objm = new Objm(nc);
   const os = await objm.create("test", { storage: StorageType.Memory });
-  const sc = StringCodec();
-  await os.put({ name: "blob.txt" }, readableStreamFrom(sc.encode("A")));
-  await os.put({ name: "foo bar" }, readableStreamFrom(sc.encode("A")));
-  await os.put({ name: " " }, readableStreamFrom(sc.encode("A")));
-  await os.put({ name: "*" }, readableStreamFrom(sc.encode("A")));
-  await os.put({ name: ">" }, readableStreamFrom(sc.encode("A")));
+  await os.put(
+    { name: "blob.txt" },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
+  await os.put(
+    { name: "foo bar" },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
+  await os.put(
+    { name: " " },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
+  await os.put(
+    { name: "*" },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
+  await os.put(
+    { name: ">" },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
   await assertRejects(async () => {
-    await os.put({ name: "" }, readableStreamFrom(sc.encode("A")));
+    await os.put(
+      { name: "" },
+      readableStreamFrom(new TextEncoder().encode("A")),
+    );
   });
   await cleanup(ns, nc);
 });
@@ -342,9 +355,11 @@ Deno.test("objectstore - metadata", async () => {
   }
   const objm = new Objm(nc);
   const os = await objm.create("test", { storage: StorageType.Memory });
-  const sc = StringCodec();
 
-  await os.put({ name: "a" }, readableStreamFrom(sc.encode("A")));
+  await os.put(
+    { name: "a" },
+    readableStreamFrom(new TextEncoder().encode("A")),
+  );
 
   // rename a
   let meta = { name: "b" } as ObjectStoreMeta;
@@ -481,18 +496,20 @@ Deno.test("objectstore - watch initially empty", async () => {
   const infos = await os.list();
   assertEquals(infos.length, 0);
 
-  const sc = StringCodec();
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
 
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("aa")),
+    readableStreamFrom(new TextEncoder().encode("aa")),
   );
 
-  await os.put({ name: "b" }, readableStreamFrom(sc.encode("b")));
+  await os.put(
+    { name: "b" },
+    readableStreamFrom(new TextEncoder().encode("b")),
+  );
 
   await done;
 
@@ -515,15 +532,14 @@ Deno.test("objectstore - watch skip history", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
-  const sc = StringCodec();
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
 
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("aa")),
+    readableStreamFrom(new TextEncoder().encode("aa")),
   );
 
   const buf: ObjectInfo[] = [];
@@ -541,7 +557,10 @@ Deno.test("objectstore - watch skip history", async () => {
     }
   })();
 
-  await os.put({ name: "c" }, readableStreamFrom(sc.encode("c")));
+  await os.put(
+    { name: "c" },
+    readableStreamFrom(new TextEncoder().encode("c")),
+  );
 
   await done;
 
@@ -560,15 +579,14 @@ Deno.test("objectstore - watch history", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
-  const sc = StringCodec();
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
 
   await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("aa")),
+    readableStreamFrom(new TextEncoder().encode("aa")),
   );
 
   const buf: ObjectInfo[] = [];
@@ -586,7 +604,10 @@ Deno.test("objectstore - watch history", async () => {
     }
   })();
 
-  await os.put({ name: "c" }, readableStreamFrom(sc.encode("c")));
+  await os.put(
+    { name: "c" },
+    readableStreamFrom(new TextEncoder().encode("c")),
+  );
 
   await done;
 
@@ -607,10 +628,9 @@ Deno.test("objectstore - same store link", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
-  const sc = StringCodec();
   const src = await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
   const oi = await os.link("ref", src);
   assertEquals(oi.options?.link?.bucket, src.bucket);
@@ -635,10 +655,9 @@ Deno.test("objectstore - link of link rejected", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
-  const sc = StringCodec();
   const src = await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
   const link = await os.link("ref", src);
 
@@ -661,10 +680,9 @@ Deno.test("objectstore - external link", async () => {
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
-  const sc = StringCodec();
   const src = await os.put(
     { name: "a" },
-    readableStreamFrom(sc.encode("a")),
+    readableStreamFrom(new TextEncoder().encode("a")),
   );
 
   const os2 = await objm.create("another");
@@ -793,9 +811,8 @@ Deno.test("objectstore - partials", async () => {
   }
   const objm = new Objm(nc);
   const os = await objm.create("test");
-  const sc = StringCodec();
 
-  const data = sc.encode("".padStart(7, "a"));
+  const data = new TextEncoder().encode("".padStart(7, "a"));
 
   const info = await os.put(
     { name: "test", options: { max_chunk_size: 2 } },
@@ -989,7 +1006,6 @@ Deno.test("objectstore - cannot put links", async () => {
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
-  const sc = StringCodec();
   const objm = new Objm(nc);
   const os = await objm.create("test");
 
@@ -1001,7 +1017,7 @@ Deno.test("objectstore - cannot put links", async () => {
 
   await assertRejects(
     async () => {
-      await os.put(mm, readableStreamFrom(sc.encode("a")));
+      await os.put(mm, readableStreamFrom(new TextEncoder().encode("a")));
     },
     Error,
     "link cannot be set when putting the object in bucket",

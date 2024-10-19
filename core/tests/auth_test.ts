@@ -48,7 +48,6 @@ import {
   jwtAuthenticator,
   nkeyAuthenticator,
   nkeys,
-  StringCodec,
   tokenAuthenticator,
   usernamePasswordAuthenticator,
 } from "../src/internal_mod.ts";
@@ -487,8 +486,7 @@ Deno.test("auth - creds authenticator validation", () => {
     `eyJ0eXAiOiJqd3QiLCJhbGciOiJlZDI1NTE5In0.eyJqdGkiOiJFU1VQS1NSNFhGR0pLN0FHUk5ZRjc0STVQNTZHMkFGWERYQ01CUUdHSklKUEVNUVhMSDJBIiwiaWF0IjoxNTQ0MjE3NzU3LCJpc3MiOiJBQ1pTV0JKNFNZSUxLN1FWREVMTzY0VlgzRUZXQjZDWENQTUVCVUtBMzZNSkpRUlBYR0VFUTJXSiIsInN1YiI6IlVBSDQyVUc2UFY1NTJQNVNXTFdUQlAzSDNTNUJIQVZDTzJJRUtFWFVBTkpYUjc1SjYzUlE1V002IiwidHlwZSI6InVzZXIiLCJuYXRzIjp7InB1YiI6e30sInN1YiI6e319fQ.kCR9Erm9zzux4G6M-V2bp7wKMKgnSNqMBACX05nwePRWQa37aO_yObbhcJWFGYjo1Ix-oepOkoyVLxOJeuD8Bw`;
   const ukp = nkeys.createUser();
   const upk = ukp.getPublicKey();
-  const sc = StringCodec();
-  const seed = sc.decode(ukp.getSeed());
+  const seed = new TextDecoder().decode(ukp.getSeed());
 
   function creds(ajwt = "", aseed = ""): string {
     return `-----BEGIN NATS USER JWT-----
@@ -513,7 +511,7 @@ Deno.test("auth - creds authenticator validation", () => {
   tests.push([jwt, seed, true, "jwt and seed"]);
 
   tests.forEach((v) => {
-    const d = sc.encode(creds(v[0], v[1]));
+    const d = new TextEncoder().encode(creds(v[0], v[1]));
     try {
       const auth = credsAuthenticator(d);
       if (!v[2]) {

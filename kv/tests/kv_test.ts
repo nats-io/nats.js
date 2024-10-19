@@ -71,7 +71,6 @@ import {
   NatsServer,
   notCompatible,
 } from "test_helpers";
-import { JSONCodec } from "@nats-io/nats-core/internal";
 import type { QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 import { Kvm } from "../src/kv.ts";
 import { flakyTest } from "../../test_helpers/mod.ts";
@@ -1619,8 +1618,8 @@ Deno.test("kv - encoded entry", async () => {
   const js = jetstream(nc);
   const kv = await new Kvm(js).create("K");
   await kv.put("a", "hello");
-  await kv.put("b", JSONCodec().encode(5));
-  await kv.put("c", JSONCodec().encode(["hello", 5]));
+  await kv.put("b", JSON.stringify(5));
+  await kv.put("c", JSON.stringify(["hello", 5]));
 
   assertEquals((await kv.get("a"))?.string(), "hello");
   assertEquals((await kv.get("b"))?.json(), 5);

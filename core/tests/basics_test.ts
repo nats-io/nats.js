@@ -34,10 +34,8 @@ import {
   Feature,
   headers,
   isIP,
-  JSONCodec,
   nuid,
   RequestStrategy,
-  StringCodec,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type {
@@ -238,7 +236,6 @@ Deno.test("basics - wildcard subscriptions", async () => {
 
 Deno.test("basics - correct data in message", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   const subj = createInbox();
   const mp = deferred<Msg>();
   const sub = nc.subscribe(subj);
@@ -249,10 +246,10 @@ Deno.test("basics - correct data in message", async () => {
     }
   })().then();
 
-  nc.publish(subj, sc.encode(subj));
+  nc.publish(subj, subj);
   const m = await mp;
   assertEquals(m.subject, subj);
-  assertEquals(sc.decode(m.data), subj);
+  assertEquals(m.string(), subj);
   assertEquals(m.reply, "");
   await cleanup(ns, nc);
 });
@@ -359,16 +356,15 @@ Deno.test("basics - unsubscribe stops messages", async () => {
 
 Deno.test("basics - request", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
-      m.respond(sc.encode("foo"));
+      m.respond("foo");
     }
   })().then();
   const msg = await nc.request(s);
-  assertEquals(sc.decode(msg.data), "foo");
+  assertEquals(msg.string(), "foo");
   await cleanup(ns, nc);
 });
 
@@ -415,10 +411,9 @@ Deno.test("basics - request cancel rejects", async () => {
 
 Deno.test("basics - old style requests", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   nc.subscribe("q", {
     callback: (_err, msg) => {
-      msg.respond(sc.encode("hello"));
+      msg.respond("hello");
     },
   });
 
@@ -427,7 +422,7 @@ Deno.test("basics - old style requests", async () => {
     Empty,
     { reply: "bar", noMux: true, timeout: 1000 },
   );
-  assertEquals("hello", sc.decode(m.data));
+  assertEquals("hello", m.string());
   assertEquals("bar", m.subject);
 
   await cleanup(ns, nc);
@@ -435,10 +430,9 @@ Deno.test("basics - old style requests", async () => {
 
 Deno.test("basics - request with custom subject", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   nc.subscribe("q", {
     callback: (_err, msg) => {
-      msg.respond(sc.encode("hello"));
+      msg.respond("hello");
     },
   });
 
@@ -459,13 +453,12 @@ Deno.test("basics - request with custom subject", async () => {
 
 Deno.test("basics - request with headers", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
       const headerContent = m.headers?.get("test-header");
-      m.respond(sc.encode(`header content: ${headerContent}`));
+      m.respond(`header content: ${headerContent}`);
     }
   })().then();
   const requestHeaders = headers();
@@ -474,19 +467,18 @@ Deno.test("basics - request with headers", async () => {
     headers: requestHeaders,
     timeout: 5000,
   });
-  assertEquals(sc.decode(msg.data), "header content: Hello, world!");
+  assertEquals(msg.string(), "header content: Hello, world!");
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request with headers and custom subject", async () => {
   const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
       const headerContent = m.headers?.get("test-header");
-      m.respond(sc.encode(`header content: ${headerContent}`));
+      m.respond(`header content: ${headerContent}`);
     }
   })().then();
   const requestHeaders = headers();
@@ -497,7 +489,7 @@ Deno.test("basics - request with headers and custom subject", async () => {
     reply: "reply-subject",
     noMux: true,
   });
-  assertEquals(sc.decode(msg.data), "header content: Hello, world!");
+  assertEquals(msg.string(), "header content: Hello, world!");
   await cleanup(ns, nc);
 });
 
@@ -884,33 +876,31 @@ Deno.test("basics - create inbox", () => {
 
 Deno.test("basics - custom prefix", async () => {
   const { ns, nc } = await _setup(connect, {}, { inboxPrefix: "_x" });
-  const jc = JSONCodec();
   const subj = createInbox();
   nc.subscribe(subj, {
     max: 1,
     callback: (_err, msg) => {
-      msg.respond(jc.encode(msg.reply!.startsWith("_x.")));
+      msg.respond();
     },
   });
 
   const v = await nc.request(subj);
-  assert(jc.decode(v.data));
+  assert(v.subject.startsWith("_x."));
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - custom prefix noMux", async () => {
   const { ns, nc } = await _setup(connect, {}, { inboxPrefix: "_y" });
-  const jc = JSONCodec();
   const subj = createInbox();
   nc.subscribe(subj, {
     max: 1,
     callback: (_err, msg) => {
-      msg.respond(jc.encode(msg.reply!.startsWith("_y.")));
+      msg.respond();
     },
   });
 
   const v = await nc.request(subj);
-  assert(jc.decode(v.data));
+  assert(v.subject.startsWith("_y."));
   await cleanup(ns, nc);
 });
 
@@ -1072,12 +1062,10 @@ Deno.test("basics - request many sentinel", async () => {
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
       msg.respond();
     },
@@ -1106,12 +1094,10 @@ Deno.test("basics - request many sentinel - partial response", async () => {
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
     },
   });
@@ -1217,8 +1203,7 @@ Deno.test("basics - info", async () => {
 Deno.test("basics - initial connect error", async () => {
   const listener = Deno.listen({ port: 0 });
   const port = (listener.addr as Deno.NetAddr).port;
-  const sc = StringCodec();
-  const INFO = sc.encode(
+  const INFO = new TextEncoder().encode(
     `INFO {"server_id":"FAKE","server_name":"FAKE","version":"2.9.4","proto":1,"go":"go1.19.2","host":"127.0.0.1","port":${port},"headers":true,"max_payload":1048576,"jetstream":true,"client_id":4,"client_ip":"127.0.0.1"}\r\n`,
   );
 
@@ -1283,14 +1268,8 @@ Deno.test("basics - msg typed payload", async () => {
   });
 
   assertEquals((await nc.request("echo", Empty)).string(), "");
-  assertEquals(
-    (await nc.request("echo", StringCodec().encode("hello"))).string(),
-    "hello",
-  );
-  assertEquals(
-    (await nc.request("echo", StringCodec().encode("5"))).string(),
-    "5",
-  );
+  assertEquals((await nc.request("echo", "hello")).string(), "hello");
+  assertEquals((await nc.request("echo", "5")).string(), "5");
 
   await assertRejects(
     async () => {
@@ -1298,32 +1277,24 @@ Deno.test("basics - msg typed payload", async () => {
       r.json<number>();
     },
     Error,
-    "Bad JSON",
+    "Unexpected end of JSON input",
   );
 
+  assertEquals((await nc.request("echo", JSON.stringify(null))).json(), null);
+  assertEquals((await nc.request("echo", JSON.stringify(5))).json(), 5);
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode(null))).json(),
-    null,
-  );
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode(undefined))).json(),
-    null,
-  );
-  assertEquals((await nc.request("echo", JSONCodec().encode(5))).json(), 5);
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode("hello"))).json(),
+    (await nc.request("echo", JSON.stringify("hello"))).json(),
     "hello",
   );
+  assertEquals((await nc.request("echo", JSON.stringify(["hello"]))).json(), [
+    "hello",
+  ]);
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode(["hello"]))).json(),
-    ["hello"],
-  );
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode({ one: "two" }))).json(),
+    (await nc.request("echo", JSON.stringify({ one: "two" }))).json(),
     { one: "two" },
   );
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode([{ one: "two" }]))).json(),
+    (await nc.request("echo", JSON.stringify([{ one: "two" }]))).json(),
     [{ one: "two" }],
   );
 
@@ -1408,7 +1379,7 @@ Deno.test("basics - json reviver", async () => {
 
   nc.subscribe(subj, {
     callback: (_err, msg) => {
-      msg.respond(JSONCodec().encode({ date: Date.now(), auth: true }));
+      msg.respond(JSON.stringify({ date: Date.now(), auth: true }));
     },
   });
 

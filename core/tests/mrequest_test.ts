@@ -22,7 +22,6 @@ import {
   Empty,
   Events,
   RequestStrategy,
-  StringCodec,
 } from "../src/internal_mod.ts";
 
 import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
@@ -118,12 +117,10 @@ async function requestManySentinel(
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
       if (!partial) {
         msg.respond();

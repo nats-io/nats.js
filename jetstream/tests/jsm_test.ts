@@ -30,12 +30,10 @@ import {
   Empty,
   ErrorCode,
   headers,
-  JSONCodec,
   jwtAuthenticator,
   nanos,
   nkeys,
   nuid,
-  StringCodec,
 } from "@nats-io/nats-core";
 import type {
   ConsumerConfig,
@@ -736,24 +734,23 @@ Deno.test("jsm - get message", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
 
-  const jc = JSONCodec();
   const h = headers();
   h.set("xxx", "a");
 
   const js = jetstream(nc);
-  await js.publish(subj, jc.encode(1), { headers: h });
-  await js.publish(subj, jc.encode(2));
+  await js.publish(subj, JSON.stringify(1), { headers: h });
+  await js.publish(subj, JSON.stringify(2));
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
-  assertEquals(jc.decode(sm.data), 1);
+  assertEquals(sm.json<number>(), 1);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
-  assertEquals(jc.decode(sm.data), 2);
+  assertEquals(sm.json<number>(), 2);
 
   const err = await assertRejects(
     async () => {
@@ -773,9 +770,8 @@ Deno.test("jsm - get message payload", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const js = jetstream(nc);
-  const sc = StringCodec();
   await js.publish(subj, Empty, { msgID: "empty" });
-  await js.publish(subj, sc.encode(""), { msgID: "empty2" });
+  await js.publish(subj, "", { msgID: "empty2" });
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
@@ -787,7 +783,7 @@ Deno.test("jsm - get message payload", async () => {
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.data, Empty);
-  assertEquals(sc.decode(sm.data), "");
+  assertEquals(sm.string(), "");
 
   await cleanup(ns, nc);
 });
@@ -1200,14 +1196,12 @@ Deno.test("jsm - direct getMessage", async () => {
     allow_direct: true,
   });
 
-  const sc = StringCodec();
-
   const js = jetstream(nc);
-  await js.publish("foo", sc.encode("a"), { expect: { lastSequence: 0 } });
-  await js.publish("foo", sc.encode("b"), { expect: { lastSequence: 1 } });
-  await js.publish("foo", sc.encode("c"), { expect: { lastSequence: 2 } });
-  await js.publish("bar", sc.encode("d"), { expect: { lastSequence: 3 } });
-  await js.publish("foo", sc.encode("e"), { expect: { lastSequence: 4 } });
+  await js.publish("foo", "a", { expect: { lastSequence: 0 } });
+  await js.publish("foo", "b", { expect: { lastSequence: 1 } });
+  await js.publish("foo", "c", { expect: { lastSequence: 2 } });
+  await js.publish("bar", "d", { expect: { lastSequence: 3 } });
+  await js.publish("foo", "e", { expect: { lastSequence: 4 } });
 
   let m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "bar" });
   assertEquals(m.seq, 4);
@@ -1953,8 +1947,8 @@ Deno.test("jsm - direct msg decode", async () => {
   const js = jetstream(nc);
   await jsm.streams.add({ name, subjects: [`a.>`], allow_direct: true });
 
-  await js.publish("a.a", StringCodec().encode("hello"));
-  await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
+  await js.publish("a.a", "hello");
+  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   assertEquals(
     (await jsm.direct.getMessage(name, { seq: 1 })).string(),
@@ -1975,8 +1969,8 @@ Deno.test("jsm - stored msg decode", async () => {
   const js = jetstream(nc);
   await jsm.streams.add({ name, subjects: [`a.>`], allow_direct: false });
 
-  await js.publish("a.a", StringCodec().encode("hello"));
-  await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
+  await js.publish("a.a", "hello");
+  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   assertEquals(
     (await jsm.streams.getMessage(name, { seq: 1 })).string(),

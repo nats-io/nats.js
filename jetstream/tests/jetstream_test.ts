@@ -32,10 +32,8 @@ import {
   delay,
   Empty,
   headers,
-  JSONCodec,
   nanos,
   nuid,
-  StringCodec,
 } from "@nats-io/nats-core";
 import {
   assert,
@@ -216,16 +214,15 @@ Deno.test("jetstream - get message last by subject", async () => {
   await jsm.streams.add({ name: stream, subjects: [`${stream}.*`] });
 
   const js = jetstream(nc);
-  const sc = StringCodec();
-  await js.publish(`${stream}.A`, sc.encode("a"));
-  await js.publish(`${stream}.A`, sc.encode("aa"));
-  await js.publish(`${stream}.B`, sc.encode("b"));
-  await js.publish(`${stream}.B`, sc.encode("bb"));
+  await js.publish(`${stream}.A`, "a");
+  await js.publish(`${stream}.A`, "aa");
+  await js.publish(`${stream}.B`, "b");
+  await js.publish(`${stream}.B`, "bb");
 
   const sm = await jsm.streams.getMessage(stream, {
     last_by_subj: `${stream}.A`,
   });
-  assertEquals(sc.decode(sm.data), "aa");
+  assertEquals(sm.string(), "aa");
 
   await cleanup(ns, nc);
 });
@@ -334,11 +331,10 @@ Deno.test("jetstream - publish headers", async () => {
 Deno.test("jetstream - JSON", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
-  const jc = JSONCodec();
   const js = jetstream(nc);
-  const values = [undefined, null, true, "", ["hello"], { hello: "world" }];
+  const values = [null, true, "", ["hello"], { hello: "world" }];
   for (const v of values) {
-    await js.publish(subj, jc.encode(v));
+    await js.publish(subj, JSON.stringify(v));
   }
 
   const jsm = await jetstreamManager(nc);
@@ -482,9 +478,8 @@ Deno.test("jetstream - seal", async () => {
   }
   const { stream, subj } = await initStream(nc);
   const js = jetstream(nc);
-  const sc = StringCodec();
-  await js.publish(subj, sc.encode("hello"));
-  await js.publish(subj, sc.encode("second"));
+  await js.publish(subj, "hello");
+  await js.publish(subj, "second");
 
   const jsm = await jetstreamManager(nc);
   const si = await jsm.streams.info(stream);
@@ -525,9 +520,8 @@ Deno.test("jetstream - deny delete", async () => {
   });
 
   const js = jetstream(nc);
-  const sc = StringCodec();
-  await js.publish(subj, sc.encode("hello"));
-  await js.publish(subj, sc.encode("second"));
+  await js.publish(subj, "hello");
+  await js.publish(subj, "second");
 
   const si = await jsm.streams.info(stream);
   assertEquals(si.config.deny_delete, true);
@@ -559,9 +553,8 @@ Deno.test("jetstream - deny purge", async () => {
   });
 
   const js = jetstream(nc);
-  const sc = StringCodec();
-  await js.publish(subj, sc.encode("hello"));
-  await js.publish(subj, sc.encode("second"));
+  await js.publish(subj, "hello");
+  await js.publish(subj, "second");
 
   const si = await jsm.streams.info(stream);
   assertEquals(si.config.deny_purge, true);
@@ -593,16 +586,15 @@ Deno.test("jetstream - rollup all", async () => {
   });
 
   const js = jetstream(nc);
-  const jc = JSONCodec();
   const buf = [];
   for (let i = 1; i < 11; i++) {
-    buf.push(js.publish(`${stream}.A`, jc.encode({ value: i })));
+    buf.push(js.publish(`${stream}.A`, JSON.stringify({ value: i })));
   }
   await Promise.all(buf);
 
   const h = headers();
   h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueAll);
-  await js.publish(`${stream}.summary`, jc.encode({ value: 42 }), {
+  await js.publish(`${stream}.summary`, JSON.stringify({ value: 42 }), {
     headers: h,
   });
 
@@ -627,11 +619,10 @@ Deno.test("jetstream - rollup subject", async () => {
   });
 
   const js = jetstream(nc);
-  const jc = JSONCodec<Record<string, number>>();
   const buf = [];
   for (let i = 1; i < 11; i++) {
-    buf.push(js.publish(`${stream}.A`, jc.encode({ value: i })));
-    buf.push(js.publish(`${stream}.B`, jc.encode({ value: i })));
+    buf.push(js.publish(`${stream}.A`, JSON.stringify({ value: i })));
+    buf.push(js.publish(`${stream}.B`, JSON.stringify({ value: i })));
   }
   await Promise.all(buf);
 
@@ -647,7 +638,7 @@ Deno.test("jetstream - rollup subject", async () => {
 
   const h = headers();
   h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
-  await js.publish(`${stream}.A`, jc.encode({ value: 0 }), {
+  await js.publish(`${stream}.A`, JSON.stringify({ value: 0 }), {
     headers: h,
   });
 
@@ -684,10 +675,9 @@ Deno.test("jetstream - no rollup", async () => {
   assertEquals(si.config.allow_rollup_hdrs, false);
 
   const js = jetstream(nc);
-  const jc = JSONCodec<Record<string, number>>();
   const buf = [];
   for (let i = 1; i < 11; i++) {
-    buf.push(js.publish(`${stream}.A`, jc.encode({ value: i })));
+    buf.push(js.publish(`${stream}.A`, JSON.stringify({ value: i })));
   }
   await Promise.all(buf);
 
@@ -695,7 +685,7 @@ Deno.test("jetstream - no rollup", async () => {
   h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
   await assertRejects(
     async () => {
-      await js.publish(`${stream}.A`, jc.encode({ value: 42 }), {
+      await js.publish(`${stream}.A`, JSON.stringify({ value: 42 }), {
         headers: h,
       });
     },
@@ -936,8 +926,8 @@ Deno.test("jetstream - jsmsg decode", async () => {
     ack_policy: AckPolicy.Explicit,
   });
 
-  await js.publish("a.a", StringCodec().encode("hello"));
-  await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
+  await js.publish("a.a", "hello");
+  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   const c = await js.consumers.get(name, "me");
   assertEquals((await c.next())?.string(), "hello");

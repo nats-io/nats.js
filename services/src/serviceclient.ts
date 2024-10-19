@@ -14,7 +14,6 @@
  */
 import {
   Empty,
-  JSONCodec,
   QueuedIteratorImpl,
   RequestStrategy,
 } from "@nats-io/nats-core/internal";
@@ -79,13 +78,12 @@ export class ServiceClientImpl implements ServiceClient {
     id = "",
   ): Promise<QueuedIterator<T>> {
     const iter = new QueuedIteratorImpl<T>();
-    const jc = JSONCodec<T>();
     const subj = ServiceImpl.controlSubject(v, name, id, this.prefix);
     const responses = await this.nc.requestMany(subj, Empty, this.opts);
     (async () => {
       for await (const m of responses) {
         try {
-          const s = jc.decode(m.data);
+          const s = m.json<T>();
           iter.push(s);
         } catch (err) {
           // @ts-ignore: pushing fn
