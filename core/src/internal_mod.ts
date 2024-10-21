@@ -108,7 +108,6 @@ export type {
   ServersChanged,
   Stats,
   Status,
-  Sub,
   SubOpts,
   Subscription,
   SubscriptionOptions,

@@ -32,7 +32,6 @@ import { Features, parseSemVer } from "./semver.ts";
 import { DebugEvents, ErrorCode, Events, NatsError } from "./core.ts";
 
 import type {
-  Base,
   ConnectionOptions,
   Dispatcher,
   Msg,
@@ -101,7 +100,7 @@ export class Connect {
 }
 
 export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
-  implements Base, Subscription {
+  implements Subscription {
   sid!: number;
   queue?: string;
   draining: boolean;
