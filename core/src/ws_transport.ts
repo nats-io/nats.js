@@ -15,26 +15,19 @@
 
 import type {
   ConnectionOptions,
-  Deferred,
   NatsConnection,
   Server,
   ServerInfo,
-  Transport,
-  TransportFactory,
-} from "./internal_mod.ts";
-import {
-  checkOptions,
-  DataBuffer,
-  deferred,
-  delay,
-  ErrorCode,
-  extractProtocolMessage,
-  INFO,
-  NatsConnectionImpl,
-  NatsError,
-  render,
-  setTransportFactory,
-} from "./internal_mod.ts";
+} from "./core.ts";
+import { ErrorCode, NatsError } from "./core.ts";
+import type { Deferred } from "./util.ts";
+import { deferred, delay, render } from "./util.ts";
+import type { Transport, TransportFactory } from "./transport.ts";
+import { extractProtocolMessage, setTransportFactory } from "./transport.ts";
+import { checkOptions } from "./options.ts";
+import { DataBuffer } from "./databuffer.ts";
+import { INFO } from "./protocol.ts";
+import { NatsConnectionImpl } from "./nats.ts";
 import { version } from "./version.ts";
 
 const VERSION = version;
