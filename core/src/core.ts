@@ -359,11 +359,6 @@ export interface ServersChanged {
   readonly deleted: string[];
 }
 
-/**
- * Type alias for NATS core subscriptions
- */
-export type Subscription = Sub<Msg>;
-
 export enum Match {
   // Exact option is case sensitive
   Exact = 0,
@@ -696,7 +691,7 @@ export function syncIterator<T>(src: AsyncIterable<T>): SyncIterator<T> {
 /**
  * Basic interface to a Subscription type
  */
-export interface Sub<T> extends AsyncIterable<T> {
+export interface Subscription extends AsyncIterable<Msg> {
   /** A promise that resolves when the subscription closes */
   closed: Promise<void>;
 
@@ -729,7 +724,7 @@ export interface Sub<T> extends AsyncIterable<T> {
   /**
    * @ignore
    */
-  callback(err: NatsError | null, msg: Msg): void;
+  callback: MsgCallback<Msg>;
 
   /**
    * Returns the subject that was used to create the subscription.
@@ -1087,15 +1082,6 @@ export const DEFAULT_PORT = 4222;
 export const DEFAULT_HOST = "127.0.0.1";
 
 export type ConnectFn = (opts: ConnectionOptions) => Promise<NatsConnection>;
-
-export interface Base {
-  subject: string;
-  callback: (error: NatsError | null, msg: Msg) => void;
-  received: number;
-  timeout?: number | null;
-  max?: number | undefined;
-  draining: boolean;
-}
 
 export interface URLParseFn {
   (u: string, encrypted?: boolean): string;

@@ -32,7 +32,7 @@ import type {
   PublishOptions,
   QueuedIterator,
   ReviverFn,
-  Sub,
+  Subscription,
 } from "@nats-io/nats-core/internal";
 
 import {
@@ -239,7 +239,7 @@ type ServiceSubscription<T = unknown> =
   & NamedEndpoint
   & {
     internal: boolean;
-    sub: Sub<T>;
+    sub: Subscription;
     qi?: QueuedIterator<T>;
     stats: NamedEndpointStatsImpl;
     metadata?: Record<string, string>;
