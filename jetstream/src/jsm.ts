@@ -70,6 +70,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const r = await this.nc.request(
       subj,
       payload,
+      { timeout: this.timeout },
     );
 
     // response is not a JS.API response
