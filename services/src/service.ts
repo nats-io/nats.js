@@ -373,14 +373,14 @@ export class ServiceImpl implements Service {
     sv.queue = queue;
 
     const callback = handler
-      ? (err: NatsError | null, msg: Msg) => {
+      ? async (err: NatsError | null, msg: Msg) => {
         if (err) {
           this.close(err);
           return;
         }
         const start = Date.now();
         try {
-          handler(err, new ServiceMsgImpl(msg));
+          await handler(err, new ServiceMsgImpl(msg));
         } catch (err) {
           sv.stats.countError(err as Error);
           msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
