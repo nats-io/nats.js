@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { process } = require("node:process");
+const process = require("node:process");
 const parse = require("minimist");
 const { connect } = require("../index");
 

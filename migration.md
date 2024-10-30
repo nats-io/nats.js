@@ -84,6 +84,11 @@ these modules for cross-runtime consumption.
   string or JSON use `string()` and `json()` methods. For publishing JSON
   payloads, simply specify the output of `JSON.stringify()` to the publish
   operation.
+- NatsError was removed in favor of more descriptive types. For example, if you
+  make a request, the request could fail with a RequestError. The RequestError
+  in turn will contain the cause `TimeoutError` or a `NoRespondersError`. This
+  also means that in typescript, the callback signature has been relaxed to just
+  `(Error, Msg)=>void`. For more information see the JsDoc for the client.
 
 ## Changes in JetStream
 
@@ -109,6 +114,10 @@ To use JetStream, you must install and import `@nats/jetstream`.
   `isConsumerOptsBuilder()` have been removed. Along side of it
   `ConsumerOptsBuilder` which was used by `subscribe()` and `pullSubscribe()`
   type has been removed.
+- JetStream errors are now expressed by the type `JetStreamError` and
+  `JetStreamAPIError`. For API calls where the server could return an error,
+  these are `JetStreamAPIError` and contain all the information returned by the
+  server.
 
 ## Changes to KV
 

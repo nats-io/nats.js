@@ -26,7 +26,6 @@ import {
 } from "../src/mod.ts";
 
 import type { Advisory } from "../src/mod.ts";
-import type { NatsError } from "@nats-io/nats-core/internal";
 import {
   deferred,
   delay,
@@ -53,6 +52,7 @@ import {
   notCompatible,
 } from "test_helpers";
 import { PubHeaders } from "../src/jsapi_types.ts";
+import { JetStreamApiError } from "../src/jserrors.ts";
 
 Deno.test("jetstream - default options", () => {
   const opts = defaultJsOptions();
@@ -747,19 +747,11 @@ Deno.test("jetstream - detailed errors", async () => {
       num_replicas: 3,
       subjects: ["foo"],
     });
-  }) as NatsError;
+  }, JetStreamApiError);
 
-  assert(ne.api_error);
-  assertEquals(
-    ne.message,
-    "replicas > 1 not supported in non-clustered mode",
-  );
-  assertEquals(
-    ne.api_error.description,
-    "replicas > 1 not supported in non-clustered mode",
-  );
-  assertEquals(ne.api_error.code, 500);
-  assertEquals(ne.api_error.err_code, 10074);
+  assertEquals(ne.message, "replicas > 1 not supported in non-clustered mode");
+  assertEquals(ne.code, 10074);
+  assertEquals(ne.status, 500);
 
   await cleanup(ns, nc);
 });

@@ -16,7 +16,6 @@
 import { deferred } from "./util.ts";
 import { ProtocolHandler, SubscriptionImpl } from "./protocol.ts";
 import { Empty } from "./encoders.ts";
-import { NatsError } from "./types.ts";
 
 import type { Features, SemVer } from "./semver.ts";
 import { parseSemVer } from "./semver.ts";
@@ -27,8 +26,7 @@ import { RequestMany, RequestOne } from "./request.ts";
 
 import type { RequestManyOptionsInternal } from "./request.ts";
 
-import { isRequestError } from "./msg.ts";
-import { createInbox, ErrorCode, RequestStrategy } from "./core.ts";
+import { createInbox, RequestStrategy } from "./core.ts";
 import type { Dispatcher } from "./core.ts";
 
 import type {
@@ -47,6 +45,7 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
 
 export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
@@ -91,17 +90,17 @@ export class NatsConnectionImpl implements NatsConnection {
 
   _check(subject: string, sub: boolean, pub: boolean) {
     if (this.isClosed()) {
-      throw NatsError.errorForCode(ErrorCode.ConnectionClosed);
+      throw new errors.ClosedConnectionError();
     }
     if (sub && this.isDraining()) {
-      throw NatsError.errorForCode(ErrorCode.ConnectionDraining);
+      throw new errors.DrainingConnectionError();
     }
     if (pub && this.protocol.noMorePublishing) {
-      throw NatsError.errorForCode(ErrorCode.ConnectionDraining);
+      throw new errors.DrainingConnectionError();
     }
     subject = subject || "";
     if (subject.length === 0) {
-      throw NatsError.errorForCode(ErrorCode.BadSubject);
+      throw new errors.InvalidSubjectError(subject);
     }
   }
 
@@ -185,7 +184,12 @@ export class NatsConnectionImpl implements NatsConnection {
     opts.strategy = opts.strategy || RequestStrategy.Timer;
     opts.maxWait = opts.maxWait || 1000;
     if (opts.maxWait < 1) {
-      return Promise.reject(new NatsError("timeout", ErrorCode.InvalidOption));
+      return Promise.reject(
+        new errors.InvalidArgumentError(InvalidArgumentError.format(
+          "timeout",
+          "must be greater than 0",
+        )),
+      );
     }
 
     // the iterator for user results
@@ -218,9 +222,9 @@ export class NatsConnectionImpl implements NatsConnection {
           // we only expect runtime errors or a no responders
           if (
             msg?.data?.length === 0 &&
-            msg?.headers?.status === ErrorCode.NoResponders
+            msg?.headers?.status === "503"
           ) {
-            err = NatsError.errorForCode(ErrorCode.NoResponders);
+            err = new errors.NoRespondersError(subject);
           }
           // augment any error with the current stack to provide context
           // for the error on the suer code
@@ -292,7 +296,7 @@ export class NatsConnectionImpl implements NatsConnection {
       try {
         this.publish(subject, data, { reply: sub.getSubject() });
       } catch (err) {
-        cancel(err as NatsError);
+        cancel(err as Error);
       }
 
       let timer = setTimeout(() => {
@@ -328,7 +332,7 @@ export class NatsConnectionImpl implements NatsConnection {
           },
         );
       } catch (err) {
-        r.cancel(err as NatsError);
+        r.cancel(err as Error);
       }
     }
 
@@ -348,13 +352,19 @@ export class NatsConnectionImpl implements NatsConnection {
     const asyncTraces = !(this.protocol.options.noAsyncTraces || false);
     opts.timeout = opts.timeout || 1000;
     if (opts.timeout < 1) {
-      return Promise.reject(new NatsError("timeout", ErrorCode.InvalidOption));
+      return Promise.reject(
+        new errors.InvalidArgumentError(
+          InvalidArgumentError.format("timeout", `must be greater than 0`),
+        ),
+      );
     }
     if (!opts.noMux && opts.reply) {
       return Promise.reject(
-        new NatsError(
-          "reply can only be used with noMux",
-          ErrorCode.InvalidOption,
+        new errors.InvalidArgumentError(
+          InvalidArgumentError.formatMultiple(
+            ["reply", "noMux"],
+            "are mutually exclusive",
+          ),
         ),
       );
     }
@@ -364,31 +374,30 @@ export class NatsConnectionImpl implements NatsConnection {
         ? opts.reply
         : createInbox(this.options.inboxPrefix);
       const d = deferred<Msg>();
-      const errCtx = asyncTraces ? new Error() : null;
+      const errCtx = asyncTraces ? new errors.RequestError("") : null;
       const sub = this.subscribe(
         inbox,
         {
           max: 1,
           timeout: opts.timeout,
           callback: (err, msg) => {
+            // check for no responders
+            if (msg && msg.data?.length === 0 && msg.headers?.code === 503) {
+              err = new errors.NoRespondersError(subject);
+            }
             if (err) {
-              // timeouts from `timeout()` will have the proper stack
-              if (errCtx && err.code !== ErrorCode.Timeout) {
-                err.stack += `\n\n${errCtx.stack}`;
-              }
-              sub.unsubscribe();
-              d.reject(err);
-            } else {
-              err = isRequestError(msg);
-              if (err) {
-                // if we failed here, help the developer by showing what failed
-                if (errCtx) {
-                  err.stack += `\n\n${errCtx.stack}`;
-                }
-                d.reject(err);
+              // if we have a context, use that as the wrapper
+              if (errCtx) {
+                errCtx.message = err.message;
+                errCtx.cause = err;
+                err = errCtx;
               } else {
-                d.resolve(msg);
+                err = new errors.RequestError(err.message, { cause: err });
               }
+              d.reject(err);
+              sub.unsubscribe();
+            } else {
+              d.resolve(msg);
             }
           },
         },
@@ -418,7 +427,7 @@ export class NatsConnectionImpl implements NatsConnection {
           },
         );
       } catch (err) {
-        r.cancel(err as NatsError);
+        r.cancel(err as Error);
       }
 
       const p = Promise.race([r.timer, r.deferred]);
@@ -435,23 +444,17 @@ export class NatsConnectionImpl implements NatsConnection {
    */
   flush(): Promise<void> {
     if (this.isClosed()) {
-      return Promise.reject(
-        NatsError.errorForCode(ErrorCode.ConnectionClosed),
-      );
+      return Promise.reject(new errors.ClosedConnectionError());
     }
     return this.protocol.flush();
   }
 
   drain(): Promise<void> {
     if (this.isClosed()) {
-      return Promise.reject(
-        NatsError.errorForCode(ErrorCode.ConnectionClosed),
-      );
+      return Promise.reject(new errors.ClosedConnectionError());
     }
     if (this.isDraining()) {
-      return Promise.reject(
-        NatsError.errorForCode(ErrorCode.ConnectionDraining),
-      );
+      return Promise.reject(new errors.DrainingConnectionError());
     }
     this.draining = true;
     return this.protocol.drain();
@@ -509,8 +512,11 @@ export class NatsConnectionImpl implements NatsConnection {
   }
 
   async rtt(): Promise<number> {
-    if (!this.protocol._closed && !this.protocol.connected) {
-      throw NatsError.errorForCode(ErrorCode.Disconnect);
+    if (this.isClosed()) {
+      throw new errors.ClosedConnectionError();
+    }
+    if (!this.protocol.connected) {
+      throw new errors.RequestError("connection disconnected");
     }
     const start = Date.now();
     await this.flush();
@@ -523,14 +529,10 @@ export class NatsConnectionImpl implements NatsConnection {
 
   reconnect(): Promise<void> {
     if (this.isClosed()) {
-      return Promise.reject(
-        NatsError.errorForCode(ErrorCode.ConnectionClosed),
-      );
+      return Promise.reject(new errors.ClosedConnectionError());
     }
     if (this.isDraining()) {
-      return Promise.reject(
-        NatsError.errorForCode(ErrorCode.ConnectionDraining),
-      );
+      return Promise.reject(new errors.DrainingConnectionError());
     }
     return this.protocol.reconnect();
   }

@@ -16,6 +16,7 @@
 import {
   createInbox,
   Empty,
+  errors,
   Feature,
   headers,
   MsgHdrsImpl,
@@ -584,7 +585,12 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     if (opts) {
       const { keep, seq } = opts as PurgeBySeq & PurgeTrimOpts;
       if (typeof keep === "number" && typeof seq === "number") {
-        throw new Error("can specify one of keep or seq");
+        throw new errors.InvalidArgumentError(
+          errors.InvalidArgumentError.formatMultiple(
+            ["keep", "seq"],
+            "are mutually exclusive",
+          ),
+        );
       }
     }
     validateStreamName(name);

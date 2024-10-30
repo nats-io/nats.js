@@ -15,7 +15,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { TD } from "./encoders.ts";
 import type { Nanos } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
+import { TimeoutError } from "./errors.ts";
 
 export type ValueResult<T> = {
   isError: false;
@@ -67,7 +67,7 @@ export interface Timeout<T> extends Promise<T> {
 
 export function timeout<T>(ms: number, asyncTraces = true): Timeout<T> {
   // by generating the stack here to help identify what timed out
-  const err = asyncTraces ? NatsError.errorForCode(ErrorCode.Timeout) : null;
+  const err = asyncTraces ? new TimeoutError() : null;
   let methods;
   let timer: number;
   const p = new Promise((_resolve, reject) => {
@@ -80,7 +80,7 @@ export function timeout<T>(ms: number, asyncTraces = true): Timeout<T> {
     // @ts-ignore: node is not a number
     timer = setTimeout(() => {
       if (err === null) {
-        reject(NatsError.errorForCode(ErrorCode.Timeout));
+        reject(new TimeoutError());
       } else {
         reject(err);
       }

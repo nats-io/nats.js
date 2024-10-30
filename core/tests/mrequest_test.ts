@@ -20,11 +20,11 @@ import {
   deferred,
   delay,
   Empty,
-  Events,
   RequestStrategy,
 } from "../src/internal_mod.ts";
 
 import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { errors } from "../src/errors.ts";
 
 async function requestManyCount(noMux = false): Promise<void> {
   const { ns, nc } = await _setup(connect, {});
@@ -257,8 +257,8 @@ async function requestManyStopsOnError(noMux = false): Promise<void> {
         // do nothing
       }
     },
-    Error,
-    "503",
+    errors.NoRespondersError,
+    subj,
   );
   await cleanup(ns, nc);
 }
@@ -285,8 +285,10 @@ Deno.test("mreq - pub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === Events.Error && s.permissionContext?.subject === "q") {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.subject === "q" && s.error.operation === "publish") {
+          d.resolve();
+        }
       }
     }
   })().then();
@@ -330,11 +332,13 @@ Deno.test("mreq - sub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.type === Events.Error &&
-        s.permissionContext?.operation === "subscription"
-      ) {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (
+          s.error.operation === "subscription" &&
+          s.error.subject.startsWith("_INBOX.")
+        ) {
+          d.resolve();
+        }
       }
     }
   })().then();
@@ -351,7 +355,7 @@ Deno.test("mreq - sub permission error", async () => {
         // nothing;
       }
     },
-    Error,
+    errors.PermissionViolationError,
     "Permissions Violation for Subscription",
   );
   await d;
@@ -390,11 +394,13 @@ Deno.test("mreq - lost sub permission", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.type === Events.Error &&
-        s.permissionContext?.operation === "subscription"
-      ) {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (
+          s.error.operation === "subscription" &&
+          s.error.subject.startsWith("_INBOX.")
+        ) {
+          d.resolve();
+        }
       }
     }
   })().then();
@@ -404,14 +410,14 @@ Deno.test("mreq - lost sub permission", async () => {
       const iter = await nc.requestMany("q", Empty, {
         strategy: RequestStrategy.Count,
         maxMessages: 3,
-        maxWait: 5000,
+        maxWait: 2000,
         noMux: true,
       });
       for await (const _m of iter) {
-        // nothing
+        // nothing;
       }
     },
-    Error,
+    errors.PermissionViolationError,
     "Permissions Violation for Subscription",
   );
   await d;
@@ -456,8 +462,8 @@ Deno.test("mreq - no responder doesn't leak subs", async () => {
         // nothing
       }
     },
-    Error,
-    "503",
+    errors.NoRespondersError,
+    "no responders: 'q'",
   );
 
   // the mux subscription

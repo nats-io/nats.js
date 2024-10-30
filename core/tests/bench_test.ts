@@ -77,7 +77,7 @@ Deno.test("bench - no opts toss", async () => {
       new Bench(nc, {});
     },
     Error,
-    "no bench option selected",
+    "no options selected",
   );
 
   await nc.close();

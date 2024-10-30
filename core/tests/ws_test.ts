@@ -23,12 +23,12 @@ import {
 import {
   createInbox,
   DebugEvents,
-  ErrorCode,
+  errors,
   Events,
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
-import type { NatsConnectionImpl, NatsError } from "../src/internal_mod.ts";
+import type { NatsConnectionImpl } from "../src/nats.ts";
 import {
   assertBetween,
   cleanup,
@@ -105,15 +105,13 @@ Deno.test(
 );
 
 Deno.test("ws - tls options are not supported", async () => {
-  const err = await assertRejects(
+  await assertRejects(
     () => {
       return wsconnect({ servers: "wss://demo.nats.io:8443", tls: {} });
     },
-    Error,
-    "tls",
+    errors.InvalidArgumentError,
+    "'tls' is not configurable on w3c websocket connections",
   );
-
-  assertEquals((err as NatsError).code, ErrorCode.InvalidOption);
 });
 
 Deno.test(

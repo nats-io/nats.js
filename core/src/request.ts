@@ -22,12 +22,13 @@ import type {
   RequestManyOptions,
   RequestOptions,
 } from "./core.ts";
-import { ErrorCode, NatsError, RequestStrategy } from "./core.ts";
+import { RequestStrategy } from "./core.ts";
+import { RequestError } from "./errors.ts";
 
 export class BaseRequest {
   token: string;
   received: number;
-  ctx?: Error;
+  ctx?: RequestError;
   requestSubject: string;
   mux: MuxSubscription;
 
@@ -41,7 +42,7 @@ export class BaseRequest {
     this.received = 0;
     this.token = nuid.next();
     if (asyncTraces) {
-      this.ctx = new Error();
+      this.ctx = new RequestError();
     }
   }
 }
@@ -70,7 +71,7 @@ export class RequestMany extends BaseRequest implements Request {
     super(mux, requestSubject);
     this.opts = opts;
     if (typeof this.opts.callback !== "function") {
-      throw new Error("callback is required");
+      throw new TypeError("callback must be a function");
     }
     this.callback = this.opts.callback;
 
@@ -87,7 +88,7 @@ export class RequestMany extends BaseRequest implements Request {
     }, opts.maxWait);
   }
 
-  cancel(err?: NatsError): void {
+  cancel(err?: Error): void {
     if (err) {
       this.callback(err, null);
     }
@@ -101,7 +102,7 @@ export class RequestMany extends BaseRequest implements Request {
       if (this.ctx) {
         err.stack += `\n\n${this.ctx.stack}`;
       }
-      this.cancel(err as NatsError);
+      this.cancel(err as Error);
     } else {
       this.callback(null, msg);
       if (this.opts.strategy === RequestStrategy.Count) {
@@ -150,7 +151,11 @@ export class RequestOne extends BaseRequest implements Request {
     }
     if (err) {
       if (this.ctx) {
-        err.stack += `\n\n${this.ctx.stack}`;
+        this.ctx.message = err.message;
+        this.ctx.cause = err;
+        err = this.ctx;
+      } else {
+        err = new RequestError(err.message, { cause: err });
       }
       this.deferred.reject(err);
     } else {
@@ -159,13 +164,13 @@ export class RequestOne extends BaseRequest implements Request {
     this.cancel();
   }
 
-  cancel(err?: NatsError): void {
+  cancel(err?: Error): void {
     if (this.timer) {
       this.timer.cancel();
     }
     this.mux.cancel(this);
     this.deferred.reject(
-      err ? err : NatsError.errorForCode(ErrorCode.Cancelled),
+      err ? err : new RequestError("cancelled"),
     );
   }
 }

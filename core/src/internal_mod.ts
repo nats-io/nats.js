@@ -81,7 +81,6 @@ export { Empty } from "./types.ts";
 export { extractProtocolMessage, protoLen } from "./transport.ts";
 
 export type {
-  ApiError,
   Auth,
   Authenticator,
   CallbackFn,
@@ -119,11 +118,8 @@ export type {
 export {
   createInbox,
   DebugEvents,
-  ErrorCode,
   Events,
-  isNatsError,
   Match,
-  NatsError,
   RequestStrategy,
   syncIterator,
 } from "./core.ts";
@@ -142,3 +138,5 @@ export { Base64Codec, Base64UrlCodec, Base64UrlPaddedCodec } from "./base64.ts";
 export { SHA256 } from "./sha256.ts";
 
 export { wsconnect, wsUrlParseFn } from "./ws_transport.ts";
+
+export { errors } from "./errors.ts";

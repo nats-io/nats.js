@@ -14,6 +14,7 @@
  */
 
 import { nuid } from "./nuid.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
 
 /**
  * Events reported by the {@link NatsConnection#status} iterator.
@@ -43,157 +44,7 @@ export enum DebugEvents {
   ClientInitiatedReconnect = "client initiated reconnect",
 }
 
-export enum ErrorCode {
-  // emitted by the client
-  ApiError = "BAD API",
-  BadAuthentication = "BAD_AUTHENTICATION",
-  BadCreds = "BAD_CREDS",
-  BadHeader = "BAD_HEADER",
-  BadJson = "BAD_JSON",
-  BadPayload = "BAD_PAYLOAD",
-  BadSubject = "BAD_SUBJECT",
-  Cancelled = "CANCELLED",
-  ConnectionClosed = "CONNECTION_CLOSED",
-  ConnectionDraining = "CONNECTION_DRAINING",
-  ConnectionRefused = "CONNECTION_REFUSED",
-  ConnectionTimeout = "CONNECTION_TIMEOUT",
-  Disconnect = "DISCONNECT",
-  InvalidOption = "INVALID_OPTION",
-  InvalidPayload = "INVALID_PAYLOAD",
-  MaxPayloadExceeded = "MAX_PAYLOAD_EXCEEDED",
-  NoResponders = "503",
-  NotFunction = "NOT_FUNC",
-  RequestError = "REQUEST_ERROR",
-  ServerOptionNotAvailable = "SERVER_OPT_NA",
-  SubClosed = "SUB_CLOSED",
-  SubDraining = "SUB_DRAINING",
-  Timeout = "TIMEOUT",
-  Tls = "TLS",
-  Unknown = "UNKNOWN_ERROR",
-  WssRequired = "WSS_REQUIRED",
-
-  // jetstream
-  JetStreamInvalidAck = "JESTREAM_INVALID_ACK",
-  JetStream404NoMessages = "404",
-  JetStream408RequestTimeout = "408",
-  //@deprecated: use JetStream409
-  JetStream409MaxAckPendingExceeded = "409",
-  JetStream409 = "409",
-  JetStreamNotEnabled = "503",
-  JetStreamIdleHeartBeat = "IDLE_HEARTBEAT",
-
-  // emitted by the server
-  AuthorizationViolation = "AUTHORIZATION_VIOLATION",
-  AuthenticationExpired = "AUTHENTICATION_EXPIRED",
-  ProtocolError = "NATS_PROTOCOL_ERR",
-  PermissionsViolation = "PERMISSIONS_VIOLATION",
-  AuthenticationTimeout = "AUTHENTICATION_TIMEOUT",
-  AccountExpired = "ACCOUNT_EXPIRED",
-}
-
-export function isNatsError(err: NatsError | Error): err is NatsError {
-  return typeof (err as NatsError).code === "string";
-}
-
-export interface ApiError {
-  /**
-   * HTTP like error code in the 300 to 500 range
-   */
-  code: number;
-  /**
-   * A human friendly description of the error
-   */
-  description: string;
-  /**
-   * The NATS error code unique to each kind of error
-   */
-  err_code?: number;
-}
-
-export class Messages {
-  messages: Map<string, string>;
-
-  constructor() {
-    this.messages = new Map<string, string>();
-    this.messages.set(
-      ErrorCode.InvalidPayload,
-      "Invalid payload type - payloads can be 'binary', 'string', or 'json'",
-    );
-    this.messages.set(ErrorCode.BadJson, "Bad JSON");
-    this.messages.set(
-      ErrorCode.WssRequired,
-      "TLS is required, therefore a secure websocket connection is also required",
-    );
-  }
-
-  static getMessage(s: string): string {
-    return messages.getMessage(s);
-  }
-
-  getMessage(s: string): string {
-    return this.messages.get(s) || s;
-  }
-}
-
-// safari doesn't support static class members
-const messages: Messages = new Messages();
-
-export class NatsError extends Error {
-  // TODO: on major version this should change to a number/enum
-  code: string;
-  permissionContext?: { operation: string; subject: string; queue?: string };
-  chainedError?: Error;
-  // these are for supporting jetstream
-  api_error?: ApiError;
-
-  /**
-   * @param {String} message
-   * @param {String} code
-   * @param {Error} [chainedError]
-   *
-   * @api private
-   */
-  constructor(message: string, code: string, chainedError?: Error) {
-    super(message);
-    this.name = "NatsError";
-    this.message = message;
-    this.code = code;
-    this.chainedError = chainedError;
-  }
-
-  static errorForCode(code: string, chainedError?: Error): NatsError {
-    const m = Messages.getMessage(code);
-    return new NatsError(m, code, chainedError);
-  }
-
-  isAuthError(): boolean {
-    return this.code === ErrorCode.AuthenticationExpired ||
-      this.code === ErrorCode.AuthorizationViolation ||
-      this.code === ErrorCode.AccountExpired;
-  }
-
-  isAuthTimeout(): boolean {
-    return this.code === ErrorCode.AuthenticationTimeout;
-  }
-
-  isPermissionError(): boolean {
-    return this.code === ErrorCode.PermissionsViolation;
-  }
-
-  isProtocolError(): boolean {
-    return this.code === ErrorCode.ProtocolError;
-  }
-
-  isJetStreamError(): boolean {
-    return this.api_error !== undefined;
-  }
-
-  jsError(): ApiError | null {
-    return this.api_error ? this.api_error : null;
-  }
-}
-
-export type MsgCallback<T> = (err: NatsError | null, msg: T) => void;
+export type MsgCallback<T> = (err: Error | null, msg: T) => void;
 
 /**
  * Subscription Options
@@ -232,6 +83,7 @@ export interface DnsResolveFn {
 export interface Status {
   type: Events | DebugEvents;
   data: string | ServersChanged | number;
+  error?: Error;
   permissionContext?: { operation: string; subject: string };
 }
 
@@ -806,12 +658,17 @@ export interface Publisher {
 export function createInbox(prefix = ""): string {
   prefix = prefix || "_INBOX";
   if (typeof prefix !== "string") {
-    throw (new Error("prefix must be a string"));
+    throw (new TypeError("prefix must be a string"));
   }
   prefix.split(".")
     .forEach((v) => {
       if (v === "*" || v === ">") {
-        throw new Error(`inbox prefixes cannot have wildcards '${prefix}'`);
+        throw new errors.InvalidArgumentError(
+          InvalidArgumentError.format(
+            "prefix",
+            `cannot have wildcards ('${prefix}')`,
+          ),
+        );
       }
     });
   return `${prefix}.${nuid.next()}`;
@@ -824,7 +681,7 @@ export interface Request {
 
   resolver(err: Error | null, msg: Msg): void;
 
-  cancel(err?: NatsError): void;
+  cancel(err?: Error): void;
 }
 
 /**

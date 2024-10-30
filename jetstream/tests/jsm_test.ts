@@ -24,11 +24,10 @@ import {
 
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { Feature } from "@nats-io/nats-core/internal";
-import type { NatsConnection, NatsError } from "@nats-io/nats-core";
+import type { NatsConnection } from "@nats-io/nats-core";
 import {
   deferred,
   Empty,
-  ErrorCode,
   headers,
   jwtAuthenticator,
   nanos,
@@ -55,7 +54,6 @@ import {
 import { initStream } from "./jstest_util.ts";
 import {
   _setup,
-  assertThrowsAsyncErrorCode,
   cleanup,
   connect,
   flakyTest,
@@ -75,6 +73,7 @@ import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
 import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
+import { JetStreamApiError, JetStreamError } from "../src/jserrors.ts";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
@@ -82,9 +81,13 @@ const ConsumerNameRequired = "durable name required";
 Deno.test("jsm - jetstream not enabled", async () => {
   // start a regular server - no js conf
   const { ns, nc } = await _setup(connect);
-  await assertThrowsAsyncErrorCode(async () => {
-    await jetstreamManager(nc);
-  }, ErrorCode.JetStreamNotEnabled);
+  await assertRejects(
+    () => {
+      return jetstreamManager(nc);
+    },
+    JetStreamError,
+    "jetstream is not enabled",
+  );
   await cleanup(ns, nc);
 });
 
@@ -110,9 +113,13 @@ Deno.test("jsm - account not enabled", async () => {
     },
   };
   const { ns, nc } = await _setup(connect, jetstreamServerConf(conf));
-  await assertThrowsAsyncErrorCode(async () => {
-    await jetstreamManager(nc);
-  }, ErrorCode.JetStreamNotEnabled);
+  await assertRejects(
+    () => {
+      return jetstreamManager(nc);
+    },
+    JetStreamError,
+    "not enabled for account",
+  );
 
   const a = await connect(
     { port: ns.port, user: "a", pass: "a" },
@@ -541,7 +548,7 @@ Deno.test("jsm - purge seq and keep fails", async () => {
       return jsm.streams.purge("a", { keep: 10, seq: 5 });
     },
     Error,
-    "can specify one of keep or seq",
+    "'keep','seq' are mutually exclusive",
   );
   await cleanup(ns, nc);
 });
@@ -1016,25 +1023,19 @@ Deno.test(
 Deno.test("jsm - jetstream error info", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
-  try {
-    await jsm.streams.add({
-      name: "a",
-      num_replicas: 3,
-      subjects: ["a.>"],
-    });
-    fail("should have failed");
-  } catch (err) {
-    const ne = err as NatsError;
-    assert(ne.isJetStreamError());
-    const jerr = ne.jsError();
-    assert(jerr);
-    assertEquals(jerr.code, 500);
-    assertEquals(jerr.err_code, 10074);
-    assertEquals(
-      jerr.description,
-      "replicas > 1 not supported in non-clustered mode",
-    );
-  }
+  await assertRejects(
+    () => {
+      return jsm.streams.add(
+        {
+          name: "a",
+          num_replicas: 3,
+          subjects: ["a.>"],
+        },
+      );
+    },
+    JetStreamApiError,
+    "replicas > 1 not supported in non-clustered mode",
+  );
   await cleanup(ns, nc);
 });
 
@@ -1204,18 +1205,23 @@ Deno.test("jsm - direct getMessage", async () => {
   await js.publish("foo", "e", { expect: { lastSequence: 4 } });
 
   let m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "bar" });
+  assertExists(m);
   assertEquals(m.seq, 4);
 
   m = await jsm.direct.getMessage("A", { last_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 5);
 
   m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 1);
 
   m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 5);
 
   m = await jsm.direct.getMessage("A", { seq: 2, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 2);
 
   await cleanup(ns, nc);
@@ -1950,11 +1956,13 @@ Deno.test("jsm - direct msg decode", async () => {
   await js.publish("a.a", "hello");
   await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
-  assertEquals(
-    (await jsm.direct.getMessage(name, { seq: 1 })).string(),
-    "hello",
-  );
-  assertEquals((await jsm.direct.getMessage(name, { seq: 2 })).json(), {
+  let m = await jsm.direct.getMessage(name, { seq: 1 });
+  assertExists(m);
+  assertEquals(m.string(), "hello");
+
+  m = await jsm.direct.getMessage(name, { seq: 2 });
+  assertExists(m);
+  assertEquals(m.json(), {
     one: "two",
     a: [1, 2, 3],
   });

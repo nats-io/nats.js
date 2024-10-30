@@ -69,7 +69,7 @@ export class TestDispatcher implements Dispatcher<ParserEvent> {
         this.pongs++;
         break;
       default:
-        throw new Error(`unknown parser evert ${JSON.stringify(a)}`);
+        throw new Error(`unknown parser event ${JSON.stringify(a)}`);
     }
   }
 }

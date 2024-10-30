@@ -14,7 +14,7 @@
  */
 
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 // to create a connection to a nats-server:
 const nc = await connect({ servers: "demo.nats.io:4222" });
@@ -38,9 +38,9 @@ const manual = nc.subscribe("hello");
 const done = (async () => {
   console.log("waiting for a message on `hello` with a payload of `stop`");
   for await (const m of manual) {
-    const d = sc.decode(m.data);
-    console.log("manual", manual.getProcessed(), d);
-    if (d === "stop") {
+    const payload = m.string();
+    console.log("manual", manual.getProcessed(), payload);
+    if (payload === "stop") {
       manual.unsubscribe();
     }
   }

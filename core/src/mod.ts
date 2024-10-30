@@ -25,7 +25,7 @@ export {
   deferred,
   delay,
   Empty,
-  ErrorCode,
+  errors,
   Events,
   headers,
   jwtAuthenticator,
@@ -34,7 +34,6 @@ export {
   millis,
   MsgHdrsImpl,
   nanos,
-  NatsError,
   nkeyAuthenticator,
   nkeys,
   Nuid,
@@ -47,7 +46,6 @@ export {
 } from "./internal_mod.ts";
 
 export type {
-  ApiError,
   Auth,
   Authenticator,
   Backoff,

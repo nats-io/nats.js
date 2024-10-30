@@ -32,6 +32,7 @@ import {
   deadline,
   deferred,
   delay,
+  errors,
   nanos,
   syncIterator,
 } from "@nats-io/nats-core";
@@ -93,8 +94,8 @@ Deno.test("consumers - consume callback rejects iter", async () => {
         // should fail
       }
     },
-    Error,
-    "unsupported iterator",
+    errors.InvalidOperationError,
+    "iterator cannot be used when a callback is registered",
   );
   iter.stop();
 

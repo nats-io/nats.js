@@ -21,7 +21,6 @@ import {
   Match,
   MsgHdrsImpl,
   MsgImpl,
-  NatsError,
   Parser,
 } from "../src/internal_mod.ts";
 import type {
@@ -33,19 +32,28 @@ import { NatsServer } from "../../test_helpers/launcher.ts";
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
 import { TestDispatcher } from "./parser_test.ts";
 import { _setup, cleanup } from "test_helpers";
+import { errors } from "../src/errors.ts";
 
 Deno.test("headers - illegal key", () => {
   const h = headers();
   ["bad:", "bad ", String.fromCharCode(127)].forEach((v) => {
-    assertThrows(() => {
-      h.set(v, "aaa");
-    }, NatsError);
+    assertThrows(
+      () => {
+        h.set(v, "aaa");
+      },
+      errors.InvalidArgumentError,
+      "is not a valid character in a header name",
+    );
   });
 
   ["\r", "\n"].forEach((v) => {
-    assertThrows(() => {
-      h.set("a", v);
-    }, NatsError);
+    assertThrows(
+      () => {
+        h.set("a", v);
+      },
+      errors.InvalidArgumentError,
+      "values cannot contain \\r or \\n",
+    );
   });
 });
 
@@ -325,7 +333,7 @@ Deno.test("headers - code/description", () => {
       headers(500);
     },
     Error,
-    "setting status requires both code and description",
+    "'description' is required",
   );
 
   assertThrows(
@@ -333,7 +341,7 @@ Deno.test("headers - code/description", () => {
       headers(0, "some message");
     },
     Error,
-    "setting status requires both code and description",
+    "'description' is required",
   );
 });
 

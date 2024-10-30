@@ -43,6 +43,7 @@ import type {
 import { StreamImpl } from "../src/jsmstream_api.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
 import { flakyTest } from "../../test_helpers/mod.ts";
+import { JetStreamApiError } from "../src/jserrors.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -875,7 +876,7 @@ Deno.test("ordered consumers - bind is rejected", async () => {
       return c.next({ bind: true });
     },
     Error,
-    "bind is not supported",
+    "'bind' is not supported",
   );
 
   await assertRejects(
@@ -883,7 +884,7 @@ Deno.test("ordered consumers - bind is rejected", async () => {
       return c.fetch({ bind: true });
     },
     Error,
-    "bind is not supported",
+    "'bind' is not supported",
   );
 
   await assertRejects(
@@ -891,7 +892,7 @@ Deno.test("ordered consumers - bind is rejected", async () => {
       return c.consume({ bind: true });
     },
     Error,
-    "bind is not supported",
+    "'bind' is not supported",
   );
 
   await cleanup(ns, nc);
@@ -1123,13 +1124,14 @@ Deno.test(
 
     // continue until the server says the consumer doesn't exist
     await delayUntilAssetNotFound(c);
+    await nc.flush();
 
     // so should get that error once
     await assertRejects(
       () => {
         return c.next({ expires: 1000 });
       },
-      Error,
+      JetStreamApiError,
       "consumer not found",
     );
 

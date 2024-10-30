@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { _setup, assertErrorCode, cleanup, NatsServer } from "test_helpers";
+import { _setup, cleanup, NatsServer } from "test_helpers";
 import {
   assert,
   assertArrayIncludes,
@@ -32,7 +32,6 @@ import type {
   MsgImpl,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   NKeyAuth,
   Status,
   UserPass,
@@ -43,7 +42,6 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   deferred,
   Empty,
-  ErrorCode,
   Events,
   jwtAuthenticator,
   nkeyAuthenticator,
@@ -51,6 +49,7 @@ import {
   tokenAuthenticator,
   usernamePasswordAuthenticator,
 } from "../src/internal_mod.ts";
+import { errors } from "../src/errors.ts";
 
 const conf = {
   authorization: {
@@ -67,29 +66,33 @@ const conf = {
 
 Deno.test("auth - none", async () => {
   const ns = await NatsServer.start(conf);
-  try {
-    const nc = await connect(
-      { port: ns.port },
-    );
-    await nc.close();
-    fail("shouldnt have been able to connect");
-  } catch (ex) {
-    assertErrorCode(ex as NatsError, ErrorCode.AuthorizationViolation);
-  }
+
+  await assertRejects(
+    async () => {
+      const nc = await connect(
+        { port: ns.port },
+      );
+      await nc.close();
+      fail("shouldnt have been able to connect");
+    },
+    errors.AuthorizationError,
+  );
+
   await ns.stop();
 });
 
 Deno.test("auth - bad", async () => {
   const ns = await NatsServer.start(conf);
-  try {
-    const nc = await connect(
-      { port: ns.port, user: "me", pass: "hello" },
-    );
-    await nc.close();
-    fail("shouldnt have been able to connect");
-  } catch (ex) {
-    assertErrorCode(ex as NatsError, ErrorCode.AuthorizationViolation);
-  }
+  await assertRejects(
+    async () => {
+      const nc = await connect(
+        { port: ns.port, user: "me", pass: "hello" },
+      );
+      await nc.close();
+      fail("shouldnt have been able to connect");
+    },
+    errors.AuthorizationError,
+  );
   await ns.stop();
 });
 
@@ -159,11 +162,12 @@ Deno.test("auth - sub no permissions keeps connection", async () => {
   });
 
   const v = await Promise.all([errStatus, cbErr, sub.closed]);
-  assertEquals(v[0].data, ErrorCode.PermissionsViolation);
+  assertEquals(v[0].data, `Permissions Violation for Subscription to "bar"`);
   assertEquals(
     v[1]?.message,
-    "'Permissions Violation for Subscription to \"bar\"'",
+    `Permissions Violation for Subscription to "bar"`,
   );
+
   assertEquals(nc.isClosed(), false);
 
   await cleanup(ns, nc);
@@ -200,10 +204,13 @@ Deno.test("auth - sub iterator no permissions keeps connection", async () => {
   await nc.flush();
 
   const v = await Promise.all([errStatus, iterErr, sub.closed]);
-  assertEquals(v[0].data, ErrorCode.PermissionsViolation);
+  assertEquals(
+    v[0].data,
+    `Permissions Violation for Subscription to "bar"`,
+  );
   assertEquals(
     v[1]?.message,
-    "'Permissions Violation for Subscription to \"bar\"'",
+    `Permissions Violation for Subscription to "bar"`,
   );
   assertEquals(sub.isClosed(), true);
   assertEquals(nc.isClosed(), false);
@@ -232,7 +239,7 @@ Deno.test("auth - pub permissions keep connection", async () => {
   nc.publish("bar");
 
   const v = await errStatus;
-  assertEquals(v.data, ErrorCode.PermissionsViolation);
+  assertEquals(v.data, `Permissions Violation for Publish to "bar"`);
   assertEquals(nc.isClosed(), false);
 
   await cleanup(ns, nc);
@@ -256,15 +263,16 @@ Deno.test("auth - req permissions keep connection", async () => {
     }
   })().then();
 
-  const err = await assertRejects(
+  await assertRejects(
     async () => {
       await nc.request("bar");
     },
-  ) as NatsError;
-  assertEquals(err.code, ErrorCode.PermissionsViolation);
+    errors.RequestError,
+    `Permissions Violation for Publish to "bar"`,
+  );
 
   const v = await errStatus;
-  assertEquals(v.data, ErrorCode.PermissionsViolation);
+  assertEquals(v.data, `Permissions Violation for Publish to "bar"`);
   assertEquals(nc.isClosed(), false);
 
   await cleanup(ns, nc);
@@ -436,18 +444,20 @@ Deno.test("auth - custom error", async () => {
 });
 
 Deno.test("basics - bad auth", async () => {
-  try {
-    await connect(
-      {
-        servers: "connect.ngs.global",
-        waitOnFirstConnect: true,
-        user: "me",
-        pass: "you",
-      },
-    );
-  } catch (err) {
-    assertErrorCode(err as NatsError, ErrorCode.AuthorizationViolation);
-  }
+  await assertRejects(
+    () => {
+      return connect(
+        {
+          servers: "connect.ngs.global",
+          reconnect: false,
+          user: "me",
+          pass: "you",
+        },
+      );
+    },
+    errors.AuthorizationError,
+    "Authorization Violation",
+  );
 });
 
 Deno.test("auth - nkey authentication", async () => {
@@ -549,21 +559,19 @@ Deno.test("auth - expiration is notified", async () => {
 
   const U = nkeys.createUser();
   const ujwt = await encodeUser("U", U, A, { bearer_token: true }, {
-    exp: Math.round(Date.now() / 1000) + 3,
+    exp: Math.round(Date.now() / 1000) + 5,
   });
 
   const nc = await connect({
     port: ns.port,
-    maxReconnectAttempts: -1,
+    reconnect: false,
     authenticator: jwtAuthenticator(ujwt),
   });
 
   let authErrors = 0;
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.type === Events.Error && s.data === ErrorCode.AuthenticationExpired
-      ) {
+      if (s.error instanceof errors.UserAuthenticationExpiredError) {
         authErrors++;
       }
     }
@@ -571,7 +579,8 @@ Deno.test("auth - expiration is notified", async () => {
 
   const err = await nc.closed();
   assert(authErrors >= 1);
-  assertErrorCode(err!, ErrorCode.AuthenticationExpired);
+  assertExists(err);
+  assert(err instanceof errors.UserAuthenticationExpiredError, err?.message);
   await cleanup(ns);
 });
 
@@ -628,7 +637,7 @@ Deno.test("auth - expiration is notified and recovered", async () => {
           }
           break;
         case Events.Error:
-          if (s.data === ErrorCode.AuthenticationExpired) {
+          if (s.error instanceof errors.UserAuthenticationExpiredError) {
             authErrors++;
           }
           break;
@@ -646,7 +655,7 @@ Deno.test("auth - expiration is notified and recovered", async () => {
 });
 
 Deno.test("auth - bad auth is notified", async () => {
-  let ns = await NatsServer.start(conf);
+  const ns = await NatsServer.start(conf);
 
   let count = 0;
 
@@ -664,19 +673,18 @@ Deno.test("auth - bad auth is notified", async () => {
   (async () => {
     for await (const s of nc.status()) {
       if (
-        s.type === Events.Error && s.data === ErrorCode.AuthorizationViolation
+        s.type === Events.Error && s.error instanceof errors.AuthorizationError
       ) {
         badAuths++;
       }
     }
   })().then();
 
-  await ns.stop();
-  ns = await ns.restart();
+  await nc.reconnect();
 
   const err = await nc.closed();
   assert(badAuths > 1);
-  assertErrorCode(err!, ErrorCode.AuthorizationViolation);
+  assert(err instanceof errors.AuthorizationError);
 
   await ns.stop();
 });
@@ -721,32 +729,19 @@ Deno.test("auth - perm request error", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.permissionContext?.operation === "publish" &&
-        s.permissionContext?.subject === "q"
-      ) {
-        status.resolve(s);
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.operation === "publish" && s.error.subject === "q") {
+          status.resolve(s);
+        }
       }
     }
   })().then();
 
-  const response = deferred<Error>();
-  nc.request("q")
-    .catch((err) => {
-      response.resolve(err);
-    });
+  assertRejects(() => {
+    return nc.request("q");
+  }, errors.RequestError);
 
-  const [r, s] = await Promise.all([response, status]);
-  assertErrorCode(r, ErrorCode.PermissionsViolation);
-  const ne = r as NatsError;
-  assertEquals(ne.permissionContext?.operation, "publish");
-  assertEquals(ne.permissionContext?.subject, "q");
-
-  assertEquals(s.type, Events.Error);
-  assertEquals(s.data, ErrorCode.PermissionsViolation);
-  assertEquals(s.permissionContext?.operation, "publish");
-  assertEquals(s.permissionContext?.subject, "q");
-
+  await status;
   await cleanup(ns, nc, sc);
 });
 
@@ -790,31 +785,21 @@ Deno.test("auth - perm request error no mux", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.permissionContext?.operation === "publish" &&
-        s.permissionContext?.subject === "q"
-      ) {
-        status.resolve(s);
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.operation === "publish" && s.error.subject === "q") {
+          status.resolve(s);
+        }
       }
     }
   })().then();
 
-  const response = deferred<Error>();
-  nc.request("q", Empty, { noMux: true, timeout: 1000 })
-    .catch((err) => {
-      response.resolve(err);
-    });
-
-  const [r, s] = await Promise.all([response, status]);
-  assertErrorCode(r, ErrorCode.PermissionsViolation);
-  const ne = r as NatsError;
-  assertEquals(ne.permissionContext?.operation, "publish");
-  assertEquals(ne.permissionContext?.subject, "q");
-
-  assertEquals(s.type, Events.Error);
-  assertEquals(s.data, ErrorCode.PermissionsViolation);
-  assertEquals(s.permissionContext?.operation, "publish");
-  assertEquals(s.permissionContext?.subject, "q");
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { noMux: true, timeout: 1000 });
+    },
+    errors.RequestError,
+    "q",
+  );
 
   await cleanup(ns, nc, sc);
 });
@@ -859,11 +844,10 @@ Deno.test("auth - perm request error deliver to sub", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.permissionContext?.operation === "publish" &&
-        s.permissionContext?.subject === "q"
-      ) {
-        status.resolve(s);
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.subject === "q" && s.error.operation === "publish") {
+          status.resolve();
+        }
       }
     }
   })().then();
@@ -874,22 +858,17 @@ Deno.test("auth - perm request error deliver to sub", async () => {
     },
   });
 
-  const response = deferred<Error>();
-  nc.request("q", Empty, { noMux: true, reply: inbox, timeout: 1000 })
-    .catch((err) => {
-      response.resolve(err);
-    });
-
-  const [r, s] = await Promise.all([response, status]);
-  assertErrorCode(r, ErrorCode.PermissionsViolation);
-  const ne = r as NatsError;
-  assertEquals(ne.permissionContext?.operation, "publish");
-  assertEquals(ne.permissionContext?.subject, "q");
-
-  assertEquals(s.type, Events.Error);
-  assertEquals(s.data, ErrorCode.PermissionsViolation);
-  assertEquals(s.permissionContext?.operation, "publish");
-  assertEquals(s.permissionContext?.subject, "q");
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, {
+        noMux: true,
+        reply: inbox,
+        timeout: 1000,
+      });
+    },
+    errors.RequestError,
+    `Permissions Violation for Publish to "q"`,
+  );
 
   assertEquals(sub.isClosed(), false);
 
@@ -932,13 +911,14 @@ Deno.test("auth - mux sub ok", async () => {
   });
   await sc.flush();
 
-  const response = deferred<NatsError>();
-  nc.request("q")
-    .catch((err) => {
-      response.resolve(err);
-    });
-  const ne = await response as NatsError;
-  assertEquals(ne.permissionContext?.operation, "subscription");
+  await assertRejects(
+    () => {
+      return nc.request("q");
+    },
+    errors.RequestError,
+    "Permissions Violation for Subscription",
+  );
+
   //@ts-ignore: test
   assertEquals(nc.protocol.subscriptions.getMux(), null);
 
@@ -1001,34 +981,24 @@ Deno.test("auth - perm sub iterator error", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.permissionContext?.operation === "subscription" &&
-        s.permissionContext?.subject === "q"
-      ) {
-        status.resolve(s);
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.subject === "q" && s.error.operation === "publish") {
+          status.resolve(s);
+        }
       }
     }
   })().then();
 
   const sub = nc.subscribe("q");
-  const iterReject = deferred<NatsError>();
-  (async () => {
-    for await (const _m of sub) {
-      // ignored
-    }
-  })().catch((err) => {
-    iterReject.resolve(err as NatsError);
-  });
-
-  const [s, i] = await Promise.all([status, iterReject]);
-  assertEquals(s.type, Events.Error);
-  assertEquals(s.data, ErrorCode.PermissionsViolation);
-  assertEquals(s.permissionContext?.operation, "subscription");
-  assertEquals(s.permissionContext?.subject, "q");
-
-  assertEquals(i.code, ErrorCode.PermissionsViolation);
-  assertEquals(i.permissionContext?.operation, "subscription");
-  assertEquals(i.permissionContext?.subject, "q");
+  await assertRejects(
+    async () => {
+      for await (const _m of sub) {
+        // ignored
+      }
+    },
+    errors.PermissionViolationError,
+    `Permissions Violation for Subscription to "q"`,
+  );
 
   await cleanup(ns, nc);
 });
@@ -1051,7 +1021,7 @@ Deno.test("auth - perm error is not in lastError", async () => {
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.lastError, undefined);
 
-  const d = deferred<NatsError | null>();
+  const d = deferred<Error | null>();
   nc.subscribe("q", {
     callback: (err) => {
       d.resolve(err);
@@ -1060,7 +1030,7 @@ Deno.test("auth - perm error is not in lastError", async () => {
 
   const err = await d;
   assert(err !== null);
-  assertEquals(err?.isPermissionError(), true);
+  assert(err instanceof errors.PermissionViolationError);
   assert(nci.protocol.lastError === undefined);
 
   await cleanup(ns, nc);
@@ -1090,7 +1060,7 @@ Deno.test("auth - ignore auth error abort", async () => {
     let count = 0;
     (async () => {
       for await (const s of nc.status()) {
-        if (s.type === "error" && s.data === "AUTHORIZATION_VIOLATION") {
+        if (s.error instanceof errors.AuthorizationError) {
           count++;
         }
       }
@@ -1247,7 +1217,6 @@ Deno.test("auth - request context", async () => {
   });
 
   const a = await connect({ user: "a", pass: "a", port: ns.port });
-  console.log(await (a as NatsConnectionImpl).context());
   await a.request("q.hello");
 
   await cleanup(ns, nc, a);
@@ -1276,7 +1245,7 @@ Deno.test("auth - sub queue permission", async () => {
     },
   });
 
-  const qBad = deferred<NatsError>();
+  const qBad = deferred<Error>();
   nc.subscribe("q", {
     queue: "bad",
     callback: (err, _msg) => {
@@ -1292,7 +1261,7 @@ Deno.test("auth - sub queue permission", async () => {
 
   await qA;
 
-  assertEquals(err.code, ErrorCode.PermissionsViolation);
+  assert(err instanceof errors.PermissionViolationError);
   assertStringIncludes(err.message, 'using queue "bad"');
   await cleanup(ns, nc);
 });
@@ -1319,7 +1288,6 @@ Deno.test("auth - account expired", async () => {
   const ujwt = await encodeUser("U", U, A, { bearer_token: true });
 
   const { ns, nc } = await _setup(connect, conf, {
-    debug: true,
     reconnect: false,
     authenticator: jwtAuthenticator(ujwt),
   });
@@ -1327,7 +1295,10 @@ Deno.test("auth - account expired", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === Events.Error && s.data === ErrorCode.AccountExpired) {
+      if (
+        s.error instanceof errors.AuthorizationError &&
+        s.data === "Account Authentication Expired"
+      ) {
         d.resolve();
         break;
       }
@@ -1336,7 +1307,8 @@ Deno.test("auth - account expired", async () => {
 
   const w = await nc.closed();
   assertExists(w);
-  assertEquals((w as NatsError).code, ErrorCode.AccountExpired);
+  assert(w instanceof errors.AuthorizationError);
+  assertEquals(w.message, "Account Authentication Expired");
 
   await cleanup(ns, nc);
 });

@@ -17,7 +17,6 @@ import type {
   Msg,
   MsgHdrs,
   MsgImpl,
-  NatsError,
   ProtocolHandler,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
@@ -77,7 +76,7 @@ export interface JsMsg {
 
   /**
    * Indicate to the JetStream server that processing of the message
-   * failed, and that it should be resent after the spefied number of
+   * failed, and that it should be resent after the specified number of
    * milliseconds.
    * @param millis
    */
@@ -148,7 +147,7 @@ export function parseInfo(s: string): DeliveryInfo {
   if (
     (tokens.length < 11) || tokens[0] !== "$JS" || tokens[1] !== "ACK"
   ) {
-    throw new Error(`not js message`);
+    throw new Error(`unable to parse delivery info - not a jetstream message`);
   }
 
   // old
@@ -243,7 +242,7 @@ export class JsMsgImpl implements JsMsg {
         const proto = mi.publisher as unknown as ProtocolHandler;
         const trace = !(proto.options?.noAsyncTraces || false);
         const r = new RequestOne(proto.muxSubscriptions, this.msg.reply, {
-          timeout: this.timeout,
+          timeout: opts.timeout,
         }, trace);
         proto.request(r);
         try {
@@ -255,13 +254,13 @@ export class JsMsgImpl implements JsMsg {
             },
           );
         } catch (err) {
-          r.cancel(err as NatsError);
+          r.cancel(err as Error);
         }
         try {
           await Promise.race([r.timer, r.deferred]);
           d.resolve(true);
         } catch (err) {
-          r.cancel(err as NatsError);
+          r.cancel(err as Error);
           d.reject(err);
         }
       } else {

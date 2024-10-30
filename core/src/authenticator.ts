@@ -23,7 +23,6 @@ import type {
   TokenAuth,
   UserPass,
 } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
 
 export function multiAuthenticator(authenticators: Authenticator[]) {
   return (nonce?: string): Auth => {
@@ -134,16 +133,13 @@ export function credsAuthenticator(
     // get the JWT
     let m = CREDS.exec(s);
     if (!m) {
-      throw NatsError.errorForCode(ErrorCode.BadCreds);
+      throw new Error("unable to parse credentials");
     }
     const jwt = m[1].trim();
     // get the nkey
     m = CREDS.exec(s);
     if (!m) {
-      throw NatsError.errorForCode(ErrorCode.BadCreds);
-    }
-    if (!m) {
-      throw NatsError.errorForCode(ErrorCode.BadCreds);
+      throw new Error("unable to parse credentials");
     }
     const seed = TE.encode(m[1].trim());
 

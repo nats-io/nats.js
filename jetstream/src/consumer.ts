@@ -16,7 +16,6 @@
 import type {
   CallbackFn,
   Delay,
-  MsgHdrs,
   MsgImpl,
   QueuedIterator,
   Status,
@@ -28,16 +27,15 @@ import {
   backoff,
   createInbox,
   delay,
+  errors,
   Events,
   IdleHeartbeatMonitor,
   nanos,
-  NatsError,
   nuid,
   QueuedIteratorImpl,
   timeout,
 } from "@nats-io/nats-core/internal";
 import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
-import { isHeartbeatMsg } from "./jsutil.ts";
 
 import type { JsMsg } from "./jsmsg.ts";
 import { toJsMsg } from "./jsmsg.ts";
@@ -48,7 +46,6 @@ import type {
   PullOptions,
 } from "./jsapi_types.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
-import { ConsumerDebugEvents, ConsumerEvents, JsHeaders } from "./types.ts";
 import type {
   ConsumeMessages,
   ConsumeOptions,
@@ -63,6 +60,8 @@ import type {
   OrderedConsumerOptions,
   PullConsumerOptions,
 } from "./types.ts";
+import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
+import { JetStreamStatus } from "./jserrors.ts";
 
 enum PullConsumerType {
   Unset = -1,
@@ -169,20 +168,19 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
         const isProtocol = msg.subject === this.inbox;
         if (isProtocol) {
-          if (isHeartbeatMsg(msg)) {
-            const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
-            const natsLastStream = msg.headers?.get("Nats-Last-Stream");
-            this.notify(ConsumerDebugEvents.Heartbeat, {
-              natsLastConsumer,
-              natsLastStream,
-            });
+          const status = new JetStreamStatus(msg);
+          status.debug();
+
+          if (status.isIdleHeartbeat()) {
+            this.notify(ConsumerDebugEvents.Heartbeat, status.parseHeartbeat());
             return;
           }
-          const code = msg.headers?.code;
-          const description = msg.headers?.description?.toLowerCase() ||
-            "unknown";
-          const { msgsLeft, bytesLeft } = this.parseDiscard(msg.headers);
-          if (msgsLeft > 0 || bytesLeft > 0) {
+          const code = status.code;
+          const description = status.description;
+
+          const { msgsLeft, bytesLeft } = status.parseDiscard();
+          console.log("pending", msgsLeft, bytesLeft);
+          if ((msgsLeft && msgsLeft > 0) || (bytesLeft && bytesLeft > 0)) {
             this.pending.msgs -= msgsLeft;
             this.pending.bytes -= bytesLeft;
             this.pending.requests--;
@@ -200,10 +198,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             // we got a bad request - no progress here
             switch (code) {
               case 400:
-                this.stop(new NatsError(description, `${code}`));
+                this.stop(status.toError());
                 return;
               case 409: {
-                const err = this.handle409(code, description);
+                const err = this.handle409(status);
                 if (err) {
                   this.stop(err);
                   return;
@@ -341,22 +339,20 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   /**
    * Handle the notification of 409 error and whether
    * it should reject the operation by returning an Error or null
-   * @param code
-   * @param description
+   * @param status
    */
-  handle409(code: number, description: string): Error | null {
-    const e = description === "consumer deleted"
-      ? ConsumerEvents.ConsumerDeleted
-      : ConsumerEvents.ExceededLimit;
-    this.notify(e, { code, description });
+  handle409(status: JetStreamStatus): Error | null {
+    const { code, description } = status;
+    if (status.isConsumerDeleted()) {
+      this.notify(ConsumerEvents.ConsumerDeleted, { code, description });
+    } else if (status.isExceededLimit()) {
+      this.notify(ConsumerEvents.ExceededLimit, { code, description });
+    }
     if (!this.isConsume) {
-      // terminate the fetch/next
-      return new NatsError(description, `${code}`);
-    } else if (
-      e === ConsumerEvents.ConsumerDeleted && this.abortOnMissingResource
-    ) {
-      // terminate the consume if abortOnMissingResource
-      return new NatsError(description, `${code}`);
+      return status.toError();
+    }
+    if (status.isConsumerDeleted() && this.abortOnMissingResource) {
+      return status.toError();
     }
     return null;
   }
@@ -568,25 +564,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return { batch, max_bytes, idle_heartbeat, expires };
   }
 
-  parseDiscard(
-    headers?: MsgHdrs,
-  ): { msgsLeft: number; bytesLeft: number } {
-    const discard = {
-      msgsLeft: 0,
-      bytesLeft: 0,
-    };
-    const msgsLeft = headers?.get(JsHeaders.PendingMessagesHdr);
-    if (msgsLeft) {
-      discard.msgsLeft = parseInt(msgsLeft);
-    }
-    const bytesLeft = headers?.get(JsHeaders.PendingBytesHdr);
-    if (bytesLeft) {
-      discard.bytesLeft = parseInt(bytesLeft);
-    }
-
-    return discard;
-  }
-
   trackTimeout(t: Timeout<unknown>) {
     this.timeout = t;
   }
@@ -652,7 +629,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     args.expires = args.expires || 30_000;
     if (args.expires < 1000) {
-      throw new Error("expires should be at least 1000ms");
+      throw new errors.InvalidArgumentError(
+        errors.InvalidArgumentError.format(
+          "expires",
+          "must be at least 1000ms",
+        ),
+      );
     }
 
     // require idle_heartbeat
@@ -729,16 +711,24 @@ export class PullConsumerImpl implements Consumer {
   ): Promise<ConsumerMessages> {
     if (this.ordered) {
       if (opts.bind) {
-        return Promise.reject(new Error("bind is not supported"));
+        return Promise.reject(
+          new errors.InvalidArgumentError(
+            errors.InvalidArgumentError.format("bind", "is not supported"),
+          ),
+        );
       }
       if (this.type === PullConsumerType.Fetch) {
         return Promise.reject(
-          new Error("ordered consumer initialized as fetch"),
+          new errors.InvalidOperationError(
+            "ordered consumer initialized as fetch",
+          ),
         );
       }
       if (this.type === PullConsumerType.Consume) {
         return Promise.reject(
-          new Error("ordered consumer doesn't support concurrent consume"),
+          new errors.InvalidOperationError(
+            "ordered consumer doesn't support concurrent consume",
+          ),
         );
       }
       this.type = PullConsumerType.Consume;
@@ -756,16 +746,24 @@ export class PullConsumerImpl implements Consumer {
   ): Promise<ConsumerMessages> {
     if (this.ordered) {
       if (opts.bind) {
-        return Promise.reject(new Error("bind is not supported"));
+        return Promise.reject(
+          new errors.InvalidArgumentError(
+            errors.InvalidArgumentError.format("bind", "is not supported"),
+          ),
+        );
       }
       if (this.type === PullConsumerType.Consume) {
         return Promise.reject(
-          new Error("ordered consumer already initialized as consume"),
+          new errors.InvalidOperationError(
+            "ordered consumer already initialized as consume",
+          ),
         );
       }
       if (this.messages?.done === false) {
         return Promise.reject(
-          new Error("ordered consumer doesn't support concurrent fetch"),
+          new errors.InvalidOperationError(
+            "ordered consumer doesn't support concurrent fetch",
+          ),
         );
       }
       if (this.ordered) {

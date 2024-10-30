@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import type { ApiError, Nanos } from "@nats-io/nats-core";
+import type { Nanos } from "@nats-io/nats-core";
 import { nanos } from "@nats-io/nats-core";
 
 export interface ApiPaged {
@@ -29,6 +29,21 @@ export interface ApiPagedRequest {
 export interface ApiResponse {
   type: string;
   error?: ApiError;
+}
+
+export interface ApiError {
+  /**
+   * HTTP like error code in the 300 to 500 range
+   */
+  code: number;
+  /**
+   * A human friendly description of the error
+   */
+  description: string;
+  /**
+   * The NATS error code unique to each kind of error
+   */
+  err_code: number;
 }
 
 /**

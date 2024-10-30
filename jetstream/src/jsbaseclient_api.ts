@@ -17,19 +17,18 @@ import {
   backoff,
   delay,
   Empty,
-  ErrorCode,
+  errors,
   extend,
 } from "@nats-io/nats-core/internal";
 import type {
   Msg,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
-import { checkJsErrorCode } from "./jsutil.ts";
 import type { ApiResponse } from "./jsapi_types.ts";
 import type { JetStreamOptions } from "./types.ts";
+import { JetStreamApiError } from "./jserrors.ts";
 
 const defaultPrefix = "$JS.API";
 const defaultTimeout = 5000;
@@ -72,7 +71,9 @@ export class BaseApiClientImpl {
   _parseOpts() {
     let prefix = this.opts.apiPrefix;
     if (!prefix || prefix.length === 0) {
-      throw new Error("invalid empty prefix");
+      throw new errors.InvalidArgumentError(
+        errors.InvalidArgumentError.format("prefix", "cannot be empty"),
+      );
     }
     const c = prefix[prefix.length - 1];
     if (c === ".") {
@@ -111,9 +112,10 @@ export class BaseApiClientImpl {
         );
         return this.parseJsResponse(m);
       } catch (err) {
-        const ne = err as NatsError;
+        const { cause } = err as Error;
         if (
-          (ne.code === "503" || ne.code === ErrorCode.Timeout) &&
+          (cause instanceof errors.TimeoutError ||
+            cause instanceof errors.NoRespondersError) &&
           i + 1 < retries
         ) {
           await delay(bo.backoff(i));
@@ -142,14 +144,7 @@ export class BaseApiClientImpl {
     const v = JSON.parse(new TextDecoder().decode(m.data));
     const r = v as ApiResponse;
     if (r.error) {
-      const err = checkJsErrorCode(r.error.code, r.error.description);
-      if (err !== null) {
-        err.api_error = r.error;
-        if (r.error.description !== "") {
-          err.message = r.error.description;
-        }
-        throw err;
-      }
+      throw new JetStreamApiError(r.error);
     }
     return v;
   }

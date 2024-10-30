@@ -1,3 +1,18 @@
+/*
+ * Copyright 2024 Synadia Communications, Inc
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { toJsMsg } from "./jsmsg.ts";
 import type { JsMsg } from "./jsmsg.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
@@ -17,11 +32,11 @@ import {
   backoff,
   createInbox,
   delay,
+  errors,
   Events,
   IdleHeartbeatMonitor,
   millis,
   nanos,
-  NatsError,
   nuid,
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
@@ -32,7 +47,7 @@ import type {
   Status,
   Subscription,
 } from "@nats-io/nats-core/internal";
-import { isFlowControlMsg, isHeartbeatMsg } from "./mod.ts";
+import { JetStreamStatus } from "./jserrors.ts";
 
 export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
@@ -268,7 +283,8 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
         const isProtocol = msg.subject === subject;
         if (isProtocol) {
-          if (isHeartbeatMsg(msg)) {
+          const status = new JetStreamStatus(msg);
+          if (status.isIdleHeartbeat()) {
             const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
             const natsLastStream = msg.headers?.get("Nats-Last-Stream");
             this.notify(ConsumerDebugEvents.Heartbeat, {
@@ -277,7 +293,8 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             });
             return;
           }
-          if (isFlowControlMsg(msg)) {
+          if (status.isFlowControlRequest()) {
+            status.debug();
             this._push(() => {
               msg.respond();
               this.notify(ConsumerDebugEvents.FlowControl, null);
@@ -285,11 +302,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             return;
           }
 
-          const code = msg.headers?.code;
-          const description = msg.headers?.description?.toLowerCase() ||
-            "unknown";
+          const code = status.code;
+          const description = status.description;
 
-          if (code === 409 && description === "consumer deleted") {
+          if (status.isConsumerDeleted()) {
             this.notify(
               ConsumerEvents.ConsumerDeleted,
               `${code} ${description}`,
@@ -297,8 +313,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           }
           if (this.abortOnMissingResource) {
             this._push(() => {
-              const error = new NatsError(description, `${code}`);
-              this.stop(error);
+              this.stop(status.toError());
             });
             return;
           }
@@ -386,7 +401,9 @@ export class PushConsumerImpl implements PushConsumer {
     userOptions: Partial<PushConsumerOptions> = {},
   ): Promise<ConsumerMessages> {
     if (this.started) {
-      return Promise.reject(new Error("consumer already started"));
+      return Promise.reject(
+        new errors.InvalidOperationError("consumer already started"),
+      );
     }
 
     if (!this._info.config.deliver_subject) {
@@ -395,7 +412,9 @@ export class PushConsumerImpl implements PushConsumer {
       );
     }
     if (!this._info.config.deliver_group && this._info.push_bound) {
-      return Promise.reject(new Error("consumer is already bound"));
+      return Promise.reject(
+        new errors.InvalidOperationError("consumer is already bound"),
+      );
     }
     const v = new PushConsumerMessagesImpl(this, userOptions, this.opts);
     this.started = true;
@@ -407,7 +426,9 @@ export class PushConsumerImpl implements PushConsumer {
 
   delete(): Promise<boolean> {
     if (this.bound) {
-      return Promise.reject(new Error("bound consumers cannot delete"));
+      return Promise.reject(
+        new errors.InvalidOperationError("bound consumers cannot delete"),
+      );
     }
     const { stream_name, name } = this._info;
     return this.api.delete(stream_name, name);
@@ -415,7 +436,9 @@ export class PushConsumerImpl implements PushConsumer {
 
   async info(cached?: boolean): Promise<ConsumerInfo> {
     if (this.bound) {
-      return Promise.reject(new Error("bound consumers cannot info"));
+      return Promise.reject(
+        new errors.InvalidOperationError("bound consumers cannot info"),
+      );
     }
     if (cached) {
       return Promise.resolve(this._info);

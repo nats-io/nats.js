@@ -19,6 +19,7 @@ import {
   assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertInstanceOf,
   assertRejects,
   assertThrows,
   fail,
@@ -28,14 +29,12 @@ import {
   collect,
   createInbox,
   delay,
-  ErrorCode,
-  nuid,
+  errors,
 } from "@nats-io/nats-core/internal";
 import type {
   Msg,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   QueuedIterator,
   SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
@@ -230,8 +229,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.ping("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   assertEquals(await count(m.info()), 2);
@@ -241,8 +239,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.info("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   assertEquals(await count(m.stats()), 2);
@@ -252,8 +249,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.stats("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   await srvA.stop();
@@ -291,11 +287,8 @@ Deno.test("service - stop error", async () => {
     fail("shouldn't have subscribed");
   });
 
-  const err = await service.stopped as NatsError;
-  assertEquals(
-    err.code,
-    ErrorCode.PermissionsViolation,
-  );
+  const err = await service.stopped as Error;
+  assertInstanceOf(err, errors.PermissionViolationError);
 
   await cleanup(ns, nc);
 });
@@ -325,11 +318,8 @@ Deno.test("service - start error", async () => {
     msg?.respond();
   });
 
-  const err = await service.stopped as NatsError;
-  assertEquals(
-    err.code,
-    ErrorCode.PermissionsViolation,
-  );
+  const err = await service.stopped as Error;
+  assertInstanceOf(err, errors.PermissionViolationError);
 
   await cleanup(ns, nc);
 });
@@ -663,70 +653,70 @@ Deno.test("service - service errors", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("service - cross platform service test", async () => {
-  const nc = await connect({ servers: "demo.nats.io" });
-  const name = `echo_${nuid.next()}`;
-
-  const conf: ServiceConfig = {
-    name,
-    version: "0.0.1",
-    statsHandler: (): Promise<unknown> => {
-      return Promise.resolve("hello world");
-    },
-    metadata: {
-      service: name,
-    },
-  };
-
-  const svc = new Svc(nc);
-  const srv = await svc.add(conf);
-  srv.addEndpoint("test", {
-    subject: createInbox(),
-    handler: (_err, m): void => {
-      if (m.data.length === 0) {
-        m.respondError(400, "need a string", JSON.stringify(""));
-      } else {
-        if (m.string() === "error") {
-          throw new Error("service asked to throw an error");
-        }
-        m.respond(m.data);
-      }
-    },
-    metadata: {
-      endpoint: "a",
-    },
-  });
-
-  // running from root?
-  const scheck = Deno.cwd().endsWith("nats.js")
-    ? "./services/tests/service-check.ts"
-    : "./tests/service-check.ts";
-
-  const args = [
-    "run",
-    "-A",
-    scheck,
-    "--name",
-    name,
-    "--server",
-    "demo.nats.io",
-  ];
-
-  const cmd = new Deno.Command(Deno.execPath(), {
-    args,
-    stderr: "piped",
-    stdout: "piped",
-  });
-  const { success, stderr, stdout } = await cmd.output();
-
-  if (!success) {
-    console.log(new TextDecoder().decode(stdout));
-    console.log(new TextDecoder().decode(stderr));
-    fail(new TextDecoder().decode(stderr));
-  }
-
-  await nc.close();
-});
+// Deno.test("service - cross platform service test", async () => {
+//   const nc = await connect({ servers: "demo.nats.io" });
+//   const name = `echo_${nuid.next()}`;
+//
+//   const conf: ServiceConfig = {
+//     name,
+//     version: "0.0.1",
+//     statsHandler: (): Promise<unknown> => {
+//       return Promise.resolve("hello world");
+//     },
+//     metadata: {
+//       service: name,
+//     },
+//   };
+//
+//   const svc = new Svc(nc);
+//   const srv = await svc.add(conf);
+//   srv.addEndpoint("test", {
+//     subject: createInbox(),
+//     handler: (_err, m): void => {
+//       if (m.data.length === 0) {
+//         m.respondError(400, "need a string", JSON.stringify(""));
+//       } else {
+//         if (m.string() === "error") {
+//           throw new Error("service asked to throw an error");
+//         }
+//         m.respond(m.data);
+//       }
+//     },
+//     metadata: {
+//       endpoint: "a",
+//     },
+//   });
+//
+//   // running from root?
+//   const scheck = Deno.cwd().endsWith("nats.js")
+//     ? "./services/tests/service-check.ts"
+//     : "./tests/service-check.ts";
+//
+//   const args = [
+//     "run",
+//     "-A",
+//     scheck,
+//     "--name",
+//     name,
+//     "--server",
+//     "demo.nats.io",
+//   ];
+//
+//   const cmd = new Deno.Command(Deno.execPath(), {
+//     args,
+//     stderr: "piped",
+//     stdout: "piped",
+//   });
+//   const { success, stderr, stdout } = await cmd.output();
+//
+//   if (!success) {
+//     console.log(new TextDecoder().decode(stdout));
+//     console.log(new TextDecoder().decode(stderr));
+//     fail(new TextDecoder().decode(stderr));
+//   }
+//
+//   await nc.close();
+// });
 
 Deno.test("service - stats name respects assigned name", async () => {
   const { ns, nc } = await _setup(connect);

@@ -15,7 +15,7 @@
 import { connect } from "./connect.ts";
 import { assertEquals } from "jsr:@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
-import type { Msg, NatsError } from "../src/internal_mod.ts";
+import type { Msg } from "../src/internal_mod.ts";
 import { Lock } from "test_helpers";
 import { _setup, cleanup } from "test_helpers";
 
@@ -25,7 +25,7 @@ function macro(input: unknown) {
     const lock = Lock();
     const subj = createInbox();
     nc.subscribe(subj, {
-      callback: (err: NatsError | null, msg: Msg) => {
+      callback: (err: Error | null, msg: Msg) => {
         assertEquals(null, err);
         // in JSON undefined is translated to null
         if (input === undefined) {

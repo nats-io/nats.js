@@ -29,9 +29,6 @@ export { Lock } from "./lock.ts";
 export { Connection, TestServer } from "./test_server.ts";
 export {
   assertBetween,
-  assertErrorCode,
-  assertThrowsAsyncErrorCode,
-  assertThrowsErrorCode,
 } from "./asserts.ts";
 export { NatsServer, ServerSignals } from "./launcher.ts";
 

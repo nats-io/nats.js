@@ -14,7 +14,7 @@
  */
 
 // import the connect function from a transport
-import { connect, ErrorCode } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect, errors } from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 // to create a connection to a nats-server:
 const nc = await connect({ servers: "demo.nats.io:4222" });
@@ -27,7 +27,7 @@ const sub = nc.subscribe("hello", { timeout: 1000 });
     // handle the messages
   }
 })().catch((err) => {
-  if (err.code === ErrorCode.Timeout) {
+  if (err instanceof errors.TimeoutError) {
     console.log(`sub timed out!`);
   } else {
     console.log(`sub iterator got an error!`);

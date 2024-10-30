@@ -35,7 +35,7 @@ import type {
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "jsr:@std/assert";
 import {
   encodeAccount,
   encodeOperator,
@@ -252,4 +252,14 @@ Deno.test("authenticator - creds fn", async () => {
   };
 
   await testAuthenticatorFn(authenticator, conf);
+});
+
+Deno.test("authenticator - bad creds", () => {
+  assertThrows(
+    () => {
+      credsAuthenticator(new TextEncoder().encode("hello"))();
+    },
+    Error,
+    "unable to parse credentials",
+  );
 });

@@ -1,7 +1,23 @@
+/*
+ * Copyright 2024 Synadia Communications, Inc
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { delay } from "@nats-io/nats-core";
-import { fail } from "node:assert";
 import type { Consumer, Stream } from "../src/types.ts";
+import { fail } from "jsr:@std/assert";
 import { StreamImpl } from "../src/jsmstream_api.ts";
+import { JetStreamApiCodes, JetStreamApiError } from "../src/jserrors.ts";
 
 export function stripNatsMetadata(md?: Record<string, string>) {
   if (md) {
@@ -17,17 +33,27 @@ export async function delayUntilAssetNotFound(
   a: Consumer | Stream,
 ): Promise<void> {
   const expected = a instanceof StreamImpl ? "stream" : "consumer";
-  const m = `${expected} not found`;
   while (true) {
     try {
       await a.info();
       await delay(20);
     } catch (err) {
-      if ((err as Error).message === m) {
-        break;
-      } else {
-        fail((err as Error).message);
+      if (err instanceof JetStreamApiError) {
+        const jserr = err as JetStreamApiError;
+        if (
+          jserr.code === JetStreamApiCodes.ConsumerNotFound &&
+          expected === "consumer"
+        ) {
+          break;
+        }
+        if (
+          jserr.code === JetStreamApiCodes.StreamNotFound &&
+          expected === "stream"
+        ) {
+          break;
+        }
       }
+      fail((err as Error).message);
     }
   }
 }

@@ -16,13 +16,14 @@
 import { extend } from "./util.ts";
 import { defaultPort, getResolveFn } from "./transport.ts";
 import type { Authenticator, ConnectionOptions, ServerInfo } from "./core.ts";
-import { createInbox, DEFAULT_HOST, ErrorCode, NatsError } from "./core.ts";
+import { createInbox, DEFAULT_HOST } from "./core.ts";
 import {
   multiAuthenticator,
   noAuthFn,
   tokenAuthenticator,
   usernamePasswordAuthenticator,
 } from "./authenticator.ts";
+import { errors } from "./errors.ts";
 
 export const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
 export const DEFAULT_JITTER = 100;
@@ -83,9 +84,11 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
   }
 
   if (opts.servers.length > 0 && opts.port) {
-    throw new NatsError(
-      "port and servers options are mutually exclusive",
-      ErrorCode.InvalidOption,
+    throw new errors.InvalidArgumentError(
+      errors.InvalidArgumentError.formatMultiple(
+        ["servers", "port"],
+        "are mutually exclusive",
+      ),
     );
   }
 
@@ -101,10 +104,7 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
 
   ["reconnectDelayHandler", "authenticator"].forEach((n) => {
     if (options[n] && typeof options[n] !== "function") {
-      throw new NatsError(
-        `${n} option should be a function`,
-        ErrorCode.NotFunction,
-      );
+      throw TypeError(`'${n}' must be a function`);
     }
   });
 
@@ -122,11 +122,7 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
   }
 
   if (options.inboxPrefix) {
-    try {
-      createInbox(options.inboxPrefix);
-    } catch (err) {
-      throw new NatsError((err as Error).message, ErrorCode.ApiError);
-    }
+    createInbox(options.inboxPrefix);
   }
 
   // if not set - we set it
@@ -137,9 +133,11 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
 
   if (options.resolve) {
     if (typeof getResolveFn() !== "function") {
-      throw new NatsError(
-        `'resolve' is not supported on this client`,
-        ErrorCode.InvalidOption,
+      throw new errors.InvalidArgumentError(
+        errors.InvalidArgumentError.format(
+          "resolve",
+          "is not supported in the current runtime",
+        ),
       );
     }
   }
@@ -151,16 +149,18 @@ export function checkOptions(info: ServerInfo, options: ConnectionOptions) {
   const { proto, tls_required: tlsRequired, tls_available: tlsAvailable } =
     info;
   if ((proto === undefined || proto < 1) && options.noEcho) {
-    throw new NatsError("noEcho", ErrorCode.ServerOptionNotAvailable);
+    throw new errors.ConnectionError(`server does not support 'noEcho'`);
   }
   const tls = tlsRequired || tlsAvailable || false;
   if (options.tls && !tls) {
-    throw new NatsError("tls", ErrorCode.ServerOptionNotAvailable);
+    throw new errors.ConnectionError(`server does not support 'tls'`);
   }
 }
 
-export function checkUnsupportedOption(prop: string, v?: string) {
+export function checkUnsupportedOption(prop: string, v?: unknown) {
   if (v) {
-    throw new NatsError(prop, ErrorCode.InvalidOption);
+    throw new errors.InvalidArgumentError(
+      errors.InvalidArgumentError.format(prop, "is not supported"),
+    );
   }
 }

@@ -40,7 +40,12 @@ import type {
   DirectMsgRequest,
   LastForMsgRequest,
 } from "./jsapi_types.ts";
-import { checkJsError, validateStreamName } from "./jsutil.ts";
+import { validateStreamName } from "./jsutil.ts";
+import {
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JetStreamStatus,
+} from "./jserrors.ts";
 
 export class DirectStreamAPIImpl extends BaseApiClientImpl
   implements DirectStreamAPI {
@@ -72,11 +77,24 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       payload,
     );
 
-    // response is not a JS.API response
-    const err = checkJsError(r);
-    if (err) {
-      return Promise.reject(err);
+    if (r.headers?.code !== 0) {
+      const status = new JetStreamStatus(r);
+      if (status.isMessageNotFound()) {
+        // this so to simplify things that handle a non-existing messages
+        // as null (such as KV).
+        return Promise.reject(
+          new JetStreamApiError(
+            {
+              code: status.code,
+              err_code: JetStreamApiCodes.NoMessageFound,
+              description: status.description,
+            },
+          ),
+        );
+      }
+      return Promise.reject(status.toError());
     }
+
     const dm = new DirectMsgImpl(r);
     return Promise.resolve(dm);
   }

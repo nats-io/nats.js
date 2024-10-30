@@ -23,17 +23,6 @@ import type {
   RequestInfo,
   ReviverFn,
 } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
-
-export function isRequestError(msg: Msg): NatsError | null {
-  // NATS core only considers errors 503s on messages that have no payload
-  // everything else simply forwarded as part of the message and is considered
-  // application level information
-  if (msg && msg.data.length === 0 && msg.headers?.code === 503) {
-    return NatsError.errorForCode(ErrorCode.NoResponders);
-  }
-  return null;
-}
 
 export class MsgImpl implements Msg {
   _headers?: MsgHdrs;

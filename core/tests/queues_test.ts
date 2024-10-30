@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { createInbox } from "../src/internal_mod.ts";
-import type { Subscription } from "../src/internal_mod.ts";
+import { createInbox } from "../src/core.ts";
+import type { Subscription } from "../src/core.ts";
 import { assertEquals } from "jsr:@std/assert";
 import { connect } from "./connect.ts";
 import { _setup, cleanup } from "test_helpers";

@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export type { ApiError, Dispatcher, MsgHdrs, QueuedIterator } from "./core.ts";
-export { NatsError } from "./core.ts";
+export type { Dispatcher, MsgHdrs, QueuedIterator } from "./core.ts";
 
 export { Empty } from "./encoders.ts";
