@@ -138,18 +138,18 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         this.stop(err);
       }
       const bo = backoff();
+
       const c = delay(bo.backoff(this.createFails));
       c.then(() => {
-        const idx = this.cancelables.indexOf(c);
-        if (idx !== -1) {
-          this.cancelables = this.cancelables.splice(idx, idx);
-        }
         if (!this.done) {
           this.reset();
         }
-      })
-        .catch((_) => {
-          // canceled
+      }).catch(() => {})
+        .finally(() => {
+          const idx = this.cancelables.indexOf(c);
+          if (idx !== -1) {
+            this.cancelables = this.cancelables.splice(idx, idx);
+          }
         });
       this.cancelables.push(c);
     });

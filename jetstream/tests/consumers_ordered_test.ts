@@ -43,7 +43,7 @@ import type {
 import { StreamImpl } from "../src/jsmstream_api.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
 import { flakyTest } from "../../test_helpers/mod.ts";
-import { JetStreamApiError } from "../src/jserrors.ts";
+import { ConsumerNotFoundError } from "../src/jserrors.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -1107,14 +1107,16 @@ Deno.test("ordered consumers - initial creation fails, consumer fails", async ()
 
 Deno.test(
   "ordered consumers - stale reference recovers",
-  flakyTest(async () => {
+  async () => {
     const { ns, nc } = await _setup(connect, jetstreamServerConf());
     const jsm = await jetstreamManager(nc);
 
     await jsm.streams.add({ name: "A", subjects: ["a"] });
     const js = jsm.jetstream();
-    await js.publish("a", JSON.stringify(1));
-    await js.publish("a", JSON.stringify(2));
+    await Promise.all([
+      js.publish("a", JSON.stringify(1)),
+      js.publish("a", JSON.stringify(2)),
+    ]);
 
     const c = await js.consumers.get("A") as PullConsumerImpl;
     let m = await c.next({ expires: 1000 });
@@ -1124,25 +1126,22 @@ Deno.test(
 
     // continue until the server says the consumer doesn't exist
     await delayUntilAssetNotFound(c);
-    await nc.flush();
 
-    // so should get that error once
+    // so should get CnF once
     await assertRejects(
       () => {
         return c.next({ expires: 1000 });
       },
-      JetStreamApiError,
-      "consumer not found",
+      ConsumerNotFoundError,
     );
 
     // but now it will be created in line
-
     m = await c.next({ expires: 1000 });
     assertExists(m);
     assertEquals(m.json<number>(), 2);
 
     await cleanup(ns, nc);
-  }),
+  },
 );
 
 Deno.test(

@@ -68,7 +68,7 @@ function validateName(context: string, name = "") {
 }
 
 function validName(name = ""): string {
-  if (name === "") {
+  if (!name) {
     throw Error(`name required`);
   }
   const RE = /^[-\w]+$/g;

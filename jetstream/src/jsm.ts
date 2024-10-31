@@ -14,13 +14,13 @@
  */
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
-import { DirectMsgHeaders } from "./types.ts";
 import type {
   DirectMsg,
   DirectStreamAPI,
   JetStreamOptions,
   StoredMsg,
 } from "./types.ts";
+import { DirectMsgHeaders } from "./types.ts";
 import type {
   Codec,
   Msg,
@@ -31,6 +31,7 @@ import type {
 } from "@nats-io/nats-core";
 import {
   Empty,
+  errors,
   QueuedIteratorImpl,
   RequestStrategy,
   TD,
@@ -107,7 +108,9 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = `${pre}.DIRECT.GET.${stream}`;
     if (!Array.isArray(opts.multi_last) || opts.multi_last.length === 0) {
-      return Promise.reject("multi_last is required");
+      return Promise.reject(
+        errors.InvalidArgumentError.format("multi_last", "is required"),
+      );
     }
     const payload = JSON.stringify(opts, (key, value) => {
       if (key === "up_to_time" && value instanceof Date) {
@@ -129,13 +132,12 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     (async () => {
       let gotFirst = false;
       let badServer = false;
-      let badRequest: string | undefined;
+      let status: JetStreamStatus | null = null;
       for await (const m of raw) {
         if (!gotFirst) {
           gotFirst = true;
-          const code = m.headers?.code || 0;
-          if (code !== 0 && code < 200 || code > 299) {
-            badRequest = m.headers?.description.toLowerCase();
+          status = JetStreamStatus.maybeParseStatus(m);
+          if (status) {
             break;
           }
           // inspect the message and make sure that we have a supported server
@@ -155,12 +157,14 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         if (badServer) {
           throw new Error("batch direct get not supported by the server");
         }
-        if (badRequest) {
-          throw new Error(`bad request: ${badRequest}`);
+        if (status) {
+          throw status.toError();
         }
         iter.stop();
       });
-    })();
+    })().catch((err) => {
+      iter.stop(err);
+    });
 
     return Promise.resolve(iter);
   }

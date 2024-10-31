@@ -24,7 +24,7 @@ import type {
   NatsConnection,
   NatsConnectionImpl,
 } from "@nats-io/nats-core/internal";
-import { Feature } from "@nats-io/nats-core/internal";
+import { Feature, InvalidArgumentError } from "@nats-io/nats-core/internal";
 import { ConsumerApiAction } from "./jsapi_types.ts";
 
 import type {
@@ -56,13 +56,15 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     validateStreamName(stream);
 
     if (cfg.deliver_group && cfg.flow_control) {
-      throw new Error(
-        "jetstream flow control is not supported with queue groups",
+      throw InvalidArgumentError.format(
+        ["flow_control", "deliver_group"],
+        "are mutually exclusive",
       );
     }
     if (cfg.deliver_group && cfg.idle_heartbeat) {
-      throw new Error(
-        "jetstream idle heartbeat is not supported with queue groups",
+      throw InvalidArgumentError.format(
+        ["idle_heartbeat", "deliver_group"],
+        "are mutually exclusive",
       );
     }
 
@@ -82,7 +84,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
 
     const name = cfg.name === "" ? undefined : cfg.name;
     if (name && !newAPI) {
-      throw new Error(`consumer 'name' requires server ${min}`);
+      throw InvalidArgumentError.format("name", `requires server ${min}`);
     }
     if (name) {
       try {
@@ -106,14 +108,17 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     if (Array.isArray(cfg.filter_subjects)) {
       const { min, ok } = nci.features.get(Feature.JS_MULTIPLE_CONSUMER_FILTER);
       if (!ok) {
-        throw new Error(`consumer 'filter_subjects' requires server ${min}`);
+        throw InvalidArgumentError.format(
+          "filter_subjects",
+          `requires server ${min}`,
+        );
       }
       newAPI = false;
     }
     if (cfg.metadata) {
       const { min, ok } = nci.features.get(Feature.JS_STREAM_CONSUMER_METADATA);
       if (!ok) {
-        throw new Error(`consumer 'metadata' requires server ${min}`);
+        throw InvalidArgumentError.format("metadata", `requires server ${min}`);
       }
     }
     if (newAPI) {

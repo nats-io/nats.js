@@ -368,6 +368,19 @@ Deno.test("basics - request no responders", async () => {
     errors.RequestError,
     "no responders: 'q'",
   );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request no responders noMux", async () => {
+  const { ns, nc } = await _setup(connect);
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { timeout: 100, noMux: true });
+    },
+    errors.RequestError,
+    "no responders: 'q'",
+  );
   await cleanup(ns, nc);
 });
 
@@ -377,6 +390,17 @@ Deno.test("basics - request timeout", async () => {
   nc.subscribe(s, { callback: () => {} });
   await assertRejects(() => {
     return nc.request(s, Empty, { timeout: 100 });
+  }, errors.TimeoutError);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request timeout noMux", async () => {
+  const { ns, nc } = await _setup(connect);
+  const s = createInbox();
+  nc.subscribe(s, { callback: () => {} });
+  await assertRejects(() => {
+    return nc.request(s, Empty, { timeout: 100, noMux: true });
   }, errors.TimeoutError);
 
   await cleanup(ns, nc);
@@ -583,8 +607,7 @@ Deno.test("basics - no mux requests timeout", async () => {
     () => {
       return nc.request(subj, Empty, { timeout: 500, noMux: true });
     },
-    errors.RequestError,
-    "timeout",
+    errors.TimeoutError,
   );
 
   await cleanup(ns, nc);
@@ -617,8 +640,7 @@ Deno.test("basics - no mux request timeout doesn't leak subs", async () => {
     () => {
       return nc.request("q", Empty, { noMux: true, timeout: 1000 });
     },
-    errors.RequestError,
-    "timeout",
+    errors.TimeoutError,
   );
 
   assertEquals(nci.protocol.subscriptions.size(), 1);

@@ -23,7 +23,7 @@ import {
   tokenAuthenticator,
   usernamePasswordAuthenticator,
 } from "./authenticator.ts";
-import { errors } from "./errors.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
 
 export const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
 export const DEFAULT_JITTER = 100;
@@ -84,11 +84,9 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
   }
 
   if (opts.servers.length > 0 && opts.port) {
-    throw new errors.InvalidArgumentError(
-      errors.InvalidArgumentError.formatMultiple(
-        ["servers", "port"],
-        "are mutually exclusive",
-      ),
+    throw InvalidArgumentError.format(
+      ["servers", "port"],
+      "are mutually exclusive",
     );
   }
 
@@ -133,11 +131,9 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
 
   if (options.resolve) {
     if (typeof getResolveFn() !== "function") {
-      throw new errors.InvalidArgumentError(
-        errors.InvalidArgumentError.format(
-          "resolve",
-          "is not supported in the current runtime",
-        ),
+      throw InvalidArgumentError.format(
+        "resolve",
+        "is not supported in the current runtime",
       );
     }
   }
@@ -159,8 +155,6 @@ export function checkOptions(info: ServerInfo, options: ConnectionOptions) {
 
 export function checkUnsupportedOption(prop: string, v?: unknown) {
   if (v) {
-    throw new errors.InvalidArgumentError(
-      errors.InvalidArgumentError.format(prop, "is not supported"),
-    );
+    throw InvalidArgumentError.format(prop, "is not supported");
   }
 }

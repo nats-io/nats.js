@@ -169,7 +169,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         const isProtocol = msg.subject === this.inbox;
         if (isProtocol) {
           const status = new JetStreamStatus(msg);
-          status.debug();
 
           if (status.isIdleHeartbeat()) {
             this.notify(ConsumerDebugEvents.Heartbeat, status.parseHeartbeat());
@@ -629,11 +628,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     args.expires = args.expires || 30_000;
     if (args.expires < 1000) {
-      throw new errors.InvalidArgumentError(
-        errors.InvalidArgumentError.format(
-          "expires",
-          "must be at least 1000ms",
-        ),
+      throw errors.InvalidArgumentError.format(
+        "expires",
+        "must be at least 1000ms",
       );
     }
 
@@ -712,9 +709,7 @@ export class PullConsumerImpl implements Consumer {
     if (this.ordered) {
       if (opts.bind) {
         return Promise.reject(
-          new errors.InvalidArgumentError(
-            errors.InvalidArgumentError.format("bind", "is not supported"),
-          ),
+          errors.InvalidArgumentError.format("bind", "is not supported"),
         );
       }
       if (this.type === PullConsumerType.Fetch) {
@@ -747,9 +742,7 @@ export class PullConsumerImpl implements Consumer {
     if (this.ordered) {
       if (opts.bind) {
         return Promise.reject(
-          new errors.InvalidArgumentError(
-            errors.InvalidArgumentError.format("bind", "is not supported"),
-          ),
+          errors.InvalidArgumentError.format("bind", "is not supported"),
         );
       }
       if (this.type === PullConsumerType.Consume) {

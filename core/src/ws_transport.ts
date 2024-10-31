@@ -332,11 +332,9 @@ export function wsconnect(
     urlParseFn: wsUrlParseFn,
     factory: (): Transport => {
       if (opts.tls) {
-        throw new errors.InvalidArgumentError(
-          InvalidArgumentError.format(
-            "tls",
-            "is not configurable on w3c websocket connections",
-          ),
+        throw InvalidArgumentError.format(
+          "tls",
+          "is not configurable on w3c websocket connections",
         );
       }
       return new WsTransport();

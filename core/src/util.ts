@@ -111,14 +111,19 @@ export function delay(ms = 0): Delay {
   return Object.assign(p, methods) as Delay;
 }
 
-export function deadline<T>(p: Promise<T>, millis = 1000): Promise<T> {
-  const err = new Error(`deadline exceeded`);
+export async function deadline<T>(p: Promise<T>, millis = 1000): Promise<T> {
   const d = deferred<never>();
   const timer = setTimeout(
-    () => d.reject(err),
+    () => {
+      d.reject(new TimeoutError());
+    },
     millis,
   );
-  return Promise.race([p, d]).finally(() => clearTimeout(timer));
+  try {
+    return await Promise.race([p, d]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface Deferred<T> extends Promise<T> {

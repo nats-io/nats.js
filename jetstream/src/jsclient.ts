@@ -87,13 +87,7 @@ export async function jetstreamManager(
     try {
       await adm.getAccountInfo();
     } catch (err) {
-      if (
-        err instanceof errors.RequestError &&
-        err.message.includes("no responders")
-      ) {
-        throw new JetStreamError("jetstream is not enabled", err);
-      }
-      throw new JetStreamError((err as Error).message, err as Error);
+      throw err;
     }
   }
   return adm;
@@ -226,8 +220,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         break;
       } catch (err) {
         if (
-          err instanceof errors.RequestError &&
-          err.message.includes("no responders")
+          err instanceof errors.RequestError && err.isNoResponders()
         ) {
           await delay(retry_delay);
         } else {

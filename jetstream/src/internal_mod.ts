@@ -143,4 +143,5 @@ export {
   JetStreamApiCodes,
   JetStreamApiError,
   JetStreamError,
+  jserrors,
 } from "./jserrors.ts";

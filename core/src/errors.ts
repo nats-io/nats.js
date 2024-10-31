@@ -33,13 +33,21 @@ export class InvalidArgumentError extends Error {
     this.name = "InvalidArgumentError";
   }
 
-  static format(name: string, message: string): string {
-    return `'${name}' ${message}`;
-  }
-
-  static formatMultiple(names: string[], message: string): string {
-    names = names.map((n) => `'${n}'`);
-    return `${names.join(",")} ${message}`;
+  static format(
+    property: string | string[],
+    message: string,
+    options?: ErrorOptions,
+  ): InvalidArgumentError {
+    if (Array.isArray(message) && message.length > 1) {
+      message = message[0];
+    }
+    if (Array.isArray(property)) {
+      property = property.map((n) => `'${n}'`);
+      property = property.join(",");
+    } else {
+      property = `'${property}'`;
+    }
+    return new InvalidArgumentError(`${property} ${message}`, options);
   }
 }
 
@@ -185,6 +193,10 @@ export class RequestError extends Error {
   constructor(message = "", options?: ErrorOptions) {
     super(message, options);
     this.name = "RequestError";
+  }
+
+  isNoResponders(): boolean {
+    return this.cause instanceof NoRespondersError;
   }
 }
 

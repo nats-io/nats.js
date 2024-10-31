@@ -87,11 +87,9 @@ export class NodeTransport implements Transport {
 
       //@ts-ignore: this is possibly a TlsSocket
       if (tlsRequired && this.socket.encrypted !== true) {
-        throw new errors.InvalidArgumentError(
-          errors.InvalidArgumentError.format(
-            "tls",
-            "is not available on this server",
-          ),
+        throw errors.InvalidArgumentError.format(
+          "tls",
+          "is not available on this server",
         );
       }
 

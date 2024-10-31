@@ -139,4 +139,19 @@ export { SHA256 } from "./sha256.ts";
 
 export { wsconnect, wsUrlParseFn } from "./ws_transport.ts";
 
-export { errors } from "./errors.ts";
+export {
+  AuthorizationError,
+  ClosedConnectionError,
+  ConnectionError,
+  DrainingConnectionError,
+  errors,
+  InvalidArgumentError,
+  InvalidOperationError,
+  InvalidSubjectError,
+  NoRespondersError,
+  PermissionViolationError,
+  ProtocolError,
+  RequestError,
+  TimeoutError,
+  UserAuthenticationExpiredError,
+} from "./errors.ts";

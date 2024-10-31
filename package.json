@@ -1,0 +1,10 @@
+{
+  "workspaces": [
+    "./core",
+    "./jetstream",
+    "./kv",
+    "./obj",
+    "./services",
+    "./transport-node"
+  ]
+}

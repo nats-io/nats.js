@@ -22,16 +22,13 @@ import { parseSemVer } from "./semver.ts";
 
 import { parseOptions } from "./options.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
-import { RequestMany, RequestOne } from "./request.ts";
-
 import type { RequestManyOptionsInternal } from "./request.ts";
-
-import { createInbox, RequestStrategy } from "./core.ts";
-import type { Dispatcher } from "./core.ts";
+import { RequestMany, RequestOne } from "./request.ts";
 
 import type {
   ConnectionOptions,
   Context,
+  Dispatcher,
   Msg,
   NatsConnection,
   Payload,
@@ -45,7 +42,8 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
-import { errors, InvalidArgumentError } from "./errors.ts";
+import { createInbox, RequestStrategy } from "./core.ts";
+import { errors, InvalidArgumentError, TimeoutError } from "./errors.ts";
 
 export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
@@ -110,6 +108,9 @@ export class NatsConnectionImpl implements NatsConnection {
     options?: PublishOptions,
   ): void {
     this._check(subject, false, true);
+    if (options?.reply) {
+      this._check(options.reply, false, true);
+    }
     this.protocol.publish(subject, data, options);
   }
 
@@ -185,10 +186,7 @@ export class NatsConnectionImpl implements NatsConnection {
     opts.maxWait = opts.maxWait || 1000;
     if (opts.maxWait < 1) {
       return Promise.reject(
-        new errors.InvalidArgumentError(InvalidArgumentError.format(
-          "timeout",
-          "must be greater than 0",
-        )),
+        InvalidArgumentError.format("timeout", "must be greater than 0"),
       );
     }
 
@@ -353,18 +351,14 @@ export class NatsConnectionImpl implements NatsConnection {
     opts.timeout = opts.timeout || 1000;
     if (opts.timeout < 1) {
       return Promise.reject(
-        new errors.InvalidArgumentError(
-          InvalidArgumentError.format("timeout", `must be greater than 0`),
-        ),
+        InvalidArgumentError.format("timeout", `must be greater than 0`),
       );
     }
     if (!opts.noMux && opts.reply) {
       return Promise.reject(
-        new errors.InvalidArgumentError(
-          InvalidArgumentError.formatMultiple(
-            ["reply", "noMux"],
-            "are mutually exclusive",
-          ),
+        InvalidArgumentError.format(
+          ["reply", "noMux"],
+          "are mutually exclusive",
         ),
       );
     }
@@ -381,18 +375,20 @@ export class NatsConnectionImpl implements NatsConnection {
           max: 1,
           timeout: opts.timeout,
           callback: (err, msg) => {
-            // check for no responders
+            // check for no responders status
             if (msg && msg.data?.length === 0 && msg.headers?.code === 503) {
               err = new errors.NoRespondersError(subject);
             }
             if (err) {
-              // if we have a context, use that as the wrapper
-              if (errCtx) {
-                errCtx.message = err.message;
-                errCtx.cause = err;
-                err = errCtx;
-              } else {
-                err = new errors.RequestError(err.message, { cause: err });
+              // we have a proper stack on timeout
+              if (!(err instanceof TimeoutError)) {
+                if (errCtx) {
+                  errCtx.message = err.message;
+                  errCtx.cause = err;
+                  err = errCtx;
+                } else {
+                  err = new errors.RequestError(err.message, { cause: err });
+                }
               }
               d.reject(err);
               sub.unsubscribe();

@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import {
   AckPolicy,
   jetstream,
@@ -159,13 +159,14 @@ Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
   const c = await js.consumers.get("A", "a");
   const jm = await c.next();
 
-  await assertRejects(
+  const err = await assertRejects(
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
     errors.RequestError,
-    "no responders",
   );
+
+  assert(err.isNoResponders());
 
   await cleanup(ns, nc);
 });

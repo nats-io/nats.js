@@ -23,7 +23,7 @@ import type {
   RequestOptions,
 } from "./core.ts";
 import { RequestStrategy } from "./core.ts";
-import { RequestError } from "./errors.ts";
+import { errors, RequestError, TimeoutError } from "./errors.ts";
 
 export class BaseRequest {
   token: string;
@@ -150,12 +150,15 @@ export class RequestOne extends BaseRequest implements Request {
       this.timer.cancel();
     }
     if (err) {
-      if (this.ctx) {
-        this.ctx.message = err.message;
-        this.ctx.cause = err;
-        err = this.ctx;
-      } else {
-        err = new RequestError(err.message, { cause: err });
+      // we have proper stack on timeout
+      if (!(err instanceof TimeoutError)) {
+        if (this.ctx) {
+          this.ctx.message = err.message;
+          this.ctx.cause = err;
+          err = this.ctx;
+        } else {
+          err = new errors.RequestError(err.message, { cause: err });
+        }
       }
       this.deferred.reject(err);
     } else {

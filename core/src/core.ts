@@ -14,7 +14,7 @@
  */
 
 import { nuid } from "./nuid.ts";
-import { errors, InvalidArgumentError } from "./errors.ts";
+import { InvalidArgumentError } from "./errors.ts";
 
 /**
  * Events reported by the {@link NatsConnection#status} iterator.
@@ -663,11 +663,9 @@ export function createInbox(prefix = ""): string {
   prefix.split(".")
     .forEach((v) => {
       if (v === "*" || v === ">") {
-        throw new errors.InvalidArgumentError(
-          InvalidArgumentError.format(
-            "prefix",
-            `cannot have wildcards ('${prefix}')`,
-          ),
+        throw InvalidArgumentError.format(
+          "prefix",
+          `cannot have wildcards ('${prefix}')`,
         );
       }
     });

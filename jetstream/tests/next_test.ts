@@ -27,6 +27,11 @@ import { delay, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
+import {
+  ConsumerNotFoundError,
+  JetStreamStatusError,
+  StreamNotFoundError,
+} from "../src/jserrors.ts";
 
 Deno.test("next - basics", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());
@@ -140,8 +145,7 @@ Deno.test(
       () => {
         return c.next({ expires: 1000 });
       },
-      Error,
-      "consumer not found",
+      ConsumerNotFoundError,
     );
 
     await cleanup(ns, nc);
@@ -167,7 +171,7 @@ Deno.test("next - deleted consumer", async () => {
     () => {
       return c.next({ expires: 4000 });
     },
-    Error,
+    JetStreamStatusError,
     "consumer deleted",
   );
   await delay(1000);
@@ -180,7 +184,7 @@ Deno.test("next - deleted consumer", async () => {
 
 Deno.test(
   "next - stream not found",
-  flakyTest(async () => {
+  async () => {
     const { ns, nc } = await _setup(connect, jetstreamServerConf());
 
     const jsm = await jetstreamManager(nc);
@@ -202,14 +206,13 @@ Deno.test(
 
     await assertRejects(
       () => {
-        return c.next({ expires: 4000 });
+        return c.next({ expires: 1000 });
       },
-      Error,
-      "stream not found",
+      StreamNotFoundError,
     );
 
     await cleanup(ns, nc);
-  }),
+  },
 );
 
 Deno.test("next - consumer bind", async () => {

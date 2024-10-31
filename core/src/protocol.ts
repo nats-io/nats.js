@@ -50,12 +50,13 @@ import {
   DEFAULT_PING_INTERVAL,
   DEFAULT_RECONNECT_TIME_WAIT,
 } from "./options.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
+
 import type {
   AuthorizationError,
   PermissionViolationError,
   UserAuthenticationExpiredError,
 } from "./errors.ts";
-import { errors } from "./errors.ts";
 
 const FLUSH_THRESHOLD = 1024 * 32;
 
@@ -870,11 +871,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     let hlen = 0;
     if (options.headers) {
       if (this.info && !this.info.headers) {
-        throw new errors.InvalidArgumentError(
-          errors.InvalidArgumentError.format(
-            "headers",
-            "are not available on this server",
-          ),
+        InvalidArgumentError.format(
+          "headers",
+          "are not available on this server",
         );
       }
       const hdrs = options.headers as MsgHdrsImpl;
@@ -884,12 +883,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
 
     if (this.info && len > this.info.max_payload) {
-      throw new errors.InvalidArgumentError(
-        errors.InvalidArgumentError.format(
-          "payload",
-          "max_payload size exceeded",
-        ),
-      );
+      throw InvalidArgumentError.format("payload", "max_payload size exceeded");
     }
     this.outBytes += len;
     this.outMsgs++;

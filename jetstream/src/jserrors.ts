@@ -17,7 +17,21 @@ import type { Msg } from "@nats-io/nats-core";
 import { JsHeaders } from "./types.ts";
 import type { ApiError } from "./jsapi_types.ts";
 
-export class JetStreamStatusError extends Error {
+export class JetStreamNotEnabled extends Error {
+  constructor(message: string, opts?: ErrorOptions) {
+    super(message, opts);
+    this.name = "JetStreamNotEnabled";
+  }
+}
+
+export class JetStreamError extends Error {
+  constructor(message: string, opts?: ErrorOptions) {
+    super(message, opts);
+    this.name = "JetStreamError";
+  }
+}
+
+export class JetStreamStatusError extends JetStreamError {
   code: number;
   constructor(message: string, code: number, opts?: ErrorOptions) {
     super(message, opts);
@@ -33,6 +47,11 @@ export class JetStreamStatus {
   constructor(msg: Msg) {
     this.msg = msg;
     this._description = "";
+  }
+
+  static maybeParseStatus(msg: Msg): JetStreamStatus | null {
+    const status = new JetStreamStatus(msg);
+    return status.code === 0 ? null : status;
   }
 
   toError(): JetStreamStatusError {
@@ -153,13 +172,6 @@ export class JetStreamStatus {
   }
 }
 
-export class JetStreamError extends Error {
-  constructor(message: string, opts?: ErrorOptions) {
-    super(message, opts);
-    this.name = "JetStreamError";
-  }
-}
-
 export enum JetStreamApiCodes {
   ConsumerNotFound = 10014,
   StreamNotFound = 10059,
@@ -171,33 +183,6 @@ export enum JetStreamApiCodes {
 export function isMessageNotFound(err: Error): boolean {
   return err instanceof JetStreamApiError &&
     err.code === JetStreamApiCodes.NoMessageFound;
-}
-
-export class MessageNotFoundError extends Error {
-  constructor(message: string, opts?: ErrorOptions) {
-    super(message, opts);
-    this.name = "MessageNotFoundError";
-  }
-}
-
-export class ConsumerNotFoundError extends Error {
-  stream: string;
-  consumer: string;
-  constructor(stream: string, consumer: string, opts?: ErrorOptions) {
-    super(`consumer not found`, opts);
-    this.stream = stream;
-    this.consumer = consumer;
-    this.name = "ConsumerNotFoundError";
-  }
-}
-
-export class StreamNotFoundError extends Error {
-  stream: string;
-  constructor(stream: string, opts?: ErrorOptions) {
-    super(`stream not found`, opts);
-    this.stream = stream;
-    this.name = "StreamNotFoundError";
-  }
 }
 
 export class InvalidNameError extends Error {
@@ -229,9 +214,33 @@ export class JetStreamApiError extends Error {
   }
 }
 
+export class ConsumerNotFoundError extends JetStreamApiError {
+  constructor(jsErr: ApiError, opts?: ErrorOptions) {
+    super(jsErr, opts);
+    this.name = "ConsumerNotFoundError";
+  }
+}
+
+export class StreamNotFoundError extends JetStreamApiError {
+  constructor(jsErr: ApiError, opts?: ErrorOptions) {
+    super(jsErr, opts);
+    this.name = "StreamNotFoundError";
+  }
+
+  static fromMessage(message: string): JetStreamApiError {
+    return new StreamNotFoundError({
+      err_code: JetStreamApiCodes.StreamNotFound,
+      description: message,
+      code: 404,
+    });
+  }
+}
+
 export const jserrors = {
   InvalidNameError,
   ConsumerNotFoundError,
   StreamNotFoundError,
   JetStreamError,
+  JetStreamApiError,
+  JetStreamNotEnabled,
 };

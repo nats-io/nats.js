@@ -18,7 +18,7 @@
 import { TD, TE } from "./encoders.ts";
 import type { MsgHdrs } from "./core.ts";
 import { Match } from "./core.ts";
-import { errors } from "./errors.ts";
+import { InvalidArgumentError } from "./errors.ts";
 
 // https://www.ietf.org/rfc/rfc822.txt
 // 3.1.2.  STRUCTURE OF HEADER FIELDS
@@ -48,11 +48,9 @@ export function canonicalMIMEHeaderKey(k: string): string {
   for (let i = 0; i < k.length; i++) {
     let c = k.charCodeAt(i);
     if (c === colon || c < start || c > end) {
-      throw new errors.InvalidArgumentError(
-        errors.InvalidArgumentError.format(
-          "header",
-          `'${k[i]}' is not a valid character in a header name`,
-        ),
+      throw InvalidArgumentError.format(
+        "header",
+        `'${k[i]}' is not a valid character in a header name`,
       );
     }
     if (upper && a <= c && c <= z) {
@@ -68,12 +66,7 @@ export function canonicalMIMEHeaderKey(k: string): string {
 
 export function headers(code = 0, description = ""): MsgHdrs {
   if ((code === 0 && description !== "") || (code > 0 && description === "")) {
-    throw new errors.InvalidArgumentError(
-      errors.InvalidArgumentError.format(
-        "description",
-        "is required",
-      ),
-    );
+    throw InvalidArgumentError.format("description", "is required");
   }
   return new MsgHdrsImpl(code, description);
 }
@@ -178,11 +171,9 @@ export class MsgHdrsImpl implements MsgHdrs {
   static validHeaderValue(k: string): string {
     const inv = /[\r\n]/;
     if (inv.test(k)) {
-      throw new errors.InvalidArgumentError(
-        errors.InvalidArgumentError.format(
-          "header",
-          "values cannot contain \\r or \\n",
-        ),
+      throw InvalidArgumentError.format(
+        "header",
+        "values cannot contain \\r or \\n",
       );
     }
     return k.trim();

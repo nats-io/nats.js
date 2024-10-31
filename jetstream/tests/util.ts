@@ -17,7 +17,7 @@ import { delay } from "@nats-io/nats-core";
 import type { Consumer, Stream } from "../src/types.ts";
 import { fail } from "jsr:@std/assert";
 import { StreamImpl } from "../src/jsmstream_api.ts";
-import { JetStreamApiCodes, JetStreamApiError } from "../src/jserrors.ts";
+import { ConsumerNotFoundError, StreamNotFoundError } from "../src/jserrors.ts";
 
 export function stripNatsMetadata(md?: Record<string, string>) {
   if (md) {
@@ -38,20 +38,13 @@ export async function delayUntilAssetNotFound(
       await a.info();
       await delay(20);
     } catch (err) {
-      if (err instanceof JetStreamApiError) {
-        const jserr = err as JetStreamApiError;
-        if (
-          jserr.code === JetStreamApiCodes.ConsumerNotFound &&
-          expected === "consumer"
-        ) {
-          break;
-        }
-        if (
-          jserr.code === JetStreamApiCodes.StreamNotFound &&
-          expected === "stream"
-        ) {
-          break;
-        }
+      if (err instanceof ConsumerNotFoundError && expected === "consumer") {
+        await delay(1000);
+        break;
+      }
+      if (err instanceof StreamNotFoundError && expected === "stream") {
+        await delay(1000);
+        break;
       }
       fail((err as Error).message);
     }

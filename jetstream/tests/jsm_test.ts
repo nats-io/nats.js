@@ -28,7 +28,9 @@ import type { NatsConnection } from "@nats-io/nats-core";
 import {
   deferred,
   Empty,
+  errors,
   headers,
+  InvalidArgumentError,
   jwtAuthenticator,
   nanos,
   nkeys,
@@ -73,7 +75,7 @@ import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
 import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
-import { JetStreamApiError, JetStreamError } from "../src/jserrors.ts";
+import { jserrors } from "../src/jserrors.ts";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
@@ -85,8 +87,7 @@ Deno.test("jsm - jetstream not enabled", async () => {
     () => {
       return jetstreamManager(nc);
     },
-    JetStreamError,
-    "jetstream is not enabled",
+    jserrors.JetStreamNotEnabled,
   );
   await cleanup(ns, nc);
 });
@@ -117,8 +118,7 @@ Deno.test("jsm - account not enabled", async () => {
     () => {
       return jetstreamManager(nc);
     },
-    JetStreamError,
-    "not enabled for account",
+    jserrors.JetStreamNotEnabled,
   );
 
   const a = await connect(
@@ -215,9 +215,7 @@ Deno.test("jsm - info msg not found stream name fails", async () => {
     async () => {
       await jsm.streams.info(name);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -244,9 +242,7 @@ Deno.test("jsm - delete msg not found stream name fails", async () => {
     async () => {
       await jsm.streams.deleteMessage(name, 1);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -317,9 +313,7 @@ Deno.test("jsm - purge not found stream name fails", async () => {
     async () => {
       await jsm.streams.purge(name);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -564,8 +558,7 @@ Deno.test("jsm - stream delete", async () => {
     async () => {
       await jsm.streams.info(stream);
     },
-    Error,
-    "stream not found",
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -645,9 +638,7 @@ Deno.test("jsm - consumer info on not found stream fails", async () => {
     async () => {
       await jsm.consumers.info("foo", "dur");
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -660,9 +651,7 @@ Deno.test("jsm - consumer info on not found consumer", async () => {
     async () => {
       await jsm.consumers.info(stream, "dur");
     },
-    Error,
-    "consumer not found",
-    undefined,
+    jserrors.ConsumerNotFoundError,
   );
   await cleanup(ns, nc);
 });
@@ -1033,7 +1022,7 @@ Deno.test("jsm - jetstream error info", async () => {
         },
       );
     },
-    JetStreamApiError,
+    jserrors.JetStreamApiError,
     "replicas > 1 not supported in non-clustered mode",
   );
   await cleanup(ns, nc);
@@ -1346,8 +1335,8 @@ async function testConsumerNameAPI(nc: NatsConnection) {
         name: "a",
       }, "$JS.API.CONSUMER.CREATE.A");
     },
-    Error,
-    "consumer 'name' requires server",
+    errors.InvalidArgumentError,
+    "'name' requires server",
   );
 
   const ci = await addC({
@@ -2078,8 +2067,8 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     async () => {
       await addConsumer(stream, consumer, { hello: "world" });
     },
-    Error,
-    "consumer 'metadata' requires server 2.10.0",
+    InvalidArgumentError,
+    "'metadata' requires server",
   );
   // add w/o metadata
   await addConsumer(stream, consumer);
@@ -2088,8 +2077,8 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     async () => {
       await updateConsumer(stream, consumer, { hello: "world" });
     },
-    Error,
-    "consumer 'metadata' requires server 2.10.0",
+    InvalidArgumentError,
+    "'metadata' requires server",
   );
 
   await cleanup(ns, nc);
@@ -2140,7 +2129,6 @@ Deno.test("jsm - validate stream name in operations", async () => {
   const jsm = await jetstreamManager(nc);
 
   const names = ["", ".", "*", ">", "\r", "\n", "\t", " "];
-  type fn = (name: string) => Promise<unknown>;
   const tests = [
     {
       name: "add stream",
