@@ -132,7 +132,7 @@ function decoder(r: ServiceMsg): Promise<number[]> {
     return Promise.resolve(a);
   } catch (err) {
     // this is JSON.parse() - in JSONCodec failing to parse JSON
-    return Promise.reject(new ServiceError(400, err.message));
+    return Promise.reject(new ServiceError(400, (err as Error).message));
   }
 }
 

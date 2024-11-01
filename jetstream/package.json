@@ -23,7 +23,7 @@
     "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
-    "doc": "npm run build && node_modules/.bin/typedoc --out ../docs/jetstream && touch ../docs/jetstream/.nojekyll",
+    "doc": "npm run build && typedoc --out ../docs/jetstream && touch ../docs/jetstream/.nojekyll",
     "prepack": "npm run build",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
     "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
