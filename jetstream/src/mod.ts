@@ -39,6 +39,7 @@ export type {
   AbortOnMissingResource,
   AccountLimits,
   Advisory,
+  ApiError,
   ApiPagedRequest,
   Bind,
   BoundPushConsumerOptions,

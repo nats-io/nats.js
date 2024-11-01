@@ -86,10 +86,7 @@ export interface KvLimits {
    * The maximum number of bytes on the KV
    */
   max_bytes: number;
-  /**
-   * @deprecated use max_bytes
-   */
-  maxBucketSize: number;
+
   /**
    * The maximum size of a value on the KV
    */
@@ -121,10 +118,6 @@ export interface KvLimits {
    * List of Stream names to replicate into this KV
    */
   sources?: StreamSource[];
-  /**
-   * @deprecated: use placement
-   */
-  placementCluster: string;
 
   /**
    * deprecated: use storage
@@ -148,12 +141,6 @@ export interface KvStatus extends KvLimits {
    * Number of entries in the KV
    */
   values: number;
-
-  /**
-   * @deprecated
-   * FIXME: remove this on 1.8
-   */
-  bucket_location: string;
 
   /**
    * The StreamInfo backing up the KV
@@ -201,13 +188,6 @@ export interface KvOptions extends KvLimits {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
-}
-
-/**
- * @deprecated use purge(k)
- */
-export interface KvRemove {
-  remove(k: string): Promise<void>;
 }
 
 export enum KvWatchInclude {
@@ -280,11 +260,6 @@ export interface RoKV {
   watch(
     opts?: KvWatchOptions,
   ): Promise<QueuedIterator<KvWatchEntry>>;
-
-  /**
-   * @deprecated - this api is removed.
-   */
-  close(): Promise<void>;
 
   /**
    * Returns information about the Kv

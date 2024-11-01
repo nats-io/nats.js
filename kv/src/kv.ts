@@ -78,7 +78,6 @@ import type {
   KvEntry,
   KvOptions,
   KvPutOptions,
-  KvRemove,
   KvStatus,
   KvWatchEntry,
   KvWatchOptions,
@@ -263,7 +262,7 @@ export class Kvm {
   }
 }
 
-export class Bucket implements KV, KvRemove {
+export class Bucket implements KV {
   js: JetStreamClient;
   jsm: JetStreamManager;
   stream!: string;
@@ -328,20 +327,11 @@ export class Bucket implements KV, KvRemove {
     this.stream = sc.name = opts.streamName ?? this.bucketName();
     sc.retention = RetentionPolicy.Limits;
     sc.max_msgs_per_subject = bo.history;
-    if (bo.maxBucketSize) {
-      bo.max_bytes = bo.maxBucketSize;
-    }
     if (bo.max_bytes) {
       sc.max_bytes = bo.max_bytes;
     }
     sc.max_msg_size = bo.maxValueSize;
     sc.storage = bo.storage;
-    const location = opts.placementCluster ?? "";
-    if (location) {
-      opts.placement = {} as Placement;
-      opts.placement.cluster = location;
-      opts.placement.tags = [];
-    }
     if (opts.placement) {
       sc.placement = opts.placement;
     }

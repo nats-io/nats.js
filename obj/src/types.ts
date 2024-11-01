@@ -161,10 +161,7 @@ export type ObjectStoreStatus = {
    */
   compression: boolean;
 };
-/**
- * @deprecated {@link ObjectStoreStatus}
- */
-export type ObjectStoreInfo = ObjectStoreStatus;
+
 export type ObjectStoreOptions = {
   /**
    * A description for the object store
