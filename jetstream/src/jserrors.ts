@@ -60,7 +60,9 @@ export class JetStreamStatus {
 
   debug() {
     console.log({
-      message: this.description,
+      subject: this.msg.subject,
+      reply: this.msg.reply,
+      description: this.description,
       status: this.code,
       headers: this.msg.headers,
     });
