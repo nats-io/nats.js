@@ -76,6 +76,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const r = await this.nc.request(
       subj,
       payload,
+      { timeout: this.timeout },
     );
 
     if (r.headers?.code !== 0) {
