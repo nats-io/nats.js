@@ -30,6 +30,7 @@ import {
   delay,
   Empty,
   Events,
+  InvalidArgumentError,
   nanos,
   nuid,
   syncIterator,
@@ -107,7 +108,7 @@ Deno.test("jetstream - queue error checks", async () => {
       });
     },
     Error,
-    "jetstream idle heartbeat is not supported with queue groups",
+    "'idle_heartbeat','deliver_group' are mutually exclusive",
     undefined,
   );
 
@@ -120,9 +121,8 @@ Deno.test("jetstream - queue error checks", async () => {
         flow_control: true,
       });
     },
-    Error,
-    "jetstream flow control is not supported with queue groups",
-    undefined,
+    InvalidArgumentError,
+    "'flow_control','deliver_group' are mutually exclusive",
   );
 
   await cleanup(ns, nc);

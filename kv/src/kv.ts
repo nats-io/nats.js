@@ -16,7 +16,6 @@
 import {
   compare,
   Empty,
-  ErrorCode,
   Feature,
   headers,
   millis,
@@ -30,7 +29,6 @@ import type {
   MsgHdrs,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   Payload,
   QueuedIterator,
 } from "@nats-io/nats-core/internal";
@@ -39,6 +37,8 @@ import {
   AckPolicy,
   DeliverPolicy,
   DiscardPolicy,
+  JetStreamApiCodes,
+  JetStreamApiError,
   JsHeaders,
   ListerImpl,
   PubHeaders,
@@ -567,8 +567,11 @@ export class Bucket implements KV, KvRemove {
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
-      if ((err as NatsError)?.api_error?.err_code !== 10071) {
-        return Promise.reject(err);
+      if (err instanceof JetStreamApiError) {
+        const jserr = err as JetStreamApiError;
+        if (jserr.code !== JetStreamApiCodes.StreamWrongLastSequence) {
+          return Promise.reject(err);
+        }
       }
     }
     let rev = 0;
@@ -610,12 +613,6 @@ export class Bucket implements KV, KvRemove {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
       return pa.seq;
     } catch (err) {
-      const ne = err as NatsError;
-      if (ne.isJetStreamError()) {
-        ne.message = ne.api_error?.description!;
-        ne.code = `${ne.api_error?.code!}`;
-        return Promise.reject(ne);
-      }
       return Promise.reject(err);
     }
   }
@@ -647,10 +644,11 @@ export class Bucket implements KV, KvRemove {
       }
       return ke;
     } catch (err) {
-      if (
-        (err as NatsError).code === ErrorCode.JetStream404NoMessages
-      ) {
-        return null;
+      if (err instanceof JetStreamApiError) {
+        const jserr = err as JetStreamApiError;
+        if (jserr.code === JetStreamApiCodes.NoMessageFound) {
+          return null;
+        }
       }
       throw err;
     }

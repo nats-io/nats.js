@@ -13,18 +13,18 @@
  * limitations under the License.
  */
 import { connect } from "./connect.ts";
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert";
-import { assertErrorCode, Lock, NatsServer } from "test_helpers";
+import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,
   delay,
-  ErrorCode,
   nuid,
   QueuedIteratorImpl,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
 import { _setup, cleanup } from "test_helpers";
+import { errors } from "../src/errors.ts";
 
 Deno.test("iterators - unsubscribe breaks and closes", async () => {
   const { ns, nc } = await _setup(connect);
@@ -132,27 +132,21 @@ Deno.test("iterators - connection close closes", async () => {
 Deno.test("iterators - cb subs fail iterator", async () => {
   const { ns, nc } = await _setup(connect);
   const subj = createInbox();
-  const lock = Lock(2);
-  const sub = nc.subscribe(subj, {
-    callback: (err, msg) => {
-      assert(err === null);
-      assert(msg);
-      lock.unlock();
-    },
-  });
+  const sub = nc.subscribe(subj, { callback: () => {} });
 
-  (async () => {
-    for await (const _m of sub) {
-      lock.unlock();
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.ApiError);
-    lock.unlock();
-  });
+  await assertRejects(
+    async () => {
+      for await (const _ of sub) {
+        // nothing
+      }
+    },
+    errors.InvalidOperationError,
+    "iterator cannot be used when a callback is registered",
+  );
+
   nc.publish(subj);
   await nc.flush();
   await cleanup(ns, nc);
-  await lock;
 });
 
 Deno.test("iterators - cb message counts", async () => {
@@ -259,7 +253,7 @@ Deno.test("iterators - sync iterator", async () => {
       }
     },
     Error,
-    "unsupported iterator",
+    "iterator cannot be used when a callback is registered",
   );
 
   await cleanup(ns, nc);

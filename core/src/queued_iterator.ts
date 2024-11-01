@@ -15,8 +15,8 @@
 import type { Deferred } from "./util.ts";
 import { deferred } from "./util.ts";
 import type { QueuedIterator } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
 import type { CallbackFn, Dispatcher } from "./core.ts";
+import { InvalidOperationError } from "./errors.ts";
 
 export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
   inflight: number;
@@ -83,10 +83,12 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
 
   async *iterate(): AsyncIterableIterator<T> {
     if (this.noIterator) {
-      throw new NatsError("unsupported iterator", ErrorCode.ApiError);
+      throw new InvalidOperationError(
+        "iterator cannot be used when a callback is registered",
+      );
     }
     if (this.yielding) {
-      throw new NatsError("already yielding", ErrorCode.ApiError);
+      throw new InvalidOperationError("iterator is already yielding");
     }
     this.yielding = true;
     try {

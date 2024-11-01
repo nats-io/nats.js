@@ -1635,13 +1635,30 @@ Deno.test("kv - create after delete", async () => {
   const kv = await new Kvm(js).create("K");
   await kv.create("a", Empty);
 
-  await assertRejects(async () => {
-    await kv.create("a", Empty);
+  await assertRejects(() => {
+    return kv.create("a", Empty);
   });
   await kv.delete("a");
   await kv.create("a", Empty);
   await kv.purge("a");
   await kv.create("a", Empty);
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - get non-existing non-direct", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const js = jetstream(nc);
+  const kv = await new Kvm(js).create("K", { allow_direct: false });
+  const v = await kv.get("hello");
+  assertEquals(v, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - get non-existing direct", async () => {
+  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const js = jetstream(nc);
+  const kv = await new Kvm(js).create("K", { allow_direct: true });
+  assertEquals(await kv.get("hello"), null);
   await cleanup(ns, nc);
 });
 

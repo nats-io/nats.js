@@ -12,9 +12,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { isRequestError } from "./msg.ts";
 import type { Msg, MsgCallback, Request } from "./core.ts";
-import { createInbox, ErrorCode, NatsError } from "./core.ts";
+import { createInbox } from "./core.ts";
+import { NoRespondersError, RequestError } from "./errors.ts";
+
+import type { PermissionViolationError } from "./errors.ts";
 
 export class MuxSubscription {
   baseInbox!: string;
@@ -60,37 +62,39 @@ export class MuxSubscription {
     return Array.from(this.reqs.values());
   }
 
-  handleError(isMuxPermissionError: boolean, err?: NatsError): boolean {
-    if (err && err.permissionContext) {
-      if (isMuxPermissionError) {
-        // one or more requests queued but mux cannot process them
-        this.all().forEach((r) => {
-          r.resolver(err, {} as Msg);
-        });
+  handleError(
+    isMuxPermissionError: boolean,
+    err: PermissionViolationError,
+  ): boolean {
+    if (isMuxPermissionError) {
+      // one or more requests queued but mux cannot process them
+      this.all().forEach((r) => {
+        r.resolver(err, {} as Msg);
+      });
+      return true;
+    }
+    if (err.operation === "publish") {
+      const req = this.all().find((s) => {
+        return s.requestSubject === err.subject;
+      });
+      if (req) {
+        req.resolver(err, {} as Msg);
         return true;
-      }
-      const ctx = err.permissionContext;
-      if (ctx.operation === "publish") {
-        const req = this.all().find((s) => {
-          return s.requestSubject === ctx.subject;
-        });
-        if (req) {
-          req.resolver(err, {} as Msg);
-          return true;
-        }
       }
     }
     return false;
   }
 
   dispatcher(): MsgCallback<Msg> {
-    return (err: NatsError | null, m: Msg) => {
+    return (err: Error | null, m: Msg) => {
       const token = this.getToken(m);
       if (token) {
         const r = this.get(token);
         if (r) {
-          if (err === null && m.headers) {
-            err = isRequestError(m);
+          if (err === null) {
+            err = (m?.data?.length === 0 && m.headers?.code === 503)
+              ? new NoRespondersError(r.requestSubject)
+              : null;
           }
           r.resolver(err, m);
         }
@@ -99,7 +103,7 @@ export class MuxSubscription {
   }
 
   close() {
-    const err = NatsError.errorForCode(ErrorCode.Timeout);
+    const err = new RequestError("connection closed");
     this.reqs.forEach((req) => {
       req.resolver(err, {} as Msg);
     });

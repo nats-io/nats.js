@@ -12,29 +12,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  assertEquals,
-  assertRejects,
-  assertStringIncludes,
-  fail,
-} from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "jsr:@std/assert";
 import { connect } from "./connect.ts";
-import { ErrorCode } from "../src/internal_mod.ts";
+import { errors } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { assertErrorCode, cleanup, Lock, NatsServer } from "test_helpers";
+import { cleanup, NatsServer } from "test_helpers";
 
 Deno.test("tls - fail if server doesn't support TLS", async () => {
   const ns = await NatsServer.start();
-  const lock = Lock();
-  await connect({ port: ns.port, tls: {} })
-    .then(() => {
-      fail("shouldn't have connected");
-    })
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.ServerOptionNotAvailable);
-      lock.unlock();
-    });
-  await lock;
+  await assertRejects(
+    () => {
+      return connect({ port: ns.port, tls: {}, reconnect: false });
+    },
+    errors.ConnectionError,
+    "server does not support 'tls'",
+  );
   await ns.stop();
 });
 
@@ -53,23 +45,13 @@ Deno.test("tls - custom ca fails without root", async () => {
   };
 
   const ns = await NatsServer.start(config);
-  const lock = Lock();
-  await connect({ servers: `localhost:${ns.port}` })
-    .then(() => {
-      fail("shouldn't have connected without client ca");
-    })
-    .catch((err) => {
-      // this is a bogus error name - but at least we know we are rejected
-      assertEquals(err.name, "InvalidData");
-      assertStringIncludes(
-        err.message,
-        "invalid peer certificate",
-      );
-      assertStringIncludes(err.message, "UnknownIssuer");
-      lock.unlock();
-    });
-
-  await lock;
+  await assertRejects(
+    () => {
+      return connect({ servers: `localhost:${ns.port}`, reconnect: false });
+    },
+    errors.ConnectionError,
+    "invalid peer certificate: unknownissuer",
+  );
   await ns.stop();
   await Deno.remove(tlsConfig.certsDir, { recursive: true });
 });

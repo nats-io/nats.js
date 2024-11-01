@@ -12,11 +12,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
 import type {
   NatsConnection,
   Subscription,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+} from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 async function createService(
   name: string,

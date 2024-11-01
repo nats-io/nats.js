@@ -19,10 +19,9 @@ import {
   DataBuffer,
   deferred,
   Empty,
-  ErrorCode,
+  errors,
   extractProtocolMessage,
   INFO,
-  NatsError,
   render,
 } from "@nats-io/nats-core/internal";
 
@@ -100,9 +99,10 @@ export class DenoTransport implements Transport {
       }
     } catch (err) {
       this.conn?.close();
-      throw (err as NatsError)?.name === "ConnectionRefused"
-        ? NatsError.errorForCode(ErrorCode.ConnectionRefused)
-        : err;
+      const _err = err as Error;
+      throw new errors.ConnectionError(_err.message.toLowerCase(), {
+        cause: err,
+      });
     }
   }
 

@@ -21,6 +21,7 @@ import {
   _setup,
   cleanup,
   connect,
+  flakyTest,
   jetstreamServerConf,
   notCompatible,
 } from "test_helpers";
@@ -30,7 +31,6 @@ import type {
 } from "../src/pushconsumer.ts";
 import { delay } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("ordered push consumers - get", async () => {
   const { ns, nc } = await _setup(connect, jetstreamServerConf());

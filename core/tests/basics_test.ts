@@ -14,15 +14,13 @@
  */
 import {
   assert,
-  assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertInstanceOf,
   assertRejects,
   assertThrows,
   fail,
 } from "jsr:@std/assert";
-
-import { assertThrowsAsyncErrorCode } from "../../test_helpers/asserts.ts";
 
 import {
   collect,
@@ -30,7 +28,6 @@ import {
   deferred,
   delay,
   Empty,
-  ErrorCode,
   Feature,
   headers,
   isIP,
@@ -42,20 +39,14 @@ import type {
   Msg,
   MsgHdrs,
   NatsConnectionImpl,
-  NatsError,
   Payload,
   Publisher,
   PublishOptions,
   SubscriptionImpl,
 } from "../src/internal_mod.ts";
-import {
-  _setup,
-  assertErrorCode,
-  cleanup,
-  Lock,
-  NatsServer,
-} from "test_helpers";
+import { _setup, cleanup, Lock, NatsServer } from "test_helpers";
 import { connect } from "./connect.ts";
+import { errors } from "../src/errors.ts";
 
 Deno.test("basics - connect port", async () => {
   const ns = await NatsServer.start();
@@ -86,13 +77,13 @@ Deno.test("basics - connect servers", async () => {
 });
 
 Deno.test("basics - fail connect", async () => {
-  await connect({ servers: `127.0.0.1:32001` })
-    .then(() => {
-      fail();
-    })
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.ConnectionRefused);
-    });
+  await assertRejects(
+    () => {
+      return connect({ servers: `127.0.0.1:32001` });
+    },
+    errors.ConnectionError,
+    "connection refused",
+  );
 });
 
 Deno.test("basics - publish", async () => {
@@ -104,14 +95,14 @@ Deno.test("basics - publish", async () => {
 
 Deno.test("basics - no publish without subject", async () => {
   const { ns, nc } = await _setup(connect);
-  try {
-    nc.publish("");
-    fail("should not be able to publish without a subject");
-  } catch (err) {
-    assertEquals((err as NatsError).code, ErrorCode.BadSubject);
-  } finally {
-    await cleanup(ns, nc);
-  }
+  assertThrows(
+    () => {
+      nc.publish("");
+    },
+    errors.InvalidSubjectError,
+    "illegal subject: ''",
+  );
+  await cleanup(ns, nc);
 });
 
 Deno.test("basics - pubsub", async () => {
@@ -370,10 +361,26 @@ Deno.test("basics - request", async () => {
 
 Deno.test("basics - request no responders", async () => {
   const { ns, nc } = await _setup(connect);
-  const s = createInbox();
-  await assertThrowsAsyncErrorCode(async () => {
-    await nc.request(s, Empty, { timeout: 100 });
-  }, ErrorCode.NoResponders);
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { timeout: 100 });
+    },
+    errors.RequestError,
+    "no responders: 'q'",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request no responders noMux", async () => {
+  const { ns, nc } = await _setup(connect);
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { timeout: 100, noMux: true });
+    },
+    errors.RequestError,
+    "no responders: 'q'",
+  );
   await cleanup(ns, nc);
 });
 
@@ -381,9 +388,21 @@ Deno.test("basics - request timeout", async () => {
   const { ns, nc } = await _setup(connect);
   const s = createInbox();
   nc.subscribe(s, { callback: () => {} });
-  await assertThrowsAsyncErrorCode(async () => {
-    await nc.request(s, Empty, { timeout: 100 });
-  }, ErrorCode.Timeout);
+  await assertRejects(() => {
+    return nc.request(s, Empty, { timeout: 100 });
+  }, errors.TimeoutError);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request timeout noMux", async () => {
+  const { ns, nc } = await _setup(connect);
+  const s = createInbox();
+  nc.subscribe(s, { callback: () => {} });
+  await assertRejects(() => {
+    return nc.request(s, Empty, { timeout: 100, noMux: true });
+  }, errors.TimeoutError);
+
   await cleanup(ns, nc);
 });
 
@@ -391,21 +410,20 @@ Deno.test("basics - request cancel rejects", async () => {
   const { ns, nc } = await _setup(connect);
   const nci = nc as NatsConnectionImpl;
   const s = createInbox();
-  const lock = Lock();
 
-  nc.request(s, Empty, { timeout: 1000 })
-    .then(() => {
-      fail();
-    })
-    .catch((err) => {
-      assertEquals(err.code, ErrorCode.Cancelled);
-      lock.unlock();
-    });
+  const check = assertRejects(
+    () => {
+      return nc.request(s, Empty, { timeout: 1000 });
+    },
+    errors.RequestError,
+    "cancelled",
+  );
 
   nci.protocol.muxSubscriptions.reqs.forEach((v) => {
     v.cancel();
   });
-  await lock;
+
+  await check;
   await cleanup(ns, nc);
 });
 
@@ -428,7 +446,7 @@ Deno.test("basics - old style requests", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - request with custom subject", async () => {
+Deno.test("basics - reply can only be used with noMux", async () => {
   const { ns, nc } = await _setup(connect);
   nc.subscribe("q", {
     callback: (_err, msg) => {
@@ -436,18 +454,14 @@ Deno.test("basics - request with custom subject", async () => {
     },
   });
 
-  try {
-    await nc.request(
-      "q",
-      Empty,
-      { reply: "bar", timeout: 1000 },
-    );
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { reply: "bar", timeout: 1000 });
+    },
+    errors.InvalidArgumentError,
+    "'reply','noMux' are mutually exclusive",
+  );
 
-    fail("should have failed");
-  } catch (err) {
-    const nerr = err as NatsError;
-    assertEquals(ErrorCode.InvalidOption, nerr.code);
-  }
   await cleanup(ns, nc);
 });
 
@@ -496,13 +510,12 @@ Deno.test("basics - request with headers and custom subject", async () => {
 Deno.test("basics - request requires a subject", async () => {
   const { ns, nc } = await _setup(connect);
   await assertRejects(
-    async () => {
-      //@ts-ignore: subject missing on purpose
-      await nc.request();
+    () => {
+      //@ts-ignore: testing
+      return nc.request();
     },
-    Error,
-    "BAD_SUBJECT",
-    undefined,
+    errors.InvalidSubjectError,
+    "illegal subject: ''",
   );
   await cleanup(ns, nc);
 });
@@ -511,28 +524,24 @@ Deno.test("basics - closed returns error", async () => {
   const { ns, nc } = await _setup(connect, {}, { reconnect: false });
   setTimeout(() => {
     (nc as NatsConnectionImpl).protocol.sendCommand("Y\r\n");
-  }, 1000);
-  await nc.closed()
-    .then((v) => {
-      assertEquals((v as NatsError).code, ErrorCode.ProtocolError);
-    });
-
+  }, 100);
+  const done = await nc.closed();
+  assertInstanceOf(done, errors.ProtocolError);
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - subscription with timeout", async () => {
   const { ns, nc } = await _setup(connect);
-  const lock = Lock(1);
   const sub = nc.subscribe(createInbox(), { max: 1, timeout: 250 });
-  (async () => {
-    for await (const _m of sub) {
-      // ignored
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.Timeout);
-    lock.unlock();
-  });
-  await lock;
+  await assertRejects(
+    async () => {
+      for await (const _m of sub) {
+        // ignored
+      }
+    },
+    errors.TimeoutError,
+    "timeout",
+  );
   await cleanup(ns, nc);
 });
 
@@ -592,20 +601,15 @@ Deno.test("basics - no mux requests create normal subs", async () => {
 
 Deno.test("basics - no mux requests timeout", async () => {
   const { ns, nc } = await _setup(connect);
-  const lock = Lock();
   const subj = createInbox();
   nc.subscribe(subj, { callback: () => {} });
+  await assertRejects(
+    () => {
+      return nc.request(subj, Empty, { timeout: 500, noMux: true });
+    },
+    errors.TimeoutError,
+  );
 
-  await nc.request(
-    subj,
-    Empty,
-    { timeout: 1000, noMux: true },
-  )
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.Timeout);
-      lock.unlock();
-    });
-  await lock;
   await cleanup(ns, nc);
 });
 
@@ -633,11 +637,10 @@ Deno.test("basics - no mux request timeout doesn't leak subs", async () => {
   assertEquals(nci.protocol.subscriptions.size(), 1);
 
   await assertRejects(
-    async () => {
-      await nc.request("q", Empty, { noMux: true, timeout: 1000 });
+    () => {
+      return nc.request("q", Empty, { noMux: true, timeout: 1000 });
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
 
   assertEquals(nci.protocol.subscriptions.size(), 1);
@@ -649,14 +652,9 @@ Deno.test("basics - no mux request no responders doesn't leak subs", async () =>
 
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.subscriptions.size(), 0);
-
-  await assertRejects(
-    async () => {
-      await nc.request("q", Empty, { noMux: true, timeout: 1000 });
-    },
-    Error,
-    "503",
-  );
+  await assertRejects(() => {
+    return nc.request("q", Empty, { noMux: true, timeout: 500 });
+  });
 
   assertEquals(nci.protocol.subscriptions.size(), 0);
   await cleanup(ns, nc);
@@ -704,42 +702,73 @@ Deno.test("basics - no mux request no perms doesn't leak subs", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - no max_payload messages", async () => {
+Deno.test("basics - max_payload errors", async () => {
   const { ns, nc } = await _setup(connect, { max_payload: 2048 });
   const nci = nc as NatsConnectionImpl;
   assert(nci.protocol.info);
   const big = new Uint8Array(nci.protocol.info.max_payload + 1);
 
-  const subj = createInbox();
-  try {
-    nc.publish(subj, big);
-    fail();
-  } catch (err) {
-    assertErrorCode(err as NatsError, ErrorCode.MaxPayloadExceeded);
-  }
+  assertThrows(
+    () => {
+      nc.publish("foo", big);
+    },
+    errors.InvalidArgumentError,
+    `payload size exceeded`,
+  );
 
-  try {
-    await nc.request(subj, big).then();
-    fail();
-  } catch (err) {
-    assertErrorCode(err as NatsError, ErrorCode.MaxPayloadExceeded);
-  }
+  assertRejects(
+    () => {
+      return nc.request("foo", big);
+    },
+    errors.InvalidArgumentError,
+    `payload size exceeded`,
+  );
 
-  const sub = nc.subscribe(subj);
-  (async () => {
-    for await (const m of sub) {
-      m.respond(big);
-      fail();
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
+  const d = deferred();
+  setTimeout(() => {
+    nc.request("foo").catch((err) => {
+      d.reject(err);
+    });
   });
 
-  await nc.request(subj).then(() => {
-    fail();
-  }).catch((err) => {
-    assertErrorCode(err, ErrorCode.Timeout);
-  });
+  const sub = nc.subscribe("foo");
+
+  for await (const m of sub) {
+    assertThrows(
+      () => {
+        m.respond(big);
+      },
+      errors.InvalidArgumentError,
+      `payload size exceeded`,
+    );
+    break;
+  }
+
+  await assertRejects(
+    () => {
+      return d;
+    },
+    errors.TimeoutError,
+    "timeout",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - close cancels requests", async () => {
+  const { ns, nc } = await _setup(connect);
+  nc.subscribe("q", { callback: () => {} });
+
+  const done = assertRejects(
+    () => {
+      return nc.request("q");
+    },
+    errors.RequestError,
+    "connection closed",
+  );
+
+  await nc.close();
+  await done;
 
   await cleanup(ns, nc);
 });
@@ -960,39 +989,35 @@ Deno.test("basics - port and server are mutually exclusive", async () => {
     async () => {
       await connect({ servers: "localhost", port: 4222 });
     },
-    Error,
-    "port and servers options are mutually exclusive",
+    errors.InvalidArgumentError,
+    "'servers','port' are mutually exclusive",
     undefined,
   );
 });
 
 Deno.test("basics - rtt", async () => {
   const { ns, nc } = await _setup(connect, {}, {
-    maxReconnectAttempts: 5,
-    reconnectTimeWait: 250,
+    maxReconnectAttempts: 1,
+    reconnectTimeWait: 750,
   });
   const rtt = await nc.rtt();
   assert(rtt >= 0);
 
   await ns.stop();
-  await delay(500);
+
   await assertRejects(
-    async () => {
-      await nc.rtt();
+    () => {
+      return nc.rtt();
     },
-    Error,
-    ErrorCode.Disconnect,
+    errors.RequestError,
+    "disconnected",
   );
 
   await nc.closed();
 
-  await assertRejects(
-    async () => {
-      await nc.rtt();
-    },
-    Error,
-    ErrorCode.ConnectionClosed,
-  );
+  await assertRejects(() => {
+    return nc.rtt();
+  }, errors.ClosedConnectionError);
 });
 
 Deno.test("basics - request many count", async () => {
@@ -1216,17 +1241,15 @@ Deno.test("basics - initial connect error", async () => {
     }
   })();
 
-  try {
-    await connect({ port, reconnect: false });
-    fail("shouldn't have connected");
-  } catch (err) {
-    // in node we may get a disconnect which we generated
-    // in deno we get the connection reset - but if running in CI this may turn out to be
-    // a connection refused
-    assertArrayIncludes(["ECONNRESET", "CONNECTION_REFUSED"], [
-      (err as NatsError).code,
-    ]);
-  }
+  const err = await assertRejects(() => {
+    return connect({ port, reconnect: false });
+  });
+
+  assert(
+    err instanceof errors.ConnectionError ||
+      err instanceof Deno.errors.ConnectionReset,
+  );
+
   listener.close();
   await done;
 });
@@ -1244,16 +1267,16 @@ Deno.test("basics - inbox prefixes cannot have wildcards", async () => {
     async () => {
       await connect({ inboxPrefix: "_inbox.foo.>" });
     },
-    Error,
-    "inbox prefixes cannot have wildcards",
+    errors.InvalidArgumentError,
+    "'prefix' cannot have wildcards",
   );
 
   assertThrows(
     () => {
       createInbox("_inbox.foo.*");
     },
-    Error,
-    "inbox prefixes cannot have wildcards",
+    errors.InvalidArgumentError,
+    "'prefix' cannot have wildcards",
   );
 });
 

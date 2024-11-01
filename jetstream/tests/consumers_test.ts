@@ -258,7 +258,7 @@ Deno.test("consumers - bad options", async () => {
       await c.consume({ expires: 500 });
     },
     Error,
-    "expires should be at least 1000ms",
+    "'expires' must be at least 1000ms",
   );
 
   await cleanup(ns, nc);

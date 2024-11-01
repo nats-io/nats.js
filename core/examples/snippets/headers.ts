@@ -19,7 +19,7 @@ import {
   Empty,
   headers,
   nuid,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+} from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 const nc = await connect(
   {

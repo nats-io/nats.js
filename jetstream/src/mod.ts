@@ -12,13 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export {
-  checkJsError,
-  isFlowControlMsg,
-  isHeartbeatMsg,
-  jetstream,
-  jetstreamManager,
-} from "./internal_mod.ts";
+export { jetstream, jetstreamManager } from "./internal_mod.ts";
 
 export {
   AckPolicy,
@@ -30,6 +24,9 @@ export {
   DiscardPolicy,
   isPullConsumer,
   isPushConsumer,
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JetStreamError,
   JsHeaders,
   ReplayPolicy,
   RepublishHeaders,

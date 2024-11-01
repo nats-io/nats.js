@@ -1,5 +1,12 @@
 import { jetstream, jetstreamManager } from "../src/jsclient.ts";
-import { connect, flakyTest, NatsServer, notCompatible } from "test_helpers";
+import {
+  cleanup,
+  connect,
+  flakyTest,
+  jetstreamServerConf,
+  NatsServer,
+  notCompatible,
+} from "test_helpers";
 import {
   DiscardPolicy,
   RetentionPolicy,
@@ -15,7 +22,6 @@ import {
   assertRejects,
   fail,
 } from "jsr:@std/assert";
-import { cleanup, jetstreamServerConf } from "../../test_helpers/mod.ts";
 
 Deno.test("jetstream - mirror alternates", async () => {
   const servers = await NatsServer.jetstreamCluster(3);

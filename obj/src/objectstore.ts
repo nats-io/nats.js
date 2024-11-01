@@ -16,7 +16,6 @@
 import type {
   MsgHdrs,
   NatsConnection,
-  NatsError,
   QueuedIterator,
 } from "@nats-io/nats-core/internal";
 import {
@@ -50,6 +49,9 @@ import type {
 import {
   DeliverPolicy,
   DiscardPolicy,
+  isMessageNotFound,
+  JetStreamApiCodes,
+  JetStreamApiError,
   JsHeaders,
   ListerImpl,
   PubHeaders,
@@ -364,7 +366,10 @@ export class ObjectStoreImpl implements ObjectStore {
       soi.revision = m.seq;
       return soi;
     } catch (err) {
-      if ((err as NatsError).code === "404") {
+      if (
+        err instanceof JetStreamApiError &&
+        err.code === JetStreamApiCodes.NoMessageFound
+      ) {
         return null;
       }
       return Promise.reject(err);
@@ -377,8 +382,10 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       return await this.jsm.streams.info(this.stream, opts);
     } catch (err) {
-      const nerr = err as NatsError;
-      if (nerr.code === "404") {
+      if (
+        err instanceof JetStreamApiError &&
+        err.code === JetStreamApiCodes.StreamNotFound
+      ) {
         return null;
       }
       return Promise.reject(err);
@@ -808,7 +815,7 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       await this.jsm.streams.getMessage(this.stream, { last_by_subj: subj });
     } catch (err) {
-      if ((err as NatsError).code !== "404") {
+      if (!isMessageNotFound(err as Error)) {
         qi.stop(err as Error);
       }
     }

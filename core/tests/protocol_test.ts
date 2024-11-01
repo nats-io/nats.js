@@ -14,7 +14,6 @@
  */
 import {
   Empty,
-  ErrorCode,
   extractProtocolMessage,
   MuxSubscription,
   protoLen,
@@ -23,10 +22,10 @@ import {
   Subscriptions,
 } from "../src/internal_mod.ts";
 import type { Msg, ProtocolHandler } from "../src/internal_mod.ts";
-import { assertErrorCode } from "test_helpers";
-import { assertEquals, equal } from "jsr:@std/assert";
+import { assertEquals, assertRejects, equal } from "jsr:@std/assert";
+import { errors } from "../src/errors.ts";
 
-Deno.test("protocol - mux subscription unknown return null", async () => {
+Deno.test("protocol - mux subscription cancel", async () => {
   const mux = new MuxSubscription();
   mux.init();
 
@@ -37,13 +36,17 @@ Deno.test("protocol - mux subscription unknown return null", async () => {
   assertEquals(mux.get("alberto"), r);
   assertEquals(mux.getToken({ subject: "" } as Msg), null);
 
-  const p = Promise.race([r.deferred, r.timer])
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.Cancelled);
-    });
+  const check = assertRejects(
+    () => {
+      return Promise.race([r.deferred, r.timer]);
+    },
+    errors.RequestError,
+    "cancelled",
+  );
 
   r.cancel();
-  await p;
+
+  await check;
   assertEquals(mux.size(), 0);
 });
 

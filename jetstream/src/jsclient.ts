@@ -15,12 +15,7 @@
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
-import {
-  delay,
-  Empty,
-  NatsError,
-  QueuedIteratorImpl,
-} from "@nats-io/nats-core/internal";
+import { delay, Empty, QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 
 import { ConsumersImpl, StreamAPIImpl, StreamsImpl } from "./jsmstream_api.ts";
 
@@ -39,7 +34,7 @@ import type {
   StreamAPI,
   Streams,
 } from "./types.ts";
-import { ErrorCode, headers } from "@nats-io/nats-core/internal";
+import { errors, headers } from "@nats-io/nats-core/internal";
 
 import type {
   Msg,
@@ -54,6 +49,7 @@ import type {
   JetStreamAccountStats,
 } from "./jsapi_types.ts";
 import { DirectStreamAPIImpl } from "./jsm.ts";
+import { JetStreamError } from "./jserrors.ts";
 
 export function toJetStreamClient(
   nc: NatsConnection | JetStreamClient,
@@ -91,11 +87,7 @@ export async function jetstreamManager(
     try {
       await adm.getAccountInfo();
     } catch (err) {
-      const ne = err as NatsError;
-      if (ne.code === ErrorCode.NoResponders) {
-        ne.code = ErrorCode.JetStreamNotEnabled;
-      }
-      throw ne;
+      throw err;
     }
   }
   return adm;
@@ -227,8 +219,9 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         // if here we succeeded
         break;
       } catch (err) {
-        const ne = err as NatsError;
-        if (ne.code === "503" && i + 1 < retries) {
+        if (
+          err instanceof errors.RequestError && err.isNoResponders()
+        ) {
           await delay(retry_delay);
         } else {
           throw err;
@@ -237,7 +230,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     }
     const pa = this.parseJsResponse(r!) as PubAck;
     if (pa.stream === "") {
-      throw NatsError.errorForCode(ErrorCode.JetStreamInvalidAck);
+      throw new JetStreamError("invalid ack response");
     }
     pa.duplicate = pa.duplicate ? pa.duplicate : false;
     return pa;

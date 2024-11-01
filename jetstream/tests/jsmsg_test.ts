@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import {
   AckPolicy,
   jetstream,
@@ -21,8 +21,7 @@ import {
 } from "../src/mod.ts";
 
 import { createInbox, Empty, nanos } from "@nats-io/nats-core";
-import type { Msg } from "@nats-io/nats-core";
-import type { MsgImpl } from "@nats-io/nats-core/internal";
+import type { Msg, MsgImpl } from "@nats-io/nats-core/internal";
 
 import type { JsMsgImpl } from "../src/jsmsg.ts";
 import { parseInfo, toJsMsg } from "../src/jsmsg.ts";
@@ -34,6 +33,7 @@ import {
   jetstreamServerConf,
 } from "test_helpers";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
+import { errors } from "../../core/src/mod.ts";
 
 Deno.test("jsmsg - parse", () => {
   // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
@@ -159,13 +159,14 @@ Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
   const c = await js.consumers.get("A", "a");
   const jm = await c.next();
 
-  await assertRejects(
+  const err = await assertRejects(
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "503",
+    errors.RequestError,
   );
+
+  assert(err.isNoResponders());
 
   await cleanup(ns, nc);
 });
@@ -217,12 +218,11 @@ Deno.test("jsmsg - explicit consumer ackAck timeout", async () => {
   const start = Date.now();
   await assertRejects(
     (): Promise<boolean> => {
-      return jm!.ackAck({ timeout: 1500 });
+      return jm!.ackAck({ timeout: 1000 });
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
-  assertBetween(Date.now() - start, 1300, 1700);
+  assertBetween(Date.now() - start, 1000, 1500);
 
   await cleanup(ns, nc);
 });
@@ -252,8 +252,7 @@ Deno.test("jsmsg - ackAck js options timeout", async () => {
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
   assertBetween(Date.now() - start, 1300, 1700);
 
@@ -285,8 +284,7 @@ Deno.test("jsmsg - ackAck legacy timeout", async () => {
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
   assertBetween(Date.now() - start, 1300, 1700);
 

@@ -17,7 +17,6 @@ import { Empty } from "./types.ts";
 import { nuid } from "./nuid.ts";
 import { deferred, Perf } from "./util.ts";
 import type { NatsConnectionImpl } from "./nats.ts";
-import { ErrorCode, NatsError } from "./core.ts";
 import type { NatsConnection } from "./core.ts";
 
 export class Metric {
@@ -124,7 +123,7 @@ export class Bench {
     this.payload = this.size ? new Uint8Array(this.size) : Empty;
 
     if (!this.pub && !this.sub && !this.req && !this.rep) {
-      throw new Error("no bench option selected");
+      throw new Error("no options selected");
     }
   }
 
@@ -132,11 +131,7 @@ export class Bench {
     this.nc.closed()
       .then((err) => {
         if (err) {
-          throw new NatsError(
-            `bench closed with an error: ${err.message}`,
-            ErrorCode.Unknown,
-            err,
-          );
+          throw err;
         }
       });
 

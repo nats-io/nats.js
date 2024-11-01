@@ -544,7 +544,7 @@ export enum ConsumerDebugEvents {
 
   /**
    * Notifies that the client received a server-side heartbeat. The payload the data
-   * portion has the format `{natsLastConsumer: string, natsLastStream: string}`;
+   * portion has the format `{natsLastConsumer: number, natsLastStream: number}`;
    */
   Heartbeat = "heartbeat",
 
@@ -659,7 +659,7 @@ export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
 export interface JetStreamClient {
   /**
    * Publishes a message to a stream. If not stream is configured to store the message, the
-   * request will fail with {@link ErrorCode.NoResponders} error.
+   * request will fail with RequestError error with a nested NoRespondersError.
    *
    * @param subj - the subject for the message
    * @param payload - the message's data
@@ -786,7 +786,10 @@ export interface DirectStreamAPI {
    * @param stream
    * @param query
    */
-  getMessage(stream: string, query: DirectMsgRequest): Promise<StoredMsg>;
+  getMessage(
+    stream: string,
+    query: DirectMsgRequest,
+  ): Promise<StoredMsg>;
 
   /**
    * Retrieves all last subject messages for the specified subjects

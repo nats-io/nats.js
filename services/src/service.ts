@@ -27,7 +27,6 @@ import type {
   MsgHdrs,
   Nanos,
   NatsConnection,
-  NatsError,
   Payload,
   PublishOptions,
   QueuedIterator,
@@ -69,7 +68,7 @@ function validateName(context: string, name = "") {
 }
 
 function validName(name = ""): string {
-  if (name === "") {
+  if (!name) {
     throw Error(`name required`);
   }
   const RE = /^[-\w]+$/g;
@@ -373,7 +372,7 @@ export class ServiceImpl implements Service {
     sv.queue = queue;
 
     const callback = handler
-      ? (err: NatsError | null, msg: Msg) => {
+      ? (err: Error | null, msg: Msg) => {
         if (err) {
           this.close(err);
           return;
@@ -458,7 +457,7 @@ export class ServiceImpl implements Service {
 
   addInternalHandler(
     verb: ServiceVerb,
-    handler: (err: NatsError | null, msg: Msg) => Promise<void>,
+    handler: (err: Error | null, msg: Msg) => Promise<void>,
   ) {
     const v = `${verb}`.toUpperCase();
     this._doAddInternalHandler(`${v}-all`, verb, handler);
@@ -475,7 +474,7 @@ export class ServiceImpl implements Service {
   _doAddInternalHandler(
     name: string,
     verb: ServiceVerb,
-    handler: (err: NatsError | null, msg: Msg) => Promise<void>,
+    handler: (err: Error | null, msg: Msg) => Promise<void>,
     kind = "",
     id = "",
   ) {

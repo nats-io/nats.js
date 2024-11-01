@@ -19,7 +19,6 @@ import type {
   Server,
   ServerInfo,
 } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
 import type { Deferred } from "./util.ts";
 import { deferred, delay, render } from "./util.ts";
 import type { Transport, TransportFactory } from "./transport.ts";
@@ -29,6 +28,7 @@ import { DataBuffer } from "./databuffer.ts";
 import { INFO } from "./protocol.ts";
 import { NatsConnectionImpl } from "./nats.ts";
 import { version } from "./version.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
 
 const VERSION = version;
 const LANG = "nats.ws";
@@ -155,11 +155,7 @@ export class WsTransport implements Transport {
         return;
       }
       const evt = e as ErrorEvent;
-      const err = new NatsError(
-        evt.message,
-        ErrorCode.Unknown,
-        new Error(evt.error),
-      );
+      const err = new errors.ConnectionError(evt.message);
       if (!connected) {
         ok.reject(err);
       } else {
@@ -336,7 +332,10 @@ export function wsconnect(
     urlParseFn: wsUrlParseFn,
     factory: (): Transport => {
       if (opts.tls) {
-        throw new NatsError("tls", ErrorCode.InvalidOption);
+        throw InvalidArgumentError.format(
+          "tls",
+          "is not configurable on w3c websocket connections",
+        );
       }
       return new WsTransport();
     },

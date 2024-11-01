@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export { checkJsError, isFlowControlMsg, isHeartbeatMsg } from "./jsutil.ts";
 
 export {
   AdvisoryKind,
@@ -138,3 +137,11 @@ export {
 export type { DeliveryInfo, StreamInfoRequestOptions } from "./jsapi_types.ts";
 
 export { ListerImpl } from "./jslister.ts";
+
+export {
+  isMessageNotFound,
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JetStreamError,
+  jserrors,
+} from "./jserrors.ts";

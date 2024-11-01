@@ -13,16 +13,6 @@
  * limitations under the License.
  */
 
-import {
-  createInbox,
-  Empty,
-  Feature,
-  headers,
-  MsgHdrsImpl,
-  nanos,
-  nuid,
-  TD,
-} from "@nats-io/nats-core/internal";
 import type {
   Codec,
   MsgHdrs,
@@ -30,8 +20,20 @@ import type {
   NatsConnectionImpl,
   ReviverFn,
 } from "@nats-io/nats-core/internal";
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import {
+  createInbox,
+  Empty,
+  errors,
+  Feature,
+  headers,
+  InvalidArgumentError,
+  MsgHdrsImpl,
+  nanos,
+  nuid,
+  TD,
+} from "@nats-io/nats-core/internal";
 import type { StreamNames } from "./jsbaseclient_api.ts";
+import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import { minValidation, validateStreamName } from "./jsutil.ts";
 import type {
@@ -50,11 +52,10 @@ import type {
   StreamAPI,
   Streams,
 } from "./types.ts";
-
-import { isOrderedPushConsumerOptions } from "./types.ts";
-
-import { isBoundPushConsumerOptions } from "./types.ts";
-import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
+import {
+  isBoundPushConsumerOptions,
+  isOrderedPushConsumerOptions,
+} from "./types.ts";
 import type {
   ApiPagedRequest,
   ConsumerConfig,
@@ -76,6 +77,7 @@ import type {
   StreamUpdateConfig,
   SuccessResponse,
 } from "./jsapi_types.ts";
+import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
 import { PullConsumerImpl } from "./consumer.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 import type { PushConsumerInternalOptions } from "./pushconsumer.ts";
@@ -96,7 +98,10 @@ export function convertStreamSourceDomain(s?: StreamSource) {
     return copy;
   }
   if (copy.external) {
-    throw new Error("domain and external are both set");
+    throw InvalidArgumentError.format(
+      ["domain", "external"],
+      "are mutually exclusive",
+    );
   }
   copy.external = { api: `$JS.${domain}.API` } as ExternalStream;
   return copy;
@@ -212,7 +217,9 @@ export class ConsumersImpl implements Consumers {
         new PushConsumerImpl(this.api, ci, { bound: true }),
       );
     } else {
-      return Promise.reject(new Error("deliver_subject is required"));
+      return Promise.reject(
+        errors.InvalidArgumentError.format("deliver_subject", "is required"),
+      );
     }
   }
 
@@ -584,7 +591,10 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     if (opts) {
       const { keep, seq } = opts as PurgeBySeq & PurgeTrimOpts;
       if (typeof keep === "number" && typeof seq === "number") {
-        throw new Error("can specify one of keep or seq");
+        throw InvalidArgumentError.format(
+          ["keep", "seq"],
+          "are mutually exclusive",
+        );
       }
     }
     validateStreamName(name);
