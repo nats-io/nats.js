@@ -85,6 +85,7 @@ export type {
 export type { StreamNames } from "./jsbaseclient_api.ts";
 export type {
   AccountLimits,
+  ApiError,
   ApiPagedRequest,
   ClusterInfo,
   ConsumerConfig,
