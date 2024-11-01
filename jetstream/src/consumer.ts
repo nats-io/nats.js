@@ -166,8 +166,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         }
         this.monitor?.work();
 
-        const isProtocol = msg.subject === this.inbox;
+        const isProtocol = this.consumer.ordered
+          ? msg.subject.indexOf(this?.inboxPrefix!) === 0
+          : msg.subject === this.inbox;
+
         if (isProtocol) {
+          if (msg.subject !== (this.sub as SubscriptionImpl).subject) {
+            // this is a stale message - was not sent to the current inbox
+            return;
+          }
           const status = new JetStreamStatus(msg);
 
           if (status.isIdleHeartbeat()) {
@@ -178,7 +185,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const description = status.description;
 
           const { msgsLeft, bytesLeft } = status.parseDiscard();
-          console.log("pending", msgsLeft, bytesLeft);
           if ((msgsLeft && msgsLeft > 0) || (bytesLeft && bytesLeft > 0)) {
             this.pending.msgs -= msgsLeft;
             this.pending.bytes -= bytesLeft;
@@ -842,15 +848,12 @@ export class PullConsumerImpl implements Consumer {
     return ci;
   }
 
-  info(cached = false): Promise<ConsumerInfo> {
+  async info(cached = false): Promise<ConsumerInfo> {
     if (cached) {
       return Promise.resolve(this._info);
     }
     const { stream_name, name } = this._info;
-    return this.api.info(stream_name, name)
-      .then((ci) => {
-        this._info = ci;
-        return this._info;
-      });
+    this._info = await this.api.info(stream_name, name);
+    return this._info;
   }
 }

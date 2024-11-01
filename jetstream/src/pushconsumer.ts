@@ -46,6 +46,7 @@ import type {
   QueuedIterator,
   Status,
   Subscription,
+  SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import { JetStreamStatus } from "./jserrors.ts";
 
@@ -281,23 +282,32 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         }
         this.monitor?.work();
 
-        const isProtocol = msg.subject === subject;
+        // need to make sure to catch all protocol messages even
+        const isProtocol = this.ordered
+          ? msg.subject.indexOf(this?.deliverPrefix!) === 0
+          : msg.subject === subject;
+
         if (isProtocol) {
+          if (msg.subject !== (this.sub as SubscriptionImpl).subject) {
+            // this is a stale message - was not sent to the current inbox
+            return;
+          }
+
           const status = new JetStreamStatus(msg);
+          if (status.isFlowControlRequest()) {
+            this._push(() => {
+              msg.respond();
+              this.notify(ConsumerDebugEvents.FlowControl, null);
+            });
+            return;
+          }
+
           if (status.isIdleHeartbeat()) {
             const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
             const natsLastStream = msg.headers?.get("Nats-Last-Stream");
             this.notify(ConsumerDebugEvents.Heartbeat, {
               natsLastConsumer,
               natsLastStream,
-            });
-            return;
-          }
-          if (status.isFlowControlRequest()) {
-            status.debug();
-            this._push(() => {
-              msg.respond();
-              this.notify(ConsumerDebugEvents.FlowControl, null);
             });
             return;
           }
