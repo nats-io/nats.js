@@ -157,6 +157,12 @@ the `values` property, which will state the number of entries in the Kv. Also
 note that watches with the option to do updates only, cannot notify until
 there's an update.
 
+### Removal of deprecations
+
+Removed deprecated KV apis (`KvRemove` - `remove(k)=>Promise<void>`,
+`close()=>Promise<void>`) and options (`maxBucketSize`,
+`placementCluster`,`bucket_location`)
+
 ## Changes to ObjectStore
 
 > [!CAUTION]
@@ -182,6 +188,10 @@ notifying of a new entry. Note that previously the iterator would yield
 `ObjectInfo | null`, the `null` signal has been removed. This means that when
 doing a watch on an empty ObjectStore you won't get an update notification until
 an actual value arrives.
+
+### Removed deprecations
+
+Removed deprecated `ObjectStoreInfo` - use `ObjectStoreStatus`
 
 ## Changes to Services Framework
 
