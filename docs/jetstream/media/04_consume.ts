@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { jetstream } from "../src/mod.ts";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { jetstream } from "jsr:@nats-io/jetstream@3.0.0-18";
 import { setupStreamAndConsumer } from "./util.ts";
 
 // create a connection
@@ -39,6 +39,6 @@ while (true) {
       m.ack();
     }
   } catch (err) {
-    console.log(`consume failed: ${err.message}`);
+    console.log(`consume failed: ${(err as Error).message}`);
   }
 }
