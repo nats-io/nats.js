@@ -18,8 +18,16 @@ import { rgb24 } from "jsr:@std/fmt/colors";
 import { check, jsopts } from "./mod.ts";
 import { extend, timeout } from "../core/src/util.ts";
 import type { Deferred } from "../core/src/util.ts";
-import { deferred, delay, nuid } from "../core/src/mod.ts";
+import {
+  ConnectionOptions,
+  deferred,
+  delay,
+  NatsConnection,
+  nuid,
+  wsconnect,
+} from "../core/src/mod.ts";
 import { Certs } from "./certs.ts";
+import { connect } from "./connect.ts";
 
 export const ServerSignals = Object.freeze({
   QUIT: "SIGQUIT",
@@ -637,8 +645,14 @@ export class NatsServer implements PortInfo {
     conf.leafnodes = conf.leafnodes || {};
     conf.leafnodes.listen = conf.leafnodes.listen || "127.0.0.1:-1";
     conf.server_tags = Array.isArray(conf.server_targs)
-        ? conf.server_tags.push(`id:${nuid.next()}`)
-        : [`id:${nuid.next()}`];
+      ? conf.server_tags.push(`id:${nuid.next()}`)
+      : [`id:${nuid.next()}`];
+
+    conf.websocket = Object.assign(
+      {},
+      { port: -1, no_tls: true },
+      conf.websocket || {},
+    );
 
     return conf;
   }
@@ -681,9 +695,19 @@ export class NatsServer implements PortInfo {
     return tlsconfig;
   }
 
+  connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
+    if (Deno.env.get("websocket")) {
+      const proto = this.config.websocket.no_tls ? "ws" : "wss";
+      opts.servers = `${proto}://localhost:${this.websocket}`;
+      return wsconnect(opts);
+    }
+    opts.port = this.port;
+    return connect(opts);
+  }
+
   static async start(conf?: any, debug = false): Promise<NatsServer> {
     // const exe = Deno.env.get("CI") ? "nats-server/nats-server" : "nats-server";
-    const exe =  "nats-server";
+    const exe = "nats-server";
     const tmp = resolve(Deno.env.get("TMPDIR") || ".");
     conf = NatsServer.confDefaults(conf);
     conf.ports_file_dir = tmp;
@@ -813,7 +837,10 @@ export function toConf(o: any, indent?: string): string {
             buf.push(`${pad}${k}: ${v}`);
           }
         } else {
-          if (v.includes(" ") || v.startsWith("$") || ((v.includes("{{") && v.includes("}")))) {
+          if (
+            v.includes(" ") || v.startsWith("$") ||
+            (v.includes("{{") && v.includes("}"))
+          ) {
             buf.push(`${pad}"${v}"`);
           } else {
             buf.push(pad + v);

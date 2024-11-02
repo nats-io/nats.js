@@ -27,9 +27,7 @@ import { ConnectFn } from "../core/src/core.ts";
 export { check } from "./check.ts";
 export { Lock } from "./lock.ts";
 export { Connection, TestServer } from "./test_server.ts";
-export {
-  assertBetween,
-} from "./asserts.ts";
+export { assertBetween } from "./asserts.ts";
 export { NatsServer, ServerSignals } from "./launcher.ts";
 
 export function disabled(reason: string): void {
@@ -51,12 +49,12 @@ export function jsopts() {
 }
 
 export function wsopts() {
-    return {
-      websocket: {
-        no_tls: true,
-        port: -1,
-      },
-    };
+  return {
+    websocket: {
+      no_tls: true,
+      port: -1,
+    },
+  };
 }
 
 export function jetstreamExportServerConf(
@@ -99,21 +97,19 @@ export function jetstreamServerConf(
   return conf as Record<string, unknown>;
 }
 
-export function wsServerConf(opts: unknown = {}): Record<string,unknown> {
+export function wsServerConf(opts: unknown = {}): Record<string, unknown> {
   return Object.assign(wsopts(), opts);
 }
 
 export async function _setup(
-  fn: ConnectFn,
+  _fn: ConnectFn,
   serverConf?: Record<string, unknown>,
   clientOpts?: Partial<ConnectionOptions>,
 ): Promise<{ ns: NatsServer; nc: NatsConnection }> {
   const dt = serverConf as { debug: boolean; trace: boolean };
   const debug = dt && (dt.debug || dt.trace);
   const ns = await NatsServer.start(serverConf, debug);
-  clientOpts = clientOpts ? clientOpts : {};
-  const copts = extend({ port: ns.port }, clientOpts) as ConnectionOptions;
-  const nc = await fn(copts);
+  const nc = await ns.connect(clientOpts);
   return { ns, nc };
 }
 
@@ -156,8 +152,8 @@ export async function notCompatible(
 }
 
 export function flakyTest(
-    fn:  () => void | Promise<void>,
-    { count = 3 } = {},
+  fn: () => void | Promise<void>,
+  { count = 3 } = {},
 ): () => Promise<void> {
   return async () => {
     const errors: Error[] = [];
@@ -169,5 +165,5 @@ export function flakyTest(
       }
     }
     throw new AggregateError(errors);
-  }
+  };
 }

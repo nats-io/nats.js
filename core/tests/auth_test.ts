@@ -66,14 +66,9 @@ const conf = {
 
 Deno.test("auth - none", async () => {
   const ns = await NatsServer.start(conf);
-
   await assertRejects(
-    async () => {
-      const nc = await connect(
-        { port: ns.port },
-      );
-      await nc.close();
-      fail("shouldnt have been able to connect");
+    () => {
+      return ns.connect({ reconnect: false });
     },
     errors.AuthorizationError,
   );
@@ -84,12 +79,8 @@ Deno.test("auth - none", async () => {
 Deno.test("auth - bad", async () => {
   const ns = await NatsServer.start(conf);
   await assertRejects(
-    async () => {
-      const nc = await connect(
-        { port: ns.port, user: "me", pass: "hello" },
-      );
-      await nc.close();
-      fail("shouldnt have been able to connect");
+    () => {
+      return ns.connect({ user: "me", pass: "hello" });
     },
     errors.AuthorizationError,
   );
@@ -105,9 +96,7 @@ Deno.test("auth - weird chars", async () => {
     },
   });
 
-  const nc = await connect(
-    { port: ns.port, user: "admin", pass: pass },
-  );
+  const nc = await ns.connect({ user: "admin", pass: pass });
   await nc.flush();
   await nc.close();
   await ns.stop();
@@ -115,8 +104,8 @@ Deno.test("auth - weird chars", async () => {
 
 Deno.test("auth - un/pw", async () => {
   const ns = await NatsServer.start(conf);
-  const nc = await connect(
-    { port: ns.port, user: "derek", pass: "foobar" },
+  const nc = await ns.connect(
+    { user: "derek", pass: "foobar" },
   );
   await nc.flush();
   await nc.close();
@@ -125,9 +114,8 @@ Deno.test("auth - un/pw", async () => {
 
 Deno.test("auth - un/pw authenticator", async () => {
   const ns = await NatsServer.start(conf);
-  const nc = await connect(
+  const nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: usernamePasswordAuthenticator("derek", "foobar"),
     },
   );
@@ -1310,5 +1298,12 @@ Deno.test("auth - account expired", async () => {
   assert(w instanceof errors.AuthorizationError);
   assertEquals(w.message, "Account Authentication Expired");
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("env conn", async () => {
+  const ns = await NatsServer.start();
+  const nc = await ns.connect({ debug: true });
+  await nc.flush();
   await cleanup(ns, nc);
 });
