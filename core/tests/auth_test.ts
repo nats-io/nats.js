@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { _setup, cleanup, NatsServer } from "test_helpers";
+import { cleanup, connect, NatsServer, setup } from "test_helpers";
 import {
   assert,
   assertArrayIncludes,
@@ -22,7 +22,6 @@ import {
   assertStringIncludes,
   fail,
 } from "jsr:@std/assert";
-import { connect } from "./connect.ts";
 import {
   encodeAccount,
   encodeOperator,
@@ -125,7 +124,7 @@ Deno.test("auth - un/pw authenticator", async () => {
 });
 
 Deno.test("auth - sub no permissions keeps connection", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -162,7 +161,7 @@ Deno.test("auth - sub no permissions keeps connection", async () => {
 });
 
 Deno.test("auth - sub iterator no permissions keeps connection", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -207,7 +206,7 @@ Deno.test("auth - sub iterator no permissions keeps connection", async () => {
 });
 
 Deno.test("auth - pub permissions keep connection", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -234,7 +233,7 @@ Deno.test("auth - pub permissions keep connection", async () => {
 });
 
 Deno.test("auth - req permissions keep connection", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -267,17 +266,16 @@ Deno.test("auth - req permissions keep connection", async () => {
 });
 
 Deno.test("auth - token", async () => {
-  const ns = await NatsServer.start({ authorization: { token: "foo" } });
-  const nc = await connect({ port: ns.port, token: "foo" });
+  const { ns, nc } = await setup({ authorization: { token: "foo" } }, {
+    token: "foo",
+  });
   await nc.flush();
-  await nc.close();
-  await ns.stop();
+  await cleanup(ns, nc);
 });
 
 Deno.test("auth - token authenticator", async () => {
   const ns = await NatsServer.start({ authorization: { token: "foo" } });
-  const nc = await connect({
-    port: ns.port,
+  const nc = await ns.connect({
     authenticator: tokenAuthenticator("foo"),
   });
   await nc.flush();
@@ -297,8 +295,8 @@ Deno.test("auth - nkey", async () => {
     },
   };
   const ns = await NatsServer.start(conf);
-  const nc = await connect(
-    { port: ns.port, authenticator: nkeyAuthenticator(seed) },
+  const nc = await ns.connect(
+    { authenticator: nkeyAuthenticator(seed) },
   );
   await nc.flush();
   await nc.close();
@@ -329,9 +327,8 @@ Deno.test("auth - creds", async () => {
     },
   };
   const ns = await NatsServer.start(conf);
-  const nc = await connect(
+  const nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: credsAuthenticator(new TextEncoder().encode(creds)),
     },
   );
@@ -363,9 +360,8 @@ Deno.test("auth - custom", async () => {
 
     return { nkey, sig, jwt };
   };
-  const nc = await connect(
+  const nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: authenticator,
     },
   );
@@ -389,18 +385,16 @@ Deno.test("auth - jwt", async () => {
     },
   };
   const ns = await NatsServer.start(conf);
-  let nc = await connect(
+  let nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: jwtAuthenticator(jwt, new TextEncoder().encode(useed)),
     },
   );
   await nc.flush();
   await nc.close();
 
-  nc = await connect(
+  nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: jwtAuthenticator((): string => {
         return jwt;
       }, new TextEncoder().encode(useed)),
@@ -417,17 +411,18 @@ Deno.test("auth - custom error", async () => {
   const authenticator = () => {
     throw new Error("user code exploded");
   };
-  await connect(
-    {
-      port: ns.port,
-      maxReconnectAttempts: 1,
-      authenticator: authenticator,
+  await assertRejects(
+    () => {
+      return ns.connect(
+        {
+          maxReconnectAttempts: 1,
+          authenticator: authenticator,
+        },
+      );
     },
-  ).then(() => {
-    fail("shouldn't have connected");
-  }).catch((err) => {
-    assertEquals(err.message, "user code exploded");
-  });
+    Error,
+    "user code exploded",
+  );
   await ns.stop();
 });
 
@@ -460,16 +455,14 @@ Deno.test("auth - nkey authentication", async () => {
 
   // static
   const ns = await NatsServer.start(conf);
-  let nc = await connect({
-    port: ns.port,
+  let nc = await ns.connect({
     authenticator: nkeyAuthenticator(ukp.getSeed()),
   });
   await nc.flush();
   await nc.close();
 
   // from function
-  nc = await connect({
-    port: ns.port,
+  nc = await ns.connect({
     authenticator: nkeyAuthenticator((): Uint8Array => {
       return ukp.getSeed();
     }),
@@ -550,8 +543,7 @@ Deno.test("auth - expiration is notified", async () => {
     exp: Math.round(Date.now() / 1000) + 5,
   });
 
-  const nc = await connect({
-    port: ns.port,
+  const nc = await ns.connect({
     reconnect: false,
     authenticator: jwtAuthenticator(ujwt),
   });
@@ -604,8 +596,7 @@ Deno.test("auth - expiration is notified and recovered", async () => {
     });
   }, 250);
 
-  const nc = await connect({
-    port: ns.port,
+  const nc = await ns.connect({
     maxReconnectAttempts: -1,
     authenticator: jwtAuthenticator(() => {
       return ujwt;
@@ -654,8 +645,8 @@ Deno.test("auth - bad auth is notified", async () => {
     return { user: "derek", pass };
   };
 
-  const nc = await connect(
-    { port: ns.port, authenticator },
+  const nc = await ns.connect(
+    { authenticator },
   );
   let badAuths = 0;
   (async () => {
@@ -697,11 +688,11 @@ Deno.test("auth - perm request error", async () => {
   });
 
   const [nc, sc] = await Promise.all([
-    connect(
-      { port: ns.port, user: "a", pass: "b" },
+    ns.connect(
+      { user: "a", pass: "b" },
     ),
-    connect(
-      { port: ns.port, user: "s", pass: "s" },
+    ns.connect(
+      { user: "s", pass: "s" },
     ),
   ]);
 
@@ -753,11 +744,11 @@ Deno.test("auth - perm request error no mux", async () => {
   });
 
   const [nc, sc] = await Promise.all([
-    connect(
-      { port: ns.port, user: "a", pass: "b" },
+    ns.connect(
+      { user: "a", pass: "b" },
     ),
-    connect(
-      { port: ns.port, user: "s", pass: "s" },
+    ns.connect(
+      { user: "s", pass: "s" },
     ),
   ]);
 
@@ -812,11 +803,11 @@ Deno.test("auth - perm request error deliver to sub", async () => {
   });
 
   const [nc, sc] = await Promise.all([
-    connect(
-      { port: ns.port, user: "a", pass: "b" },
+    ns.connect(
+      { user: "a", pass: "b" },
     ),
-    connect(
-      { port: ns.port, user: "s", pass: "s" },
+    ns.connect(
+      { user: "s", pass: "s" },
     ),
   ]);
 
@@ -884,16 +875,16 @@ Deno.test("auth - mux sub ok", async () => {
   let ns = await NatsServer.start(conf);
 
   const [nc, sc] = await Promise.all([
-    connect(
-      { port: ns.port, user: "a", pass: "b", maxReconnectAttempts: -1 },
+    ns.connect(
+      { user: "a", pass: "b", maxReconnectAttempts: -1 },
     ),
-    connect(
-      { port: ns.port, user: "s", pass: "s", maxReconnectAttempts: -1 },
+    ns.connect(
+      { user: "s", pass: "s", maxReconnectAttempts: -1 },
     ),
   ]);
 
   sc.subscribe("q", {
-    callback: (_err, msg) => {
+    callback: (_, msg) => {
       msg.respond();
     },
   });
@@ -964,7 +955,7 @@ Deno.test("auth - perm sub iterator error", async () => {
     },
   });
 
-  const nc = await connect({ port: ns.port, user: "a", pass: "b" });
+  const nc = await ns.connect({ user: "a", pass: "b" });
 
   const status = deferred<Status>();
   (async () => {
@@ -992,7 +983,7 @@ Deno.test("auth - perm sub iterator error", async () => {
 });
 
 Deno.test("auth - perm error is not in lastError", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -1038,8 +1029,7 @@ Deno.test("auth - ignore auth error abort", async () => {
     const authenticator = (): UserPass => {
       return { user: "a", pass };
     };
-    const nc = await connect({
-      port: ns.port,
+    const nc = await ns.connect({
       authenticator,
       ignoreAuthErrorAbort,
       reconnectTimeWait: 150,
@@ -1068,7 +1058,7 @@ Deno.test("auth - ignore auth error abort", async () => {
 });
 
 Deno.test("auth - sub with permission error discards", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -1134,9 +1124,8 @@ Deno.test("auth - creds and un and pw and token", async () => {
   };
   const ns = await NatsServer.start(conf);
   const te = new TextEncoder();
-  const nc = await connect(
+  const nc = await ns.connect(
     {
-      port: ns.port,
       authenticator: [
         credsAuthenticator(te.encode(creds)),
         nkeyAuthenticator(
@@ -1156,7 +1145,7 @@ Deno.test("auth - creds and un and pw and token", async () => {
 });
 
 Deno.test("auth - request context", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     accounts: {
       S: {
         users: [{
@@ -1204,7 +1193,7 @@ Deno.test("auth - request context", async () => {
     },
   });
 
-  const a = await connect({ user: "a", pass: "a", port: ns.port });
+  const a = await ns.connect({ user: "a", pass: "a" });
   await a.request("q.hello");
 
   await cleanup(ns, nc, a);
@@ -1221,7 +1210,7 @@ Deno.test("auth - sub queue permission", async () => {
     },
   };
 
-  const { ns, nc } = await _setup(connect, conf, { user: "a", pass: "a" });
+  const { ns, nc } = await setup(conf, { user: "a", pass: "a" });
 
   const qA = deferred();
   nc.subscribe("q", {
@@ -1275,7 +1264,7 @@ Deno.test("auth - account expired", async () => {
   const U = nkeys.createUser();
   const ujwt = await encodeUser("U", U, A, { bearer_token: true });
 
-  const { ns, nc } = await _setup(connect, conf, {
+  const { ns, nc } = await setup(conf, {
     reconnect: false,
     authenticator: jwtAuthenticator(ujwt),
   });

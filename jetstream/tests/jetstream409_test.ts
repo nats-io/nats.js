@@ -24,10 +24,10 @@ import {
 
 import { assert, assertRejects, fail } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
-import { _setup, cleanup, connect, jetstreamServerConf } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 
 Deno.test("409 - max expires", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -84,7 +84,7 @@ Deno.test("409 - max expires", async () => {
 });
 
 Deno.test("409 - max message size", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
 
   const js = jetstream(nc);
@@ -136,7 +136,7 @@ Deno.test("409 - max message size", async () => {
 });
 
 Deno.test("409 - max batch", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -186,7 +186,7 @@ Deno.test("409 - max batch", async () => {
 });
 
 Deno.test("409 - max waiting", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);

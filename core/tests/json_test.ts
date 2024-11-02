@@ -12,16 +12,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { connect } from "./connect.ts";
 import { assertEquals } from "jsr:@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
 import { Lock } from "test_helpers";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 
 function macro(input: unknown) {
   return async () => {
-    const { ns, nc } = await _setup(connect);
+    const { ns, nc } = await setup();
     const lock = Lock();
     const subj = createInbox();
     nc.subscribe(subj, {

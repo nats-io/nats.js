@@ -20,10 +20,10 @@ import type {
   NatsConnectionImpl,
   ServersChanged,
 } from "../src/internal_mod.ts";
-import { _setup } from "test_helpers";
+import { setup } from "test_helpers";
 
 Deno.test("events - close on close", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   nc.close().then();
   const status = await nc.closed();
   await ns.stop();
@@ -32,7 +32,7 @@ Deno.test("events - close on close", async () => {
 
 Deno.test("events - disconnect and close", async () => {
   const lock = Lock(2);
-  const { ns, nc } = await _setup(connect, {}, { reconnect: false });
+  const { ns, nc } = await setup({}, { reconnect: false });
   (async () => {
     for await (const s of nc.status()) {
       switch (s.type) {
@@ -52,7 +52,7 @@ Deno.test("events - disconnect and close", async () => {
   assertEquals(v, undefined);
 });
 
-Deno.test("events - disconnect, reconnect", async () => {
+Deno.test("events - disreconnect", async () => {
   const cluster = await NatsServer.cluster();
   const nc = await connect(
     {

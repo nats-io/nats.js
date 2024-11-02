@@ -4,20 +4,14 @@ import {
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
-import {
-  _setup,
-  cleanup,
-  connect,
-  jetstreamServerConf,
-  Lock,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, Lock, setup } from "test_helpers";
 import { nanos } from "@nats-io/nats-core";
 import { assert, assertEquals, assertExists } from "jsr:@std/assert";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
 import { delay } from "@nats-io/nats-core/internal";
 
 Deno.test("push consumers - basics", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["A.*"] });
@@ -62,7 +56,7 @@ Deno.test("push consumers - basics", async () => {
 });
 
 Deno.test("push consumers - basics cb", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["A.*"] });
@@ -109,8 +103,7 @@ Deno.test("push consumers - basics cb", async () => {
 });
 
 Deno.test("push consumers - queue", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_file_store: 1024 * 1024 * 1024,
@@ -180,8 +173,7 @@ Deno.test("push consumers - queue", async () => {
 });
 
 Deno.test("push consumers - connection status iterator closes", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf(),
   );
   const js = jetstream(nc);

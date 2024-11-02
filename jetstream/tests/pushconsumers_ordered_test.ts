@@ -18,12 +18,11 @@ import { DeliverPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 import type { JsMsg } from "../src/mod.ts";
 
 import {
-  _setup,
   cleanup,
-  connect,
   flakyTest,
   jetstreamServerConf,
   notCompatible,
+  setup,
 } from "test_helpers";
 import type {
   PushConsumerImpl,
@@ -33,7 +32,7 @@ import { delay } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("ordered push consumers - get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   await assertRejects(
@@ -63,7 +62,7 @@ Deno.test("ordered push consumers - get", async () => {
 Deno.test(
   "ordered push consumers - consume reset",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
     const js = jetstream(nc);
 
     const jsm = await jetstreamManager(nc);
@@ -103,7 +102,7 @@ Deno.test(
 );
 
 Deno.test("ordered push consumers - consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -128,7 +127,7 @@ Deno.test("ordered push consumers - consume", async () => {
 });
 
 Deno.test("ordered push consumers - filters consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -161,7 +160,7 @@ Deno.test("ordered push consumers - filters consume", async () => {
 });
 
 Deno.test("ordered push consumers - last per subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -187,7 +186,7 @@ Deno.test("ordered push consumers - last per subject", async () => {
 });
 
 Deno.test("ordered push consumers - start sequence", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -214,7 +213,7 @@ Deno.test("ordered push consumers - start sequence", async () => {
 });
 
 Deno.test("ordered push consumers - sub leak", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
   const js = jetstream(nc);

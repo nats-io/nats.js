@@ -26,11 +26,11 @@ import type { Msg, MsgImpl } from "@nats-io/nats-core/internal";
 import type { JsMsgImpl } from "../src/jsmsg.ts";
 import { parseInfo, toJsMsg } from "../src/jsmsg.ts";
 import {
-  _setup,
   assertBetween,
   cleanup,
   connect,
   jetstreamServerConf,
+  setup,
 } from "test_helpers";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { errors } from "../../core/src/mod.ts";
@@ -143,7 +143,7 @@ Deno.test("jsmsg - acks", async () => {
 });
 
 Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -172,7 +172,7 @@ Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
 });
 
 Deno.test("jsmsg - explicit consumer ackAck", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -197,7 +197,7 @@ Deno.test("jsmsg - explicit consumer ackAck", async () => {
 });
 
 Deno.test("jsmsg - explicit consumer ackAck timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -228,7 +228,7 @@ Deno.test("jsmsg - explicit consumer ackAck timeout", async () => {
 });
 
 Deno.test("jsmsg - ackAck js options timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -260,7 +260,7 @@ Deno.test("jsmsg - ackAck js options timeout", async () => {
 });
 
 Deno.test("jsmsg - ackAck legacy timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",

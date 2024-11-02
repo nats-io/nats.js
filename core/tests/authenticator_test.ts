@@ -13,8 +13,7 @@
  * limitations under the License.
  */
 
-import { _setup, cleanup } from "test_helpers";
-import { connect } from "./connect.ts";
+import { cleanup, setup } from "test_helpers";
 
 import {
   credsAuthenticator,
@@ -74,7 +73,7 @@ async function testAuthenticatorFn(
     return fn(nonce);
   };
   conf = Object.assign({}, conf, { debug });
-  const { ns, nc } = await _setup(connect, conf, {
+  const { ns, nc } = await setup(conf, {
     authenticator,
   });
 

@@ -29,11 +29,10 @@ import {
 } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import {
-  _setup,
   cleanup,
-  connect,
   jetstreamServerConf,
   notCompatible,
+  setup,
 } from "test_helpers";
 import { deadline, deferred, delay } from "@nats-io/nats-core";
 import type {
@@ -46,7 +45,7 @@ import { flakyTest } from "../../test_helpers/mod.ts";
 import { ConsumerNotFoundError } from "../src/jserrors.ts";
 
 Deno.test("ordered consumers - get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   await assertRejects(
@@ -72,7 +71,7 @@ Deno.test("ordered consumers - get", async () => {
 });
 
 Deno.test("ordered consumers - fetch", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -100,7 +99,7 @@ Deno.test("ordered consumers - fetch", async () => {
 });
 
 Deno.test("ordered consumers - consume reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -144,7 +143,7 @@ Deno.test("ordered consumers - consume reset", async () => {
 });
 
 Deno.test("ordered consumers - consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -167,7 +166,7 @@ Deno.test("ordered consumers - consume", async () => {
 });
 
 Deno.test("ordered consumers - filters consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -197,7 +196,7 @@ Deno.test("ordered consumers - filters consume", async () => {
 });
 
 Deno.test("ordered consumers - filters fetch", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -223,7 +222,7 @@ Deno.test("ordered consumers - filters fetch", async () => {
 });
 
 Deno.test("ordered consumers - fetch reject consumer type change or concurrency", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -258,7 +257,7 @@ Deno.test("ordered consumers - fetch reject consumer type change or concurrency"
 });
 
 Deno.test("ordered consumers - consume reject consumer type change or concurrency", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -293,7 +292,7 @@ Deno.test("ordered consumers - consume reject consumer type change or concurrenc
 });
 
 Deno.test("ordered consumers - last per subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -328,7 +327,7 @@ Deno.test("ordered consumers - last per subject", async () => {
 });
 
 Deno.test("ordered consumers - start sequence", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -365,7 +364,7 @@ Deno.test("ordered consumers - start sequence", async () => {
 });
 
 Deno.test("ordered consumers - last", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -403,7 +402,7 @@ Deno.test("ordered consumers - last", async () => {
 });
 
 Deno.test("ordered consumers - new", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -443,7 +442,7 @@ Deno.test("ordered consumers - new", async () => {
 });
 
 Deno.test("ordered consumers - start time", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -488,7 +487,7 @@ Deno.test("ordered consumers - start time", async () => {
 });
 
 Deno.test("ordered consumers - start time reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test.*"] });
 
@@ -525,7 +524,7 @@ Deno.test("ordered consumers - start time reset", async () => {
 });
 
 Deno.test("ordered consumers - next", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "test", subjects: ["test"] });
   const js = jetstream(nc);
@@ -550,7 +549,7 @@ Deno.test("ordered consumers - next", async () => {
 });
 
 Deno.test("ordered consumers - sub leaks next()", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   //@ts-ignore: test
@@ -564,7 +563,7 @@ Deno.test("ordered consumers - sub leaks next()", async () => {
 });
 
 Deno.test("ordered consumers - sub leaks fetch()", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   //@ts-ignore: test
@@ -584,7 +583,7 @@ Deno.test("ordered consumers - sub leaks fetch()", async () => {
 });
 
 Deno.test("ordered consumers - sub leaks consume()", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   //@ts-ignore: test
@@ -608,7 +607,7 @@ Deno.test("ordered consumers - sub leaks consume()", async () => {
 });
 
 Deno.test("ordered consumers - consume drain", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const js = jetstream(nc);
@@ -629,7 +628,7 @@ Deno.test("ordered consumers - consume drain", async () => {
 });
 
 Deno.test("ordered consumers - headers only", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -644,7 +643,7 @@ Deno.test("ordered consumers - headers only", async () => {
 });
 
 Deno.test("ordered consumers - max deliver", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -659,7 +658,7 @@ Deno.test("ordered consumers - max deliver", async () => {
 });
 
 Deno.test("ordered consumers - mem", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -674,7 +673,7 @@ Deno.test("ordered consumers - mem", async () => {
 });
 
 Deno.test("ordered consumers - inboxPrefix is respected", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf(), {
+  const { ns, nc } = await setup(jetstreamServerConf(), {
     inboxPrefix: "x",
   });
   const jsm = await jetstreamManager(nc);
@@ -696,7 +695,7 @@ Deno.test("ordered consumers - inboxPrefix is respected", async () => {
 });
 
 Deno.test("ordered consumers - fetch deleted consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
 
@@ -725,7 +724,7 @@ Deno.test("ordered consumers - fetch deleted consumer", async () => {
 });
 
 Deno.test("ordered consumers - next deleted consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["hello"] });
@@ -751,7 +750,7 @@ Deno.test("ordered consumers - next deleted consumer", async () => {
 Deno.test(
   "ordered consumers - next stream not found",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
 
     const jsm = await jetstreamManager(nc);
     await jsm.streams.add({ name: "A", subjects: ["hello"] });
@@ -775,7 +774,7 @@ Deno.test(
 Deno.test(
   "ordered consumers - fetch stream not found",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
     const jsm = await jetstreamManager(nc);
     const si = await jsm.streams.add({ name: "A", subjects: ["a"] });
 
@@ -805,7 +804,7 @@ Deno.test(
 );
 
 Deno.test("ordered consumers - consume stream not found request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -833,7 +832,7 @@ Deno.test("ordered consumers - consume stream not found request abort", async ()
 });
 
 Deno.test("ordered consumers - consume consumer deleted request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -863,7 +862,7 @@ Deno.test("ordered consumers - consume consumer deleted request abort", async ()
 });
 
 Deno.test("ordered consumers - bind is rejected", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -899,7 +898,7 @@ Deno.test("ordered consumers - bind is rejected", async () => {
 });
 
 Deno.test("ordered consumers - name prefix", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -929,7 +928,7 @@ Deno.test("ordered consumers - name prefix", async () => {
 });
 
 Deno.test("ordered consumers - fetch reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -980,7 +979,7 @@ Deno.test("ordered consumers - fetch reset", async () => {
 });
 
 Deno.test("ordered consumers - consume reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -1028,7 +1027,7 @@ Deno.test("ordered consumers - consume reset", async () => {
 });
 
 Deno.test("ordered consumers - next reset", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -1055,7 +1054,7 @@ Deno.test("ordered consumers - next reset", async () => {
 });
 
 Deno.test("ordered consumers - no reset on next", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -1078,7 +1077,7 @@ Deno.test("ordered consumers - no reset on next", async () => {
 });
 
 Deno.test("ordered consumers - initial creation fails, consumer fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -1108,7 +1107,7 @@ Deno.test("ordered consumers - initial creation fails, consumer fails", async ()
 Deno.test(
   "ordered consumers - stale reference recovers",
   async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
     const jsm = await jetstreamManager(nc);
 
     await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -1147,7 +1146,7 @@ Deno.test(
 Deno.test(
   "ordered consumers - consume stale reference recovers",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
     const jsm = await jetstreamManager(nc);
     await jsm.streams.add({ name: "A", subjects: ["a"] });
     const js = jetstream(nc);

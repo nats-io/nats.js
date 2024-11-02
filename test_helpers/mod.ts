@@ -17,13 +17,11 @@ import type {
   ConnectionOptions,
   NatsConnection,
 } from "../core/src/internal_mod.ts";
-import { compare, extend, parseSemVer } from "../core/src/internal_mod.ts";
+import { compare, parseSemVer } from "../core/src/internal_mod.ts";
 
 import { NatsServer } from "./launcher.ts";
 import { red, yellow } from "jsr:@std/fmt/colors";
-import { connect } from "./connect.ts";
 export { connect } from "./connect.ts";
-import { ConnectFn } from "../core/src/core.ts";
 export { check } from "./check.ts";
 export { Lock } from "./lock.ts";
 export { Connection, TestServer } from "./test_server.ts";
@@ -101,8 +99,7 @@ export function wsServerConf(opts: unknown = {}): Record<string, unknown> {
   return Object.assign(wsopts(), opts);
 }
 
-export async function _setup(
-  _fn: ConnectFn,
+export async function setup(
   serverConf?: Record<string, unknown>,
   clientOpts?: Partial<ConnectionOptions>,
 ): Promise<{ ns: NatsServer; nc: NatsConnection }> {
@@ -111,13 +108,6 @@ export async function _setup(
   const ns = await NatsServer.start(serverConf, debug);
   const nc = await ns.connect(clientOpts);
   return { ns, nc };
-}
-
-export function setup(
-  serverConf?: Record<string, unknown>,
-  clientOpts?: Partial<ConnectionOptions>,
-): Promise<{ ns: NatsServer; nc: NatsConnection }> {
-  return _setup(connect, serverConf, clientOpts);
 }
 
 export async function cleanup(

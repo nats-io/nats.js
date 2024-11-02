@@ -14,11 +14,11 @@
  */
 
 import {
-  _setup,
   cleanup,
   connect,
   jetstreamExportServerConf,
   jetstreamServerConf,
+  setup,
 } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import type { ConsumerConfig } from "../src/jsapi_types.ts";
@@ -28,7 +28,7 @@ import { Empty, nanos, nuid } from "@nats-io/nats-core";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
 
 Deno.test("jetstream - pull consumer options", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   const v = await jsm.consumers.add(stream, {
@@ -45,7 +45,7 @@ Deno.test("jetstream - pull consumer options", async () => {
 });
 
 Deno.test("jetstream - cross account pull", async () => {
-  const { ns, nc: admin } = await _setup(connect, jetstreamExportServerConf(), {
+  const { ns, nc: admin } = await setup(jetstreamExportServerConf(), {
     user: "js",
     pass: "js",
   });
@@ -87,7 +87,7 @@ Deno.test("jetstream - cross account pull", async () => {
 });
 
 Deno.test("jetstream - last of", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const n = nuid.next();
   await jsm.streams.add({

@@ -14,11 +14,10 @@
  */
 
 import {
-  _setup,
   cleanup,
-  connect,
   jetstreamServerConf,
   notCompatible,
+  setup,
 } from "test_helpers";
 import {
   assert,
@@ -95,7 +94,7 @@ function digest(data: Uint8Array): string {
 }
 
 Deno.test("objectstore - basics", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -155,7 +154,7 @@ Deno.test("objectstore - basics", async () => {
 });
 
 Deno.test("objectstore - default status", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -174,8 +173,7 @@ Deno.test("objectstore - default status", async () => {
 });
 
 Deno.test("objectstore - chunked content", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_memory_store: 10 * 1024 * 1024 + 33,
@@ -203,7 +201,7 @@ Deno.test("objectstore - chunked content", async () => {
 });
 
 Deno.test("objectstore - multi content", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -233,7 +231,7 @@ Deno.test("objectstore - multi content", async () => {
 });
 
 Deno.test("objectstore - delete markers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -257,7 +255,7 @@ Deno.test("objectstore - delete markers", async () => {
 });
 
 Deno.test("objectstore - get on deleted returns error", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -284,7 +282,7 @@ Deno.test("objectstore - get on deleted returns error", async () => {
 });
 
 Deno.test("objectstore - multi with delete", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -313,7 +311,7 @@ Deno.test("objectstore - multi with delete", async () => {
 });
 
 Deno.test("objectstore - object names", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -349,7 +347,7 @@ Deno.test("objectstore - object names", async () => {
 });
 
 Deno.test("objectstore - metadata", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -382,7 +380,7 @@ Deno.test("objectstore - metadata", async () => {
 });
 
 Deno.test("objectstore - empty entry", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -408,7 +406,7 @@ Deno.test("objectstore - empty entry", async () => {
 });
 
 Deno.test("objectstore - list", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -430,7 +428,7 @@ Deno.test("objectstore - list", async () => {
 });
 
 Deno.test("objectstore - list no updates", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -448,7 +446,7 @@ Deno.test("objectstore - list no updates", async () => {
 });
 
 Deno.test("objectstore - watch isUpdate", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -472,7 +470,7 @@ Deno.test("objectstore - watch isUpdate", async () => {
 });
 
 Deno.test("objectstore - watch initially empty", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -525,7 +523,7 @@ Deno.test("objectstore - watch initially empty", async () => {
 });
 
 Deno.test("objectstore - watch skip history", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -572,7 +570,7 @@ Deno.test("objectstore - watch skip history", async () => {
 });
 
 Deno.test("objectstore - watch history", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -621,7 +619,7 @@ Deno.test("objectstore - watch history", async () => {
 });
 
 Deno.test("objectstore - same store link", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -648,7 +646,7 @@ Deno.test("objectstore - same store link", async () => {
 });
 
 Deno.test("objectstore - link of link rejected", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -673,7 +671,7 @@ Deno.test("objectstore - link of link rejected", async () => {
 });
 
 Deno.test("objectstore - external link", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -698,7 +696,7 @@ Deno.test("objectstore - external link", async () => {
 });
 
 Deno.test("objectstore - store link", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -714,8 +712,7 @@ Deno.test("objectstore - store link", async () => {
 });
 
 Deno.test("objectstore - max chunk is max payload", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 8 * 1024,
     }),
@@ -739,8 +736,7 @@ Deno.test("objectstore - max chunk is max payload", async () => {
 });
 
 Deno.test("objectstore - default chunk is 128k", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -764,8 +760,7 @@ Deno.test("objectstore - default chunk is 128k", async () => {
 });
 
 Deno.test("objectstore - sanitize", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -800,8 +795,7 @@ Deno.test("objectstore - sanitize", async () => {
 });
 
 Deno.test("objectstore - partials", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -841,8 +835,7 @@ Deno.test("objectstore - partials", async () => {
 });
 
 Deno.test("objectstore - no store", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -904,8 +897,7 @@ Deno.test("objectstore - no store", async () => {
 });
 
 Deno.test("objectstore - hashtests", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -949,8 +941,7 @@ Deno.test("objectstore - hashtests", async () => {
 });
 
 Deno.test("objectstore - meta update", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -997,8 +988,7 @@ Deno.test("objectstore - meta update", async () => {
 });
 
 Deno.test("objectstore - cannot put links", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),
@@ -1027,7 +1017,7 @@ Deno.test("objectstore - cannot put links", async () => {
 });
 
 Deno.test("objectstore - put purges old entries", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -1061,7 +1051,7 @@ Deno.test("objectstore - put purges old entries", async () => {
 });
 
 Deno.test("objectstore - put previous sequences", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -1105,7 +1095,7 @@ Deno.test("objectstore - put previous sequences", async () => {
 });
 
 Deno.test("objectstore - put/get blob", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -1137,7 +1127,7 @@ Deno.test("objectstore - put/get blob", async () => {
 });
 
 Deno.test("objectstore - ttl", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -1151,7 +1141,7 @@ Deno.test("objectstore - ttl", async () => {
 });
 
 Deno.test("objectstore - allow direct", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
     return;
   }
@@ -1164,7 +1154,7 @@ Deno.test("objectstore - allow direct", async () => {
 });
 
 Deno.test("objectstore - stream metadata and entry metadata", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1192,7 +1182,7 @@ Deno.test("objectstore - stream metadata and entry metadata", async () => {
 });
 
 Deno.test("os - compression", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const objm = new Objm(nc);
   const s2 = await objm.create("compressed", {
     compression: true,
@@ -1207,8 +1197,7 @@ Deno.test("os - compression", async () => {
 });
 
 Deno.test("os - os rejects in older servers", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       max_payload: 1024 * 1024,
     }),

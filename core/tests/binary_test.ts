@@ -16,12 +16,11 @@
 import { assertEquals } from "jsr:@std/assert";
 import { createInbox, deferred } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
-import { _setup, cleanup } from "test_helpers";
-import { connect } from "./connect.ts";
+import { cleanup, setup } from "test_helpers";
 
 function macro(input: Uint8Array) {
   return async () => {
-    const { ns, nc } = await _setup(connect);
+    const { ns, nc } = await setup();
     const subj = createInbox();
     const dm = deferred<Msg>();
     const sub = nc.subscribe(subj, { max: 1 });
