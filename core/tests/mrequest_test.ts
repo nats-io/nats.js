@@ -13,7 +13,11 @@
  * limitations under the License.
  */
 import { cleanup, setup } from "test_helpers";
-import type { NatsConnectionImpl } from "../src/internal_mod.ts";
+import type {
+  Msg,
+  NatsConnectionImpl,
+  QueuedIteratorImpl,
+} from "../src/internal_mod.ts";
 import {
   createInbox,
   deferred,
@@ -404,22 +408,27 @@ Deno.test("mreq - lost sub permission", async () => {
     }
   })().then();
 
+  const iter = await nc.requestMany("q", Empty, {
+    strategy: RequestStrategy.Count,
+    maxMessages: 100,
+    jitter: 2000,
+    maxWait: 2000,
+    noMux: true,
+  }) as QueuedIteratorImpl<Msg>;
+
   await assertRejects(
-    async () => {
-      const iter = await nc.requestMany("q", Empty, {
-        strategy: RequestStrategy.Count,
-        maxMessages: 3,
-        maxWait: 2000,
-        noMux: true,
-      });
-      for await (const _m of iter) {
-        // nothing;
-      }
+    () => {
+      return (async () => {
+        for await (const _m of iter) {
+          // nothing;
+        }
+      })();
     },
     errors.PermissionViolationError,
     "Permissions Violation for Subscription",
   );
-  await d;
+
+  await iter.iterClosed;
   await cleanup(ns, nc);
 });
 

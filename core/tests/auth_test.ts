@@ -29,7 +29,6 @@ import {
 } from "jsr:@nats-io/jwt@0.0.9-3";
 import type {
   MsgImpl,
-  NatsConnection,
   NatsConnectionImpl,
   NKeyAuth,
   Status,
@@ -854,42 +853,20 @@ Deno.test("auth - perm request error deliver to sub", async () => {
   await cleanup(ns, nc, sc);
 });
 
-Deno.test("auth - mux sub ok", async () => {
+Deno.test("auth - mux request perms", async () => {
   const conf = {
     authorization: {
       users: [{
         user: "a",
-        password: "b",
+        password: "a",
         permission: {
-          subscribe: "r",
-        },
-      }, {
-        user: "s",
-        password: "s",
-        permission: {
-          subscribe: "q",
+          subscribe: "q.>",
         },
       }],
     },
   };
-  let ns = await NatsServer.start(conf);
-
-  const [nc, sc] = await Promise.all([
-    ns.connect(
-      { user: "a", pass: "b", maxReconnectAttempts: -1 },
-    ),
-    ns.connect(
-      { user: "s", pass: "s", maxReconnectAttempts: -1 },
-    ),
-  ]);
-
-  sc.subscribe("q", {
-    callback: (_, msg) => {
-      msg.respond();
-    },
-  });
-  await sc.flush();
-
+  const ns = await NatsServer.start(conf);
+  const nc = await ns.connect({ user: "a", pass: "a" });
   await assertRejects(
     () => {
       return nc.request("q");
@@ -898,48 +875,16 @@ Deno.test("auth - mux sub ok", async () => {
     "Permissions Violation for Subscription",
   );
 
-  //@ts-ignore: test
-  assertEquals(nc.protocol.subscriptions.getMux(), null);
-
-  function reconnected(nc: NatsConnection): Promise<void> {
-    const v = deferred<void>();
-    (async () => {
-      for await (const s of nc.status()) {
-        if (s.type === Events.Reconnect) {
-          v.resolve();
-          break;
-        }
-      }
-    })().then();
-    return v;
-  }
-
-  // restart the server with new permissions, client should be able to request
-  const port = ns.port;
-  await ns.stop();
-  const proms = Promise.all([reconnected(nc), reconnected(sc)]);
-
-  ns = await NatsServer.start({
-    port: port,
-    authorization: {
-      users: [{
-        user: "a",
-        password: "b",
-      }, {
-        user: "s",
-        password: "s",
-        permission: {
-          subscribe: "q",
-        },
-      }],
+  const nc2 = await ns.connect({ user: "a", pass: "a", inboxPrefix: "q" });
+  await assertRejects(
+    () => {
+      return nc2.request("q");
     },
-  });
+    errors.RequestError,
+    "no responders: 'q'",
+  );
 
-  await proms;
-  await Promise.all([nc.flush(), sc.flush()]);
-
-  await nc.request("q");
-  await cleanup(ns, nc, sc);
+  await cleanup(ns, nc, nc2);
 });
 
 Deno.test("auth - perm sub iterator error", async () => {

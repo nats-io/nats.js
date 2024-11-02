@@ -662,10 +662,10 @@ export class NatsServer implements PortInfo {
    * @param conf
    */
   async reload(conf?: any): Promise<void> {
-    conf = NatsServer.confDefaults(conf);
     conf.host = this.config.host;
     conf.port = this.config.port;
     conf.http = this.config.http;
+    conf.websocket = this.config.websocket;
     conf.leafnodes = this.config.leafnodes;
     conf = Object.assign(this.config, conf);
     await Deno.writeFile(
