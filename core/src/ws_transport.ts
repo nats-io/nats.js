@@ -138,7 +138,7 @@ export class WsTransport implements Transport {
     this.socket.onclose = (evt: CloseEvent) => {
       this.socketClosed = true;
       let reason: Error | undefined;
-      if (!evt.wasClean) {
+      if (!evt.wasClean && evt.reason !== "") {
         reason = new Error(evt.reason);
       }
       this._closed(reason);

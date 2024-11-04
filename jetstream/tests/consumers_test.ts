@@ -36,11 +36,11 @@ import type {
 import { connect, NatsServer } from "test_helpers";
 import { deferred, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { _setup, cleanup, jetstreamServerConf } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 
 Deno.test("consumers - min supported server", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -70,7 +70,7 @@ Deno.test("consumers - min supported server", async () => {
 });
 
 Deno.test("consumers - get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
   await assertRejects(
     async () => {
@@ -99,7 +99,7 @@ Deno.test("consumers - get", async () => {
 });
 
 Deno.test("consumers - delete", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const { stream } = await initStream(nc);
@@ -122,7 +122,7 @@ Deno.test("consumers - delete", async () => {
 });
 
 Deno.test("consumers - info", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const js = jetstream(nc);
 
@@ -160,7 +160,7 @@ Deno.test("consumers - info", async () => {
 });
 
 Deno.test("consumers - push consumer on get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const js = jetstream(nc);
 
   const { stream } = await initStream(nc);
@@ -235,7 +235,7 @@ Deno.test("consumers - fetch heartbeats", async () => {
 });
 
 Deno.test("consumers - bad options", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -265,7 +265,7 @@ Deno.test("consumers - bad options", async () => {
 });
 
 Deno.test("consumers - should be able to consume and pull", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -303,7 +303,7 @@ Deno.test("consumers - should be able to consume and pull", async () => {
 });
 
 Deno.test("consumers - discard notifications", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -331,7 +331,7 @@ Deno.test("consumers - discard notifications", async () => {
 });
 
 Deno.test("consumers - threshold_messages", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream, subj } = await initStream(nc);
 
   const proms = [];
@@ -384,7 +384,7 @@ Deno.test("consumers - threshold_messages", async () => {
 });
 
 Deno.test("consumers - threshold_messages bytes", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream, subj } = await initStream(nc);
 
   const proms = [];
@@ -453,7 +453,7 @@ Deno.test("consumers - threshold_messages bytes", async () => {
 });
 
 Deno.test("consumers - sub leaks fetch()", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -478,7 +478,7 @@ Deno.test("consumers - sub leaks fetch()", async () => {
 });
 
 Deno.test("consumers - inboxPrefix is respected", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf(), {
+  const { ns, nc } = await setup(jetstreamServerConf(), {
     inboxPrefix: "x",
   });
   const jsm = await jetstreamManager(nc);
@@ -508,7 +508,7 @@ Deno.test("consumers - inboxPrefix is respected", async () => {
 });
 
 Deno.test("consumers - processed", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf(), {
+  const { ns, nc } = await setup(jetstreamServerConf(), {
     inboxPrefix: "x",
   });
   const jsm = await jetstreamManager(nc);

@@ -14,11 +14,11 @@
  */
 
 import {
-  _setup,
   cleanup,
   connect,
   jetstreamServerConf,
   NatsServer,
+  setup,
 } from "test_helpers";
 import { setupStreamAndConsumer } from "../examples/util.ts";
 import {
@@ -48,7 +48,7 @@ import {
 import type { ConsumerStatus } from "../src/mod.ts";
 
 Deno.test("consumers - consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const count = 1000;
   const { stream, consumer } = await setupStreamAndConsumer(nc, count);
@@ -76,7 +76,7 @@ Deno.test("consumers - consume", async () => {
 });
 
 Deno.test("consumers - consume callback rejects iter", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream, consumer } = await setupStreamAndConsumer(nc, 0);
   const js = jetstream(nc);
   const c = await js.consumers.get(stream, consumer);
@@ -156,7 +156,7 @@ Deno.test("consume - heartbeats", async () => {
 });
 
 Deno.test("consume - deleted consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -206,7 +206,7 @@ Deno.test("consume - deleted consumer", async () => {
 });
 
 Deno.test("consume - sub leaks", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -235,7 +235,7 @@ Deno.test("consume - sub leaks", async () => {
 });
 
 Deno.test("consume - drain", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -262,7 +262,7 @@ Deno.test("consume - drain", async () => {
 });
 
 Deno.test("consume - sync", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "messages", subjects: ["hello"] });
 
@@ -289,7 +289,7 @@ Deno.test("consume - sync", async () => {
 });
 
 Deno.test("consume - stream not found request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -322,7 +322,7 @@ Deno.test("consume - stream not found request abort", async () => {
 });
 
 Deno.test("consume - consumer deleted request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -358,7 +358,7 @@ Deno.test("consume - consumer deleted request abort", async () => {
 });
 
 Deno.test("consume - consumer not found request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -392,7 +392,7 @@ Deno.test("consume - consumer not found request abort", async () => {
 });
 
 Deno.test("consume - consumer bind", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });

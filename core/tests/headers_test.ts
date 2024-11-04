@@ -31,7 +31,7 @@ import type {
 import { NatsServer } from "../../test_helpers/launcher.ts";
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
 import { TestDispatcher } from "./parser_test.ts";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { errors } from "../src/errors.ts";
 
 Deno.test("headers - illegal key", () => {
@@ -346,7 +346,7 @@ Deno.test("headers - code/description", () => {
 });
 
 Deno.test("headers - codec", async () => {
-  const { ns, nc } = await _setup(connect, {}, {});
+  const { ns, nc } = await setup({}, {});
 
   nc.subscribe("foo", {
     callback: (_err, msg) => {
@@ -363,7 +363,7 @@ Deno.test("headers - codec", async () => {
 });
 
 Deno.test("headers - malformed headers", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   type t = {

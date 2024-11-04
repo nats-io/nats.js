@@ -39,7 +39,7 @@
     "enable-npm-workspace": "mv _package.json package.json"
   },
   "fmt": {
-    "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md", "transport-node/"],
+    "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md", "transport-node/", "test_helpers/"],
     "exclude": ["core/lib", "jetstream/lib", "kv/lib","obj/lib", "services/lib", "transport-node/lib", "transport-ws/lib", "*/build", "docs/"]
   },
   "lint": {

@@ -14,11 +14,10 @@
  */
 
 import {
-  _setup,
   cleanup,
-  connect,
   jetstreamServerConf,
   notCompatible,
+  setup,
 } from "test_helpers";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
@@ -31,7 +30,7 @@ import { initStream } from "./jstest_util.ts";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("streams - get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   await assertRejects(
@@ -65,7 +64,7 @@ Deno.test("streams - get", async () => {
 });
 
 Deno.test("streams - consumers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   // add a stream and a message
@@ -106,7 +105,7 @@ Deno.test("streams - consumers", async () => {
 });
 
 Deno.test("streams - delete message", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   // add a stream and a message
@@ -138,7 +137,7 @@ Deno.test("streams - delete message", async () => {
 });
 
 Deno.test("streams - first_seq", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -158,7 +157,7 @@ Deno.test("streams - first_seq", async () => {
 });
 
 Deno.test("streams - first_seq fails if wrong server", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const nci = nc as NatsConnectionImpl;
   nci.features.update("2.9.2");
 

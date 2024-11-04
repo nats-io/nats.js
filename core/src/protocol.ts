@@ -359,6 +359,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   server!: ServerImpl;
   features: Features;
   connectPromise: Promise<void> | null;
+  raceTimer?: Timeout<void>;
 
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
@@ -512,11 +513,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   async dial(srv: Server): Promise<void> {
     const pong = this.prepare();
-    let timer;
     try {
-      timer = timeout(this.options.timeout || 20000);
+      this.raceTimer = timeout(this.options.timeout || 20000);
       const cp = this.transport.connect(srv, this.options);
-      await Promise.race([cp, timer]);
+      await Promise.race([cp, this.raceTimer]);
       (async () => {
         try {
           for await (const b of this.transport) {
@@ -531,10 +531,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
 
     try {
-      await Promise.race([timer, pong]);
-      if (timer) {
-        timer.cancel();
-      }
+      await Promise.race([this.raceTimer, pong]);
+      this.raceTimer?.cancel();
       this.connected = true;
       this.connectError = undefined;
       this.sendSubscriptions();
@@ -544,9 +542,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       this.flushPending();
       this.heartbeats.start();
     } catch (err) {
-      if (timer) {
-        timer.cancel();
-      }
+      this.raceTimer?.cancel();
       await this.transport.close(err as Error);
       throw err;
     }
@@ -1007,7 +1003,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     });
     this._closed = true;
     await this.transport.close(err);
-    await this.closed.resolve(err);
+    this.raceTimer?.cancel();
+    this.closed.resolve(err);
   }
 
   close(): Promise<void> {

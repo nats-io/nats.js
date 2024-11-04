@@ -20,18 +20,18 @@ import {
 } from "jsr:@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
 import { Lock } from "test_helpers";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";
 
 Deno.test("drain - connection drains when no subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await nc.drain();
   await cleanup(ns);
 });
 
 Deno.test("drain - connection drain", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nc2 = await connect({ port: ns.port });
 
   const max = 1000;
@@ -74,7 +74,7 @@ Deno.test("drain - connection drain", async () => {
 });
 
 Deno.test("drain - subscription drain", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const lock = Lock();
   const subj = createInbox();
   let c1 = 0;
@@ -114,7 +114,7 @@ Deno.test("drain - subscription drain", async () => {
 });
 
 Deno.test("drain - publish after drain fails", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   nc.subscribe(subj);
   await nc.drain();
@@ -132,7 +132,7 @@ Deno.test("drain - publish after drain fails", async () => {
 });
 
 Deno.test("drain - reject reqrep during connection drain", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const done = nc.drain();
   await assertRejects(() => {
     return nc.request("foo");
@@ -142,7 +142,7 @@ Deno.test("drain - reject reqrep during connection drain", async () => {
 });
 
 Deno.test("drain - reject drain on closed", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await nc.close();
   await assertRejects(() => {
     return nc.drain();
@@ -151,7 +151,7 @@ Deno.test("drain - reject drain on closed", async () => {
 });
 
 Deno.test("drain - reject drain on draining", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const done = nc.drain();
   await assertRejects(() => {
     return nc.drain();
@@ -161,7 +161,7 @@ Deno.test("drain - reject drain on draining", async () => {
 });
 
 Deno.test("drain - reject subscribe on draining", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const done = nc.drain();
   assertThrows(() => {
     return nc.subscribe("foo");
@@ -172,7 +172,7 @@ Deno.test("drain - reject subscribe on draining", async () => {
 });
 
 Deno.test("drain - reject subscription drain on closed sub callback", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe("foo", { callback: () => {} });
   sub.unsubscribe();
   await assertRejects(
@@ -187,7 +187,7 @@ Deno.test("drain - reject subscription drain on closed sub callback", async () =
 });
 
 Deno.test("drain - reject subscription drain on closed sub iter", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe("foo");
   const d = (async () => {
     for await (const _ of sub) {
@@ -209,7 +209,7 @@ Deno.test("drain - reject subscription drain on closed sub iter", async () => {
 });
 
 Deno.test("drain - connection is closed after drain", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   nc.subscribe("foo");
   await nc.drain();
   assert(nc.isClosed());
@@ -217,7 +217,7 @@ Deno.test("drain - connection is closed after drain", async () => {
 });
 
 Deno.test("drain - reject subscription drain on closed", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe("foo");
   await nc.close();
   await assertRejects(() => {
@@ -227,7 +227,7 @@ Deno.test("drain - reject subscription drain on closed", async () => {
 });
 
 Deno.test("drain - multiple sub drain returns same promise", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const p1 = sub.drain();
@@ -240,7 +240,7 @@ Deno.test("drain - multiple sub drain returns same promise", async () => {
 });
 
 Deno.test("drain - publisher drain", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nc1 = await connect({ port: ns.port });
 
   const subj = createInbox();

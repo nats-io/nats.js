@@ -26,7 +26,7 @@ import {
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
 
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { deadline } from "jsr:@std/async";
 import { ConnectionError } from "../src/errors.ts";
 
@@ -272,13 +272,13 @@ Deno.test("reconnect - wait on first connect", async () => {
 
   // stop the server
   await srv.stop();
-  // no reconnect, will quit the client
+  // no re will quit the client
   const err = await nc.closed();
   assertInstanceOf(err, ConnectionError, "connection refused");
 });
 
 Deno.test("reconnect - close stops reconnects", async () => {
-  const { ns, nc } = await _setup(connect, {}, {
+  const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,
     reconnectTimeWait: 500,
   });
@@ -307,7 +307,7 @@ Deno.test("reconnect - close stops reconnects", async () => {
     });
   // await some more, because the close could have a timer pending that
   // didn't complete flapping the test on resource leak
-  await delay(750);
+  await delay(1000);
 });
 
 Deno.test("reconnect - stale connections don't close", async () => {
@@ -406,7 +406,7 @@ Deno.test("reconnect - stale connections don't close", async () => {
 });
 
 Deno.test("reconnect - protocol errors don't close client", async () => {
-  const { ns, nc } = await _setup(connect, {}, {
+  const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,
     reconnectTimeWait: 500,
   });

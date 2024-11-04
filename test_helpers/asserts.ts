@@ -16,6 +16,6 @@
 import { assertGreaterOrEqual, assertLessOrEqual } from "jsr:@std/assert";
 
 export function assertBetween(n: number, low: number, high: number) {
-  assertGreaterOrEqual(n, low, `${n} >= ${low}`)
-  assertLessOrEqual(n, high, `${n} <= ${high}`)
+  assertGreaterOrEqual(n, low, `${n} >= ${low}`);
+  assertLessOrEqual(n, high, `${n} <= ${high}`);
 }
