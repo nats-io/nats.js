@@ -1047,3 +1047,61 @@ Deno.test("service - endpoint default queue group", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("service - endpoint no queue group", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svc(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1" },
+    // no queue
+    queue: "",
+  }) as ServiceImpl;
+
+  // svc config doesn't specify a queue group so we expect q
+  srv.addEndpoint("a");
+  checkQueueGroup(srv, "a", "");
+
+  // we add another group, no queue
+  const dg = srv.addGroup("G");
+  dg.addEndpoint("a");
+  checkQueueGroup(srv, "G.a", "");
+
+  // the above have no queue, no override, and set a queue
+  const g = srv.addGroup("g", "qq");
+  g.addEndpoint("a");
+  checkQueueGroup(srv, "g.a", "qq");
+  // override
+  g.addEndpoint("b", { queue: "bb" });
+  checkQueueGroup(srv, "g.b", "bb");
+  // add a subgroup without, should inherit
+  const g2 = g.addGroup("g");
+  g2.addEndpoint("a");
+  checkQueueGroup(srv, "g.g.a", "qq");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - metadata is not editable", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svc(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1", hello: "world" },
+    queue: "",
+  }) as ServiceImpl;
+
+  assertThrows(
+    () => {
+      srv.config.metadata!.hello = "hello";
+    },
+    TypeError,
+    "Cannot assign to read only property",
+  );
+
+  await cleanup(ns, nc);
+});
