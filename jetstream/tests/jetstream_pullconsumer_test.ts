@@ -18,14 +18,24 @@ import {
   connect,
   jetstreamExportServerConf,
   jetstreamServerConf,
+  notCompatible,
   setup,
 } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
-import type { ConsumerConfig } from "../src/jsapi_types.ts";
-import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
+import {
+  AckPolicy,
+  type ConsumerConfig,
+  DeliverPolicy,
+  type OverflowMinPendingAndMinAck,
+  PriorityPolicy,
+} from "../src/jsapi_types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert";
-import { Empty, nanos, nuid } from "@nats-io/nats-core";
-import { jetstream, jetstreamManager } from "../src/mod.ts";
+import { deferred, Empty, type Msg, nanos, nuid } from "@nats-io/nats-core";
+import {
+  type ConsumeOptions,
+  jetstream,
+  jetstreamManager,
+} from "../src/mod.ts";
 
 Deno.test("jetstream - pull consumer options", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
@@ -117,6 +127,174 @@ Deno.test("jetstream - last of", async () => {
   const m = await c.next();
   assertExists(m);
   assertEquals(m.seq, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - priority group", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  const js = jetstream(nc);
+
+  const buf = [];
+  for (let i = 0; i < 100; i++) {
+    buf.push(js.publish("a", Empty));
+  }
+
+  await Promise.all(buf);
+
+  const opts = {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    priority_groups: ["overflow"],
+    priority_policy: PriorityPolicy.Overflow,
+  };
+
+  await jsm.consumers.add("A", opts);
+
+  function spyPull(): Promise<Msg> {
+    const d = deferred<Msg>();
+    nc.subscribe(`$JS.API.CONSUMER.MSG.NEXT.A.a`, {
+      callback: (err, msg) => {
+        if (err) {
+          d.reject(err);
+        }
+        d.resolve(msg);
+      },
+    });
+
+    return d;
+  }
+
+  await t.step("consume", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+
+      const d = spyPull();
+      const c1 = await c.consume(opts);
+      const done = (async () => {
+        for await (const m of c1) {
+          m.ack();
+        }
+      })();
+
+      const m = await d;
+      c1.stop();
+      await done;
+
+      const po = m.json<OverflowMinPendingAndMinAck>();
+      const oopts = opts as OverflowMinPendingAndMinAck;
+      assertEquals(po.group, opts.group);
+      assertEquals(po.min_ack_pending, oopts.min_ack_pending);
+      assertEquals(po.min_pending, oopts.min_pending);
+    }
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_ack_pending: 2,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+      min_ack_pending: 100,
+    });
+  });
+
+  await t.step("fetch", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+
+      const d = spyPull();
+      const iter = await c.fetch(opts);
+      for await (const m of iter) {
+        m.ack();
+      }
+
+      const m = await d;
+      const po = m.json<OverflowMinPendingAndMinAck>();
+      const oopts = opts as OverflowMinPendingAndMinAck;
+      assertEquals(po.group, opts.group);
+      assertEquals(po.min_ack_pending, oopts.min_ack_pending);
+      assertEquals(po.min_pending, oopts.min_pending);
+    }
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_ack_pending: 2,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+      min_ack_pending: 100,
+      expires: 1000,
+    });
+  });
+
+  await t.step("next", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+      const d = spyPull();
+      await c.next(opts);
+
+      const m = await d;
+      const po = m.json<OverflowMinPendingAndMinAck>();
+      const oopts = opts as OverflowMinPendingAndMinAck;
+      assertEquals(po.group, opts.group);
+      assertEquals(po.min_ack_pending, oopts.min_ack_pending);
+      assertEquals(po.min_pending, oopts.min_pending);
+    }
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_ack_pending: 2,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "overflow",
+      min_pending: 10,
+      min_ack_pending: 100,
+      expires: 1000,
+    });
+  });
 
   await cleanup(ns, nc);
 });

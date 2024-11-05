@@ -29,6 +29,7 @@ import {
   delay,
   errors,
   Events,
+  Feature,
   IdleHeartbeatMonitor,
   nanos,
   nuid,
@@ -43,6 +44,7 @@ import { toJsMsg } from "./jsmsg.ts";
 import type {
   ConsumerConfig,
   ConsumerInfo,
+  OverflowMinPendingAndMinAck,
   PullOptions,
 } from "./jsapi_types.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
@@ -54,14 +56,21 @@ import type {
   ConsumerCallbackFn,
   ConsumerMessages,
   ConsumerStatus,
+  Expires,
   FetchMessages,
   FetchOptions,
+  IdleHeartbeat,
+  MaxBytes,
+  MaxMessages,
   NextOptions,
   OrderedConsumerOptions,
   PullConsumerOptions,
+  ThresholdBytes,
+  ThresholdMessages,
 } from "./types.ts";
 import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
 import { JetStreamStatus } from "./jserrors.ts";
+import { minValidation } from "./jsutil.ts";
 
 enum PullConsumerType {
   Unset = -1,
@@ -85,10 +94,28 @@ export type PullConsumerInternalOptions = {
   ordered?: OrderedConsumerOptions;
 };
 
+type InternalPullOptions =
+  & MaxMessages
+  & MaxBytes
+  & Expires
+  & IdleHeartbeat
+  & ThresholdMessages
+  & OverflowMinPendingAndMinAck
+  & ThresholdBytes;
+
+export function isOverflowOptions(
+  opts: unknown,
+): opts is OverflowMinPendingAndMinAck {
+  const oo = opts as OverflowMinPendingAndMinAck;
+  return oo && typeof oo.group === "string" ||
+    typeof oo.min_pending === "number" ||
+    typeof oo.min_ack_pending === "number";
+}
+
 export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
   consumer: PullConsumerImpl;
-  opts: Record<string, number>;
+  opts: InternalPullOptions;
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
   pending: { msgs: number; bytes: number; requests: number };
@@ -117,6 +144,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
 
     if (this.consumer.ordered) {
+      if (isOverflowOptions(opts)) {
+        throw errors.InvalidArgumentError.format([
+          "group",
+          "min_pending",
+          "min_ack_pending",
+        ], "cannot be specified for ordered consumers");
+      }
       if (this.consumer.orderedConsumerState === undefined) {
         // initialize the state for the order consumer
         const ocs = {} as OrderedConsumerState;
@@ -564,9 +598,21 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   pullOptions(): Partial<PullOptions> {
     const batch = this.opts.max_messages - this.pending.msgs;
     const max_bytes = this.opts.max_bytes - this.pending.bytes;
-    const idle_heartbeat = nanos(this.opts.idle_heartbeat);
-    const expires = nanos(this.opts.expires);
-    return { batch, max_bytes, idle_heartbeat, expires };
+    const idle_heartbeat = nanos(this.opts.idle_heartbeat!);
+    const expires = nanos(this.opts.expires!);
+
+    const opts = { batch, max_bytes, idle_heartbeat, expires } as PullOptions;
+
+    if (isOverflowOptions(this.opts)) {
+      opts.group = this.opts.group;
+      if (this.opts.min_pending) {
+        opts.min_pending = this.opts.min_pending;
+      }
+      if (this.opts.min_ack_pending) {
+        opts.min_ack_pending = this.opts.min_ack_pending;
+      }
+    }
+    return opts;
   }
 
   trackTimeout(t: Timeout<unknown>) {
@@ -608,14 +654,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   parseOptions(
     opts: PullConsumerOptions,
     refilling = false,
-  ): Record<string, number> {
-    const args = (opts || {}) as Record<string, number>;
+  ): InternalPullOptions {
+    const args = (opts || {}) as InternalPullOptions;
     args.max_messages = args.max_messages || 0;
     args.max_bytes = args.max_bytes || 0;
 
     if (args.max_messages !== 0 && args.max_bytes !== 0) {
-      throw new Error(
-        `only specify one of max_messages or max_bytes`,
+      throw errors.InvalidArgumentError.format(
+        ["max_messages", "max_bytes"],
+        "are mutually exclusive",
       );
     }
 
@@ -652,6 +699,25 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
       const minBytes = Math.round(args.max_bytes * .75) || 1;
       args.threshold_bytes = args.threshold_bytes || minBytes;
+    }
+
+    if (isOverflowOptions(opts)) {
+      const { min, ok } = this.consumer.api.nc.features.get(
+        Feature.JS_PRIORITY_GROUPS,
+      );
+      if (!ok) {
+        throw new Error(`priority_groups require server ${min}`);
+      }
+      validateOverflowPullOptions(opts);
+      if (opts.group) {
+        args.group = opts.group;
+      }
+      if (opts.min_ack_pending) {
+        args.min_ack_pending = opts.min_ack_pending;
+      }
+      if (opts.min_pending) {
+        args.min_pending = opts.min_pending;
+      }
     }
 
     return args;
@@ -784,7 +850,7 @@ export class PullConsumerImpl implements Consumer {
       this.messages = m;
     }
     // FIXME: need some way to pad this correctly
-    const to = Math.round(m.opts.expires * 1.05);
+    const to = Math.round(m.opts.expires! * 1.05);
     const timer = timeout(to);
     m.closed().catch((err) => {
       console.log(err);
@@ -855,5 +921,39 @@ export class PullConsumerImpl implements Consumer {
     const { stream_name, name } = this._info;
     this._info = await this.api.info(stream_name, name);
     return this._info;
+  }
+}
+
+export function validateOverflowPullOptions(opts: unknown) {
+  if (isOverflowOptions(opts)) {
+    minValidation("group", opts.group);
+    if (opts.group.length > 16) {
+      throw errors.InvalidArgumentError.format(
+        "group",
+        "must be 16 characters or less",
+      );
+    }
+
+    const { min_pending, min_ack_pending } = opts;
+    if (!min_pending && !min_ack_pending) {
+      throw errors.InvalidArgumentError.format(
+        ["min_pending", "min_ack_pending"],
+        "at least one must be specified",
+      );
+    }
+
+    if (min_pending && typeof min_pending !== "number") {
+      throw errors.InvalidArgumentError.format(
+        ["min_pending"],
+        "must be a number",
+      );
+    }
+
+    if (min_ack_pending && typeof min_ack_pending !== "number") {
+      throw errors.InvalidArgumentError.format(
+        ["min_ack_pending"],
+        "must be a number",
+      );
+    }
   }
 }

@@ -31,6 +31,7 @@ import type {
   DirectMsgRequest,
   JetStreamAccountStats,
   MsgRequest,
+  OverflowOptions,
   PurgeOpts,
   PurgeResponse,
   StreamAlternate,
@@ -350,7 +351,8 @@ export type ConsumeBytes =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 export type ConsumeMessages =
   & Partial<MaxMessages>
   & Partial<ThresholdMessages>
@@ -358,7 +360,8 @@ export type ConsumeMessages =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 export type ConsumeOptions =
   | ConsumeBytes
   | ConsumeMessages;
@@ -370,7 +373,8 @@ export type FetchBytes =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 /**
  * Options for fetching messages
  */
@@ -378,7 +382,9 @@ export type FetchMessages =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
+
 export type FetchOptions = FetchBytes | FetchMessages;
 export type PullConsumerOptions = FetchOptions | ConsumeOptions;
 export type MaxMessages = {

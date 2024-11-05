@@ -35,15 +35,20 @@ import {
   nuid,
   syncIterator,
 } from "@nats-io/nats-core";
-import { ConsumerDebugEvents, ConsumerEvents } from "../src/types.ts";
 import type { BoundPushConsumerOptions, PubAck } from "../src/types.ts";
+import { ConsumerDebugEvents, ConsumerEvents } from "../src/types.ts";
 import {
   assert,
   assertEquals,
   assertExists,
   assertRejects,
 } from "jsr:@std/assert";
-import { AckPolicy, DeliverPolicy, StorageType } from "../src/jsapi_types.ts";
+import {
+  AckPolicy,
+  DeliverPolicy,
+  PriorityPolicy,
+  StorageType,
+} from "../src/jsapi_types.ts";
 import type { JsMsg } from "../src/jsmsg.ts";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
 import type {
@@ -987,5 +992,28 @@ Deno.test("jetstream - ordered push consumer honors inbox prefix", async () => {
     iter.stop();
   }
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - push consumer doesn't support priority groups", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["test"] });
+
+  await assertRejects(
+    () => {
+      return jsm.consumers.add("A", {
+        ack_policy: AckPolicy.None,
+        deliver_subject: "foo",
+        priority_groups: ["hello"],
+        priority_policy: PriorityPolicy.Overflow,
+      });
+    },
+    Error,
+    "'deliver_subject' cannot be set when using priority groups",
+  );
   await cleanup(ns, nc);
 });
