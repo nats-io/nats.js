@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/transport-node",
-  "version": "3.0.0-20",
+  "version": "3.0.0-21",
   "description": "Node.js client for NATS, a lightweight, high-performance cloud native messaging system",
   "keywords": [
     "nats",
@@ -54,7 +54,7 @@
     "node": ">= 18.0.0"
   },
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-34",
+    "@nats-io/nats-core": "3.0.0-35",
     "@nats-io/nkeys": "1.2.0-7",
     "@nats-io/nuid": "2.0.1-2"
   },
@@ -64,8 +64,8 @@
     "nats-jwt": "^0.0.9",
     "shx": "^0.3.3",
     "typescript": "5.6.3",
-    "@nats-io/jetstream": "3.0.0-22",
-    "@nats-io/kv": "3.0.0-16",
-    "@nats-io/obj": "3.0.0-17"
+    "@nats-io/jetstream": "3.0.0-23",
+    "@nats-io/kv": "3.0.0-17",
+    "@nats-io/obj": "3.0.0-18"
   }
 }
