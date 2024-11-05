@@ -51,7 +51,8 @@ export type Endpoint = {
   metadata?: Record<string, string>;
   /**
    * Optional queue group to run this particular endpoint in. The service's configuration
-   * queue configuration will be used. See {@link ServiceConfig}.
+   * queue configuration will be used. See {@link ServiceConfig}. Note that if the queue
+   * is set to an empty string, it will not be run in a queue.
    */
   queue?: string;
 };
@@ -81,6 +82,8 @@ export interface ServiceGroup {
    * without requiring editing of the service.
    * Note that an optional queue can be specified, all endpoints added to
    * the group, will use the specified queue unless the endpoint overrides it.
+   * When not set, it uses the parent group configuration. An empty string
+   * means no queue.
    * see {@link EndpointOptions} and {@link ServiceConfig}.
    * @param subject
    * @param queue
@@ -208,9 +211,11 @@ export type ServiceConfig = {
    */
   metadata?: Record<string, string>;
   /**
-   * Optional queue group to run the service in. By default,
-   * then queue name is "q". Note that this configuration will
-   * be the default for all endpoints and groups.
+   * Optional queue group to run the service in. If not set, default,
+   * is set to "q". Note that this configuration will
+   * be the default for all endpoints and groups. If set to an empty
+   * string, the service subscription will NOT have queue, and will
+   * not be run in a queue.
    */
   queue?: string;
 };

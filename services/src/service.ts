@@ -162,7 +162,7 @@ export class ServiceGroupImpl implements ServiceGroup {
     } else if (parent instanceof ServiceGroupImpl) {
       const sg = parent as ServiceGroupImpl;
       this.srv = sg.srv;
-      if (queue === "" && sg.queue !== "") {
+      if (queue === undefined) {
         queue = sg.queue;
       }
       root = sg.subject;
@@ -198,7 +198,10 @@ export class ServiceGroupImpl implements ServiceGroup {
     return this.srv._addEndpoint(ne);
   }
 
-  addGroup(name = "", queue = ""): ServiceGroup {
+  addGroup(name = "", queue?: string): ServiceGroup {
+    if (queue === undefined) {
+      queue = this.queue;
+    }
     return new ServiceGroupImpl(this, name, queue);
   }
 }
@@ -286,13 +289,18 @@ export class ServiceImpl implements Service {
   ) {
     this.nc = nc;
     this.config = Object.assign({}, config);
-    if (!this.config.queue) {
+    if (this.config.queue === undefined) {
       this.config.queue = "q";
     }
 
+    // don't allow changing metadata
+    config.metadata = Object.freeze(config.metadata || {});
+
     // this will throw if no name
     validateName("name", this.config.name);
-    validateName("queue", this.config.queue);
+    if (this.config.queue) {
+      validateName("queue", this.config.queue);
+    }
 
     // this will throw if not semver
     parseSemVer(this.config.version);
