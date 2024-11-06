@@ -32,12 +32,15 @@ import {
   Empty,
   headers,
   nanos,
+  NoRespondersError,
   nuid,
+  RequestError,
 } from "@nats-io/nats-core";
 import {
   assert,
   assertEquals,
   assertExists,
+  assertInstanceOf,
   assertRejects,
   assertThrows,
 } from "jsr:@std/assert";
@@ -52,7 +55,7 @@ import {
   setup,
 } from "test_helpers";
 import { PubHeaders } from "../src/jsapi_types.ts";
-import { JetStreamApiError } from "../src/jserrors.ts";
+import { JetStreamApiError, JetStreamNotEnabled } from "../src/jserrors.ts";
 
 Deno.test("jetstream - default options", () => {
   const opts = defaultJsOptions();
@@ -1075,4 +1078,40 @@ Deno.test("jetstream - term reason", async () => {
   assertEquals(d.reason, "requested termination");
 
   await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - publish no responder", async (t) => {
+  await t.step("not a jetstream server", async () => {
+    const { ns, nc } = await setup();
+    const js = jetstream(nc);
+    const err = await assertRejects(
+      () => {
+        return js.publish("hello");
+      },
+      JetStreamNotEnabled,
+    );
+
+    assertInstanceOf(err.cause, RequestError);
+    assertInstanceOf(err.cause?.cause, NoRespondersError);
+
+    await cleanup(ns, nc);
+  });
+
+  await t.step("jetstream not listening for subject", async () => {
+    const { ns, nc } = await setup(jetstreamServerConf());
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "s", subjects: ["a", "b"] });
+    const js = jetstream(nc);
+    const err = await assertRejects(
+      () => {
+        return js.publish("c");
+      },
+      JetStreamNotEnabled,
+    );
+
+    assertInstanceOf(err.cause, RequestError);
+    assertInstanceOf(err.cause?.cause, NoRespondersError);
+
+    await cleanup(ns, nc);
+  });
 });

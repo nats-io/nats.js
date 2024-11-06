@@ -15,7 +15,12 @@
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
-import { delay, Empty, QueuedIteratorImpl } from "@nats-io/nats-core/internal";
+import {
+  backoff,
+  delay,
+  Empty,
+  QueuedIteratorImpl,
+} from "@nats-io/nats-core/internal";
 
 import { ConsumersImpl, StreamAPIImpl, StreamsImpl } from "./jsmstream_api.ts";
 
@@ -34,7 +39,7 @@ import type {
   StreamAPI,
   Streams,
 } from "./types.ts";
-import { errors, headers } from "@nats-io/nats-core/internal";
+import { errors, headers, RequestError } from "@nats-io/nats-core/internal";
 
 import type {
   Msg,
@@ -49,7 +54,7 @@ import type {
   JetStreamAccountStats,
 } from "./jsapi_types.ts";
 import { DirectStreamAPIImpl } from "./jsm.ts";
-import { JetStreamError } from "./jserrors.ts";
+import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
 
 export function toJetStreamClient(
   nc: NatsConnection | JetStreamClient,
@@ -205,29 +210,35 @@ export class JetStreamClientImpl extends BaseApiClientImpl
       ro.headers = mh;
     }
 
-    let { retries, retry_delay } = opts as {
+    let { retries } = opts as {
       retries: number;
-      retry_delay: number;
     };
     retries = retries || 1;
-    retry_delay = retry_delay || 250;
+    const bo = backoff();
 
-    let r: Msg;
+    let r: Msg | null = null;
     for (let i = 0; i < retries; i++) {
       try {
         r = await this.nc.request(subj, data, ro);
         // if here we succeeded
         break;
       } catch (err) {
+        const re = err instanceof RequestError ? err as RequestError : null;
         if (
-          err instanceof errors.RequestError && err.isNoResponders()
+          err instanceof errors.TimeoutError ||
+          re?.isNoResponders() && i + 1 < retries
         ) {
-          await delay(retry_delay);
+          await delay(bo.backoff(i));
         } else {
-          throw err;
+          throw re?.isNoResponders()
+            ? new JetStreamNotEnabled(`jetstream is not enabled`, {
+              cause: err,
+            })
+            : err;
         }
       }
     }
+
     const pa = this.parseJsResponse(r!) as PubAck;
     if (pa.stream === "") {
       throw new JetStreamError("invalid ack response");
