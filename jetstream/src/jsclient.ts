@@ -53,8 +53,8 @@ import type {
   ApiResponse,
   JetStreamAccountStats,
 } from "./jsapi_types.ts";
-import { DirectStreamAPIImpl } from "./jsm.ts";
 import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
+import { DirectStreamAPIImpl } from "./jsm_direct.ts";
 
 export function toJetStreamClient(
   nc: NatsConnection | JetStreamClient,
