@@ -287,6 +287,9 @@ Deno.test("direct - last message for", async (t) => {
     js.publish("a", "2"),
     js.publish("a", "last a"),
     js.publish("b", "1"),
+  ]);
+  await delay(100);
+  await Promise.all([
     js.publish("b", "last b"),
     js.publish("z", "last z"),
   ]);
@@ -339,18 +342,16 @@ Deno.test("direct - last message for", async (t) => {
     });
   });
 
-  // FIXME: expected [1, 2, 3]
   await t.step("up_to_time", async () => {
-    const up_to_time = await getDateFor(4);
+    const up_to_time = await getDateFor(5);
     await assertBatch(
-      { opts: { up_to_time, multi_last: ["a", "b", "z"] }, expect: [3, 5, 6] },
+      { opts: { up_to_time, multi_last: ["a", "b", "z"] }, expect: [3, 4] },
     );
   });
 
-  // FIXME: expected - [1, 2]
   await t.step("up_to_seq", async () => {
     await assertBatch(
-      { opts: { up_to_seq: 2, multi_last: ["a", "b", "z"] }, expect: [2] },
+      { opts: { up_to_seq: 4, multi_last: ["a", "b", "z"] }, expect: [3, 4] },
     );
   });
 
