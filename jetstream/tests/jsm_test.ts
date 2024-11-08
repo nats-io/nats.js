@@ -72,7 +72,11 @@ import {
 } from "jsr:@nats-io/jwt@0.0.9-3";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
-import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
+import {
+  ConsumerApiAction,
+  PriorityPolicy,
+  StoreCompression,
+} from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
 import { jserrors } from "../src/jserrors.ts";
@@ -2751,6 +2755,91 @@ Deno.test("jsm - storage", async () => {
 
   ci = await jsm.consumers.add("File", { name: "fc", mem_storage: false });
   assertEquals(ci.config.mem_storage, undefined);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - pull consumer priority groups", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  await t.step("priority group is not an array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: "hello",
+        });
+      },
+      Error,
+      "'priority_groups' must be an array",
+    );
+  });
+
+  await t.step("priority_group empty array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: [],
+        });
+      },
+      Error,
+      "'priority_groups' must have at least one group",
+    );
+  });
+
+  await t.step("missing priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("bad priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+          //@ts-ignore: test
+          priority_policy: "hello",
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("check config", async () => {
+    const ci = await jsm.consumers.add("A", {
+      name: "a",
+      ack_policy: AckPolicy.None,
+      priority_groups: ["hello"],
+      priority_policy: PriorityPolicy.Overflow,
+    });
+    assertEquals(ci.config.priority_policy, PriorityPolicy.Overflow);
+    assertEquals(ci.config.priority_groups, ["hello"]);
+  });
 
   await cleanup(ns, nc);
 });

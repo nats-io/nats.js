@@ -895,7 +895,12 @@ export interface JetStreamApiStats {
 export interface AccountInfoResponse
   extends ApiResponse, JetStreamAccountStats {}
 
-export interface ConsumerConfig extends ConsumerUpdateConfig {
+export type PriorityGroups = {
+  priority_groups?: string[];
+  priority_policy?: PriorityPolicy;
+};
+
+export type ConsumerConfig = ConsumerUpdateConfig & {
   /**
    * The type of acknowledgment required by the Consumer
    */
@@ -952,9 +957,9 @@ export interface ConsumerConfig extends ConsumerUpdateConfig {
    * Specified as an ISO date time string (Date#toISOString()).
    */
   "pause_until"?: string;
-}
+};
 
-export interface ConsumerUpdateConfig {
+export type ConsumerUpdateConfig = PriorityGroups & {
   /**
    * A short description of the purpose of this consume
    */
@@ -1037,6 +1042,11 @@ export interface ConsumerUpdateConfig {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
+};
+
+export enum PriorityPolicy {
+  None = "none",
+  Overflow = "overflow",
 }
 
 export function defaultConsumer(
@@ -1052,12 +1062,54 @@ export function defaultConsumer(
   }, opts);
 }
 
+export type OverflowMinPending = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_pending for the consumer is greater than this value
+   */
+  min_pending: number;
+};
+
+export type OverflowMinAckPending = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_ack_pending for the consumer is greater than this value
+   */
+  min_ack_pending: number;
+};
+
+export type OverflowMinPendingAndMinAck = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_pending for the consumer is greater than this value
+   */
+  min_pending: number;
+  /**
+   * Only deliver messages when num_ack_pending for the consumer is greater than this value
+   */
+  min_ack_pending: number;
+};
+
+export type OverflowOptions =
+  | OverflowMinPending
+  | OverflowMinAckPending
+  | OverflowMinPendingAndMinAck;
+
 /**
  * Options for a JetStream pull subscription which define how long
  * the pull request will remain open and limits the amount of data
  * that the server could return.
  */
-export interface PullOptions {
+export type PullOptions = Partial<OverflowMinPendingAndMinAck> & {
   /**
    * Max number of messages to retrieve in a pull.
    */
@@ -1076,8 +1128,12 @@ export interface PullOptions {
    * number of messages in the batch to fit within this setting.
    */
   "max_bytes": number;
+
+  /**
+   * Number of nanos between messages for the server to emit an idle_heartbeat
+   */
   "idle_heartbeat": number;
-}
+};
 
 export interface DeliveryInfo {
   /**
