@@ -287,6 +287,7 @@ export class ConsumersImpl implements Consumers {
     config.deliver_policy = opts.deliver_policy ||
       DeliverPolicy.StartSequence;
     if (
+      opts.deliver_policy === DeliverPolicy.All ||
       opts.deliver_policy === DeliverPolicy.LastPerSubject ||
       opts.deliver_policy === DeliverPolicy.New ||
       opts.deliver_policy === DeliverPolicy.Last

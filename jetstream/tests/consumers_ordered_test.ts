@@ -1186,3 +1186,14 @@ Deno.test(
     await cleanup(ns, nc);
   }),
 );
+
+Deno.test("ordered consumer - deliver all policy", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const js = jetstream(nc);
+  await js.consumers.get("A", { deliver_policy: DeliverPolicy.All });
+
+  await cleanup(ns, nc);
+});
