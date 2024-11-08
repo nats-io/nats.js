@@ -78,6 +78,7 @@ Deno.test("streams - consumers", async () => {
 
   // get a message
   const sm = await s.getMessage({ seq: 1 });
+  assertExists(sm);
   let d = sm.json<{ hello: string }>();
   assertEquals(d.hello, "world");
 
@@ -122,13 +123,7 @@ Deno.test("streams - delete message", async () => {
   assertExists(sm);
 
   assertEquals(await s.deleteMessage(2, true), true);
-  await assertRejects(
-    async () => {
-      await s.getMessage({ seq: 2 });
-    },
-    Error,
-    "no message found",
-  );
+  assertEquals(await s.getMessage({ seq: 2 }), null);
 
   const si = await s.info(false, { deleted_details: true });
   assertEquals(si.state.deleted, [2]);

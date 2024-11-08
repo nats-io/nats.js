@@ -42,11 +42,7 @@ import type {
   LastForMsgRequest,
 } from "./jsapi_types.ts";
 import { validateStreamName } from "./jsutil.ts";
-import {
-  JetStreamApiCodes,
-  JetStreamApiError,
-  JetStreamStatus,
-} from "./jserrors.ts";
+import { JetStreamStatus } from "./jserrors.ts";
 
 export class DirectStreamAPIImpl extends BaseApiClientImpl
   implements DirectStreamAPI {
@@ -57,7 +53,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
   async getMessage(
     stream: string,
     query: DirectMsgRequest,
-  ): Promise<StoredMsg> {
+  ): Promise<StoredMsg | null> {
     validateStreamName(stream);
     // if doing a last_by_subj request, we append the subject
     // this allows last_by_subj to be subject to permissions (KV)
@@ -82,19 +78,10 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     if (r.headers?.code !== 0) {
       const status = new JetStreamStatus(r);
       if (status.isMessageNotFound()) {
-        // this so to simplify things that handle a non-existing messages
-        // as null (such as KV).
-        return Promise.reject(
-          new JetStreamApiError(
-            {
-              code: status.code,
-              err_code: JetStreamApiCodes.NoMessageFound,
-              description: status.description,
-            },
-          ),
-        );
+        return Promise.resolve(null);
+      } else {
+        return Promise.reject(status.toError());
       }
-      return Promise.reject(status.toError());
     }
 
     const dm = new DirectMsgImpl(r);

@@ -619,7 +619,7 @@ export class Bucket implements KV {
       arg = { seq: opts.revision };
     }
 
-    let sm: StoredMsg;
+    let sm: StoredMsg | null = null;
     try {
       if (this.direct) {
         const direct =
@@ -628,18 +628,15 @@ export class Bucket implements KV {
       } else {
         sm = await this.jsm.streams.getMessage(this.bucketName(), arg);
       }
+      if (sm === null) {
+        return null;
+      }
       const ke = this.smToEntry(sm);
       if (ke.key !== ek) {
         return null;
       }
       return ke;
     } catch (err) {
-      if (err instanceof JetStreamApiError) {
-        const jserr = err as JetStreamApiError;
-        if (jserr.code === JetStreamApiCodes.NoMessageFound) {
-          return null;
-        }
-      }
       throw err;
     }
   }

@@ -152,7 +152,7 @@ Deno.test("jetstream - publish id", async () => {
 
   const jsm = await jetstreamManager(nc);
   const sm = await jsm.streams.getMessage(stream, { seq: 1 });
-  assertEquals(sm.header.get(PubHeaders.MsgIdHdr), "a");
+  assertEquals(sm?.header.get(PubHeaders.MsgIdHdr), "a");
 
   await cleanup(ns, nc);
 });
@@ -225,7 +225,7 @@ Deno.test("jetstream - get message last by subject", async () => {
   const sm = await jsm.streams.getMessage(stream, {
     last_by_subj: `${stream}.A`,
   });
-  assertEquals(sm.string(), "aa");
+  assertEquals(sm?.string(), "aa");
 
   await cleanup(ns, nc);
 });
@@ -960,7 +960,7 @@ Deno.test("jetstream - input transform", async () => {
   assertEquals(pa.seq, 1);
 
   const m = await jsm.streams.getMessage(si.config.name, { seq: 1 });
-  assertEquals(m.subject, "transformed.foo");
+  assertEquals(m?.subject, "transformed.foo");
 
   await cleanup(ns, nc);
 });
