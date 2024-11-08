@@ -53,6 +53,24 @@ export function defaultOptions(): ConnectionOptions {
   } as ConnectionOptions;
 }
 
+export function hasWsProtocol(opts?: ConnectionOptions): boolean {
+  if (opts) {
+    let { servers } = opts;
+    if (typeof servers === "string") {
+      servers = [servers];
+    }
+    if (servers) {
+      for (let i = 0; i < servers.length; i++) {
+        const s = servers[i].toLowerCase();
+        if (s.startsWith("ws://") || s.startsWith("wss://")) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export function buildAuthenticator(
   opts: ConnectionOptions,
 ): Authenticator {

@@ -362,16 +362,13 @@ export class ObjectStoreImpl implements ObjectStore {
       const m = await this.jsm.streams.getMessage(this.stream, {
         last_by_subj: meta,
       });
+      if (m === null) {
+        return null;
+      }
       const soi = m.json<ServerObjectInfo>();
       soi.revision = m.seq;
       return soi;
     } catch (err) {
-      if (
-        err instanceof JetStreamApiError &&
-        err.code === JetStreamApiCodes.NoMessageFound
-      ) {
-        return null;
-      }
       return Promise.reject(err);
     }
   }

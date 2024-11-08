@@ -17,6 +17,7 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertFalse,
   assertMatch,
 } from "jsr:@std/assert";
 
@@ -35,6 +36,7 @@ import {
 } from "../src/internal_mod.ts";
 
 import { NatsServer } from "../../test_helpers/launcher.ts";
+import { hasWsProtocol } from "../src/options.ts";
 
 Deno.test("properties - VERSION is semver", async () => {
   const ns = await NatsServer.start();
@@ -191,4 +193,17 @@ Deno.test("properties - multi", () => {
   assertExists(cc.sig);
   assert(cc.sig.length > 0);
   assertExists(cc.nkey);
+});
+
+Deno.test("properties - hasWsProtocol", () => {
+  assertFalse(hasWsProtocol({ servers: "127.0.0.1:4222" }));
+  assert(hasWsProtocol({ servers: "WS://127.0.0.1:4222" }));
+  assert(hasWsProtocol({ servers: "ws://127.0.0.1:4222" }));
+  assert(hasWsProtocol({ servers: "WSS://127.0.0.1:4222" }));
+  assert(hasWsProtocol({ servers: "ws://127.0.0.1:4222" }));
+  assert(
+    hasWsProtocol({
+      servers: ["nats://127.0.0.1:4222", "ws://127.0.0.1:4222"],
+    }),
+  );
 });

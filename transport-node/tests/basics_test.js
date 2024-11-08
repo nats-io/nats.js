@@ -174,4 +174,37 @@ describe(
       await ns.stop();
     });
   },
+  it("basics - ws urls fail", async () => {
+    await assert.rejects(
+      () => {
+        return connect({ servers: ["ws://localhost:4222"] });
+      },
+      Error,
+      "'servers' deno client doesn't support websockets, use the 'wsconnect' function instead",
+    );
+
+    await assert.rejects(
+      () => {
+        return connect({ servers: "ws://localhost:4222" });
+      },
+      Error,
+      "'servers' deno client doesn't support websockets, use the 'wsconnect' function instead",
+    );
+
+    await assert.rejects(
+      () => {
+        return connect({ servers: ["wss://localhost:4222"] });
+      },
+      Error,
+      "'servers' deno client doesn't support websockets, use the 'wsconnect' function instead",
+    );
+
+    await assert.rejects(
+      () => {
+        return connect({ servers: "wss://localhost:4222" });
+      },
+      Error,
+      "'servers' deno client doesn't support websockets, use the 'wsconnect' function instead",
+    );
+  }),
 );
