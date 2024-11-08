@@ -118,7 +118,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
 
   get(
     stream: string,
-    opts: Record<string, unknown>,
+    opts: DirectBatchOptions | DirectLastFor,
   ): Promise<QueuedIterator<StoredMsg>> {
     validateStreamName(stream);
 
