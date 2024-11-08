@@ -1010,8 +1010,8 @@ export type ConsumerUpdateConfig = PriorityGroups & {
    */
   "inactive_threshold"?: Nanos;
   /**
-   * List of durations in nanoseconds format that represents a retry timescale for
-   * NaK'd messages or those being normally retried
+   * List of durations in nanoseconds that represents a retry timescale for
+   * the redelivery of messages
    */
   "backoff"?: Nanos[];
   /**
