@@ -739,26 +739,27 @@ Deno.test("jsm - get message", async () => {
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
   assertEquals(sm.json<number>(), 1);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.json<number>(), 2);
 
-  const err = await assertRejects(
-    async () => {
-      await jsm.streams.getMessage(stream, { seq: 3 });
-    },
-  ) as Error;
-  if (
-    err.message !== "stream store eof" && err.message !== "no message found"
-  ) {
-    fail(`unexpected error message ${err.message}`);
-  }
+  assertEquals(await jsm.streams.getMessage(stream, { seq: 3 }), null);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - get message (not found)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.streams.getMessage("A", { last_by_subj: "a" });
   await cleanup(ns, nc);
 });
 
@@ -771,11 +772,13 @@ Deno.test("jsm - get message payload", async () => {
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
   assertEquals(sm.data, Empty);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.data, Empty);
@@ -908,7 +911,7 @@ Deno.test("jsm - cross account streams", async () => {
 
   // get message
   const sm = await jsm.streams.getMessage(stream, { seq: 1 });
-  assertEquals(sm.seq, 1);
+  assertEquals(sm?.seq, 1);
 
   // delete message
   let ok = await jsm.streams.deleteMessage(stream, 1);
@@ -1966,10 +1969,10 @@ Deno.test("jsm - stored msg decode", async () => {
   await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   assertEquals(
-    (await jsm.streams.getMessage(name, { seq: 1 })).string(),
+    (await jsm.streams.getMessage(name, { seq: 1 }))?.string(),
     "hello",
   );
-  assertEquals((await jsm.streams.getMessage(name, { seq: 2 })).json(), {
+  assertEquals((await jsm.streams.getMessage(name, { seq: 2 }))?.json(), {
     one: "two",
     a: [1, 2, 3],
   });

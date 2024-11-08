@@ -120,6 +120,9 @@ To use JetStream, you must install and import `@nats/jetstream`.
   `StreamNotFound`, `JetStreamNotEnabled` are subtypes of the above. For API
   calls where the server could return an error, these are `JetStreamAPIError`
   and contain all the information returned by the server.
+- JetStream `Stream.getMessage()` will now return null if when a message not
+  found error raises, this simplifies client usage and aligns with other APIs in
+  the client.
 
 ## Changes to KV
 

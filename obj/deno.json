@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-19",
+  "version": "3.0.0-20",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -34,6 +34,6 @@
   },
   "imports": {
     "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-36",
-    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-24"
+    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-25"
   }
 }

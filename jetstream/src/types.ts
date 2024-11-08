@@ -223,7 +223,7 @@ export interface StreamAPI {
    * @param stream
    * @param query
    */
-  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg>;
+  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg | null>;
 
   /**
    * Find the stream that stores the specified subject.
@@ -789,7 +789,7 @@ export interface DirectStreamAPI {
   getMessage(
     stream: string,
     query: DirectMsgRequest,
-  ): Promise<StoredMsg>;
+  ): Promise<StoredMsg | null>;
 
   /**
    * Retrieves all last subject messages for the specified subjects
@@ -917,7 +917,7 @@ export interface Stream {
   //     | BoundPushConsumerOptions,
   // ): Promise<PushConsumer>;
 
-  getMessage(query: MsgRequest): Promise<StoredMsg>;
+  getMessage(query: MsgRequest): Promise<StoredMsg | null>;
 
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
 }
