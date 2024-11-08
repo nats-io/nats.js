@@ -23,6 +23,7 @@ import type {
 import {
   DataBuffer,
   deferred,
+  millis,
   nanos,
   RequestOne,
 } from "@nats-io/nats-core/internal";
@@ -67,6 +68,16 @@ export interface JsMsg {
    * @ignore
    */
   sid: number;
+
+  /**
+   * The time the message was received
+   */
+  time: Date;
+
+  /**
+   * The time the message was received as an ISO formatted date string
+   */
+  timestamp: string;
 
   /**
    * Indicate to the JetStream server that the message was processed
@@ -214,6 +225,15 @@ export class JsMsgImpl implements JsMsg {
 
   get seq(): number {
     return this.info.streamSequence;
+  }
+
+  get time(): Date {
+    const ms = millis(this.info.timestampNanos);
+    return new Date(ms);
+  }
+
+  get timestamp(): string {
+    return this.time.toISOString();
   }
 
   doAck(payload: Uint8Array) {

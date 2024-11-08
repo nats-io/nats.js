@@ -35,6 +35,7 @@ import type {
   DirectMsgRequest,
   JetStreamAccountStats,
   MsgRequest,
+  OverflowOptions,
   PurgeOpts,
   PurgeResponse,
   StreamAlternate,
@@ -227,7 +228,7 @@ export interface StreamAPI {
    * @param stream
    * @param query
    */
-  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg>;
+  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg | null>;
 
   /**
    * Find the stream that stores the specified subject.
@@ -354,7 +355,8 @@ export type ConsumeBytes =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 export type ConsumeMessages =
   & Partial<MaxMessages>
   & Partial<ThresholdMessages>
@@ -362,7 +364,8 @@ export type ConsumeMessages =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 export type ConsumeOptions =
   | ConsumeBytes
   | ConsumeMessages;
@@ -374,7 +377,8 @@ export type FetchBytes =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 /**
  * Options for fetching messages
  */
@@ -382,7 +386,9 @@ export type FetchMessages =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
+
 export type FetchOptions = FetchBytes | FetchMessages;
 export type PullConsumerOptions = FetchOptions | ConsumeOptions;
 export type MaxMessages = {
@@ -793,7 +799,7 @@ export interface DirectStreamAPI {
   getMessage(
     stream: string,
     query: DirectMsgRequest,
-  ): Promise<StoredMsg>;
+  ): Promise<StoredMsg | null>;
 
   /**
    * Retrieves all last subject messages for the specified subjects
@@ -940,7 +946,7 @@ export interface Stream {
   //     | BoundPushConsumerOptions,
   // ): Promise<PushConsumer>;
 
-  getMessage(query: MsgRequest): Promise<StoredMsg>;
+  getMessage(query: MsgRequest): Promise<StoredMsg | null>;
 
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
 }

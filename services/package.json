@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/services",
-  "version": "3.0.0-13",
+  "version": "3.0.0-14",
   "files": [
     "lib/",
     "LICENSE",
@@ -34,7 +34,7 @@
   },
   "description": "services library - this library implements all the base functionality for NATS services for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-35"
+    "@nats-io/nats-core": "3.0.0-36"
   },
   "devDependencies": {
     "@types/node": "^22.7.6",

@@ -82,6 +82,7 @@ import { PullConsumerImpl } from "./consumer.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 import type { PushConsumerInternalOptions } from "./pushconsumer.ts";
 import { PushConsumerImpl } from "./pushconsumer.ts";
+import { JetStreamApiCodes, JetStreamApiError } from "./jserrors.ts";
 
 export function convertStreamSourceDomain(s?: StreamSource) {
   if (s === undefined) {
@@ -380,7 +381,7 @@ export class StreamImpl implements Stream {
       .getPushConsumer(this.name, name);
   }
 
-  getMessage(query: MsgRequest): Promise<StoredMsg> {
+  getMessage(query: MsgRequest): Promise<StoredMsg | null> {
     return this.api.getMessage(this.name, query);
   }
 
@@ -620,14 +621,28 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     return cr.success;
   }
 
-  async getMessage(stream: string, query: MsgRequest): Promise<StoredMsg> {
+  async getMessage(
+    stream: string,
+    query: MsgRequest,
+  ): Promise<StoredMsg | null> {
     validateStreamName(stream);
-    const r = await this._request(
-      `${this.prefix}.STREAM.MSG.GET.${stream}`,
-      query,
-    );
-    const sm = r as StreamMsgResponse;
-    return new StoredMsgImpl(sm);
+
+    try {
+      const r = await this._request(
+        `${this.prefix}.STREAM.MSG.GET.${stream}`,
+        query,
+      );
+      const sm = r as StreamMsgResponse;
+      return new StoredMsgImpl(sm);
+    } catch (err) {
+      if (
+        err instanceof JetStreamApiError &&
+        err.code === JetStreamApiCodes.NoMessageFound
+      ) {
+        return null;
+      }
+      return Promise.reject(err);
+    }
   }
 
   find(subject: string): Promise<string> {

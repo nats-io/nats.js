@@ -250,7 +250,7 @@ Deno.test("consumers - bad options", async () => {
       await c.consume({ max_messages: 100, max_bytes: 100 });
     },
     Error,
-    "only specify one of max_messages or max_bytes",
+    "'max_messages','max_bytes' are mutually exclusive",
   );
 
   await assertRejects(

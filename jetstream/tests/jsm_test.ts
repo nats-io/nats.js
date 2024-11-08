@@ -72,7 +72,11 @@ import {
 } from "jsr:@nats-io/jwt@0.0.9-3";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
-import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
+import {
+  ConsumerApiAction,
+  PriorityPolicy,
+  StoreCompression,
+} from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
 import { jserrors } from "../src/jserrors.ts";
@@ -739,26 +743,27 @@ Deno.test("jsm - get message", async () => {
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
   assertEquals(sm.json<number>(), 1);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.json<number>(), 2);
 
-  const err = await assertRejects(
-    async () => {
-      await jsm.streams.getMessage(stream, { seq: 3 });
-    },
-  ) as Error;
-  if (
-    err.message !== "stream store eof" && err.message !== "no message found"
-  ) {
-    fail(`unexpected error message ${err.message}`);
-  }
+  assertEquals(await jsm.streams.getMessage(stream, { seq: 3 }), null);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - get message (not found)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.streams.getMessage("A", { last_by_subj: "a" });
   await cleanup(ns, nc);
 });
 
@@ -771,11 +776,13 @@ Deno.test("jsm - get message payload", async () => {
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
   assertEquals(sm.data, Empty);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.data, Empty);
@@ -908,7 +915,7 @@ Deno.test("jsm - cross account streams", async () => {
 
   // get message
   const sm = await jsm.streams.getMessage(stream, { seq: 1 });
-  assertEquals(sm.seq, 1);
+  assertEquals(sm?.seq, 1);
 
   // delete message
   let ok = await jsm.streams.deleteMessage(stream, 1);
@@ -1898,10 +1905,10 @@ Deno.test("jsm - stored msg decode", async () => {
   await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   assertEquals(
-    (await jsm.streams.getMessage(name, { seq: 1 })).string(),
+    (await jsm.streams.getMessage(name, { seq: 1 }))?.string(),
     "hello",
   );
-  assertEquals((await jsm.streams.getMessage(name, { seq: 2 })).json(), {
+  assertEquals((await jsm.streams.getMessage(name, { seq: 2 }))?.json(), {
     one: "two",
     a: [1, 2, 3],
   });
@@ -2614,6 +2621,91 @@ Deno.test("jsm - storage", async () => {
 
   ci = await jsm.consumers.add("File", { name: "fc", mem_storage: false });
   assertEquals(ci.config.mem_storage, undefined);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - pull consumer priority groups", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  await t.step("priority group is not an array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: "hello",
+        });
+      },
+      Error,
+      "'priority_groups' must be an array",
+    );
+  });
+
+  await t.step("priority_group empty array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: [],
+        });
+      },
+      Error,
+      "'priority_groups' must have at least one group",
+    );
+  });
+
+  await t.step("missing priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("bad priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+          //@ts-ignore: test
+          priority_policy: "hello",
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("check config", async () => {
+    const ci = await jsm.consumers.add("A", {
+      name: "a",
+      ack_policy: AckPolicy.None,
+      priority_groups: ["hello"],
+      priority_policy: PriorityPolicy.Overflow,
+    });
+    assertEquals(ci.config.priority_policy, PriorityPolicy.Overflow);
+    assertEquals(ci.config.priority_groups, ["hello"]);
+  });
 
   await cleanup(ns, nc);
 });

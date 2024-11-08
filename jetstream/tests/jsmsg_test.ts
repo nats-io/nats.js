@@ -12,7 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertRejects,
+  fail,
+} from "jsr:@std/assert";
 import {
   AckPolicy,
   jetstream,
@@ -287,6 +293,30 @@ Deno.test("jsmsg - ackAck legacy timeout", async () => {
     errors.TimeoutError,
   );
   assertBetween(Date.now() - start, 1300, 1700);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsmsg - time and timestamp", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a.>"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a.a");
+
+  await jsm.consumers.add("A", { durable_name: "a" });
+  const oc = await js.consumers.get("A");
+  const m = await oc.next();
+
+  const date = m?.time;
+  assertExists(date);
+  assertEquals(date.toISOString(), m?.timestamp!);
 
   await cleanup(ns, nc);
 });
