@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { connect, Empty } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { AckPolicy, jetstreamManager } from "jsr:@nats-io/jetstream@3.0.0-18";
+import { connect, Empty } from "@nats-io/transport-deno";
+import { AckPolicy, jetstreamManager } from "@nats-io/jetstream";
 
 const nc = await connect();
 const jsm = await jetstreamManager(nc);
@@ -48,7 +48,7 @@ await jsm.streams.update(name, si.config);
 // get a particular stored message in the stream by sequence
 // this is not associated with a consumer
 const sm = await jsm.streams.getMessage("mystream", { seq: 1 });
-console.log(sm.seq);
+console.log(sm?.seq);
 
 // delete the 5th message in the stream, securely erasing it
 await jsm.streams.deleteMessage("mystream", 5);

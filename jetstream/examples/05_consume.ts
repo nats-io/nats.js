@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import { jetstream } from "jsr:@nats-io/jetstream@3.0.0-18";
+import { connect } from "@nats-io/transport-deno";
+import { jetstream } from "@nats-io/jetstream";
 import { setupStreamAndConsumer } from "./util.ts";
 
 // create a connection
