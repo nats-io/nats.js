@@ -140,6 +140,22 @@ export async function notCompatible(
   }
   return false;
 }
+export async function notSupported(
+  ns: NatsServer,
+  version?: string,
+): Promise<boolean> {
+  version = version ?? "2.3.3";
+  const varz = await ns.varz() as unknown as Record<string, string>;
+  const sv = parseSemVer(varz.version);
+  if (compare(sv, parseSemVer(version)) < 0) {
+    const m = new TextEncoder().encode(yellow(
+      `skipping test as server (${varz.version}) doesn't implement required feature from ${version} `,
+    ));
+    await Deno.stdout.write(m);
+    return true;
+  }
+  return false;
+}
 
 export function flakyTest(
   fn: () => void | Promise<void>,

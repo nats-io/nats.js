@@ -123,6 +123,7 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - JetStream `Stream.getMessage()` will now return null if when a message not
   found error raises, this simplifies client usage and aligns with other APIs in
   the client.
+- MsgRequest for `Stream#getMessage()` removed deprecated number argument.
 
 ## Changes to KV
 

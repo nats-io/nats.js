@@ -30,14 +30,15 @@ import type {
   ReviverFn,
 } from "@nats-io/nats-core";
 import {
+  createInbox,
   Empty,
-  errors,
+  Feature,
   QueuedIteratorImpl,
-  RequestStrategy,
   TD,
 } from "@nats-io/nats-core/internal";
 import type {
   DirectBatchOptions,
+  DirectLastFor,
   DirectMsgRequest,
   LastForMsgRequest,
 } from "./jsapi_types.ts";
@@ -55,6 +56,14 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     query: DirectMsgRequest,
   ): Promise<StoredMsg | null> {
     validateStreamName(stream);
+
+    if ("start_time" in query) {
+      const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
+      if (!ok) {
+        throw new Error(`start_time direct option require server ${min}`);
+      }
+    }
+
     // if doing a last_by_subj request, we append the subject
     // this allows last_by_subj to be subject to permissions (KV)
     let qq: DirectMsgRequest | null = query;
@@ -88,71 +97,79 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     return Promise.resolve(dm);
   }
 
-  async getBatch(
+  getBatch(
     stream: string,
     opts: DirectBatchOptions,
   ): Promise<QueuedIterator<StoredMsg>> {
+    opts.batch = opts.batch || 1024;
+    return this.get(stream, opts);
+  }
+
+  getLastMessagesFor(
+    stream: string,
+    opts: DirectLastFor,
+  ): Promise<QueuedIterator<StoredMsg>> {
+    return this.get(stream, opts);
+  }
+
+  get(
+    stream: string,
+    opts: DirectBatchOptions | DirectLastFor,
+  ): Promise<QueuedIterator<StoredMsg>> {
+    const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
+    if (!ok) {
+      throw new Error(`batch direct require server ${min}`);
+    }
     validateStreamName(stream);
+
+    const iter = new QueuedIteratorImpl<StoredMsg>();
+    const inbox = createInbox(this.nc.options.inboxPrefix);
+    let batchSupported = false;
+    const sub = this.nc.subscribe(inbox, {
+      timeout: 10_000,
+      callback: (err, msg) => {
+        if (err) {
+          iter.push(() => {
+            iter.stop(err);
+          });
+          sub.unsubscribe();
+          return;
+        }
+        const status = JetStreamStatus.maybeParseStatus(msg);
+        if (status) {
+          iter.push(() => {
+            status.isEndOfBatch() ? iter.stop() : iter.stop(status.toError());
+          });
+          return;
+        }
+        if (!batchSupported) {
+          if (typeof msg.headers?.get("Nats-Num-Pending") !== "string") {
+            // no batch/max_bytes option was provided, so single response
+            sub.unsubscribe();
+            iter.push(() => {
+              iter.stop();
+            });
+          } else {
+            batchSupported = true;
+          }
+        }
+
+        iter.push(new DirectMsgImpl(msg));
+      },
+    });
+
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = `${pre}.DIRECT.GET.${stream}`;
-    if (!Array.isArray(opts.multi_last) || opts.multi_last.length === 0) {
-      return Promise.reject(
-        errors.InvalidArgumentError.format("multi_last", "is required"),
-      );
-    }
+
     const payload = JSON.stringify(opts, (key, value) => {
-      if (key === "up_to_time" && value instanceof Date) {
+      if (
+        (key === "up_to_time" || key === "start_time") && value instanceof Date
+      ) {
         return value.toISOString();
       }
       return value;
     });
-
-    const iter = new QueuedIteratorImpl<StoredMsg>();
-
-    const raw = await this.nc.requestMany(
-      subj,
-      payload,
-      {
-        strategy: RequestStrategy.SentinelMsg,
-      },
-    );
-
-    (async () => {
-      let gotFirst = false;
-      let badServer = false;
-      let status: JetStreamStatus | null = null;
-      for await (const m of raw) {
-        if (!gotFirst) {
-          gotFirst = true;
-          status = JetStreamStatus.maybeParseStatus(m);
-          if (status) {
-            break;
-          }
-          // inspect the message and make sure that we have a supported server
-          const v = m.headers?.get("Nats-Num-Pending");
-          if (v === "") {
-            badServer = true;
-            break;
-          }
-        }
-        if (m.data.length === 0) {
-          break;
-        }
-        iter.push(new DirectMsgImpl(m));
-      }
-      //@ts-ignore: term function
-      iter.push((): void => {
-        if (badServer) {
-          throw new Error("batch direct get not supported by the server");
-        }
-        if (status) {
-          throw status.toError();
-        }
-        iter.stop();
-      });
-    })().catch((err) => {
-      iter.stop(err);
-    });
+    this.nc.publish(subj, payload, { reply: inbox });
 
     return Promise.resolve(iter);
   }
@@ -190,6 +207,11 @@ export class DirectMsgImpl implements DirectMsg {
 
   get stream(): string {
     return this.header.last(DirectMsgHeaders.Stream);
+  }
+
+  get lastSequence(): number {
+    const v = this.header.last(DirectMsgHeaders.LastSequence);
+    return typeof v === "string" ? parseInt(v) : 0;
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {

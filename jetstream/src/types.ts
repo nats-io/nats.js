@@ -21,7 +21,11 @@ import type {
   ReviverFn,
 } from "@nats-io/nats-core/internal";
 
-import type { DeliverPolicy, ReplayPolicy } from "./jsapi_types.ts";
+import type {
+  DeliverPolicy,
+  DirectLastFor,
+  ReplayPolicy,
+} from "./jsapi_types.ts";
 
 import type {
   ConsumerConfig,
@@ -806,6 +810,20 @@ export interface DirectStreamAPI {
     stream: string,
     opts: DirectBatchOptions,
   ): Promise<QueuedIterator<StoredMsg>>;
+
+  /**
+   * Retrieves the last message for each subject in the filter.
+   * If no filter is specified, a maximum of 1024 subjects are returned.
+   * Care should be given on the specified filters to ensure that
+   * the results match what the client is expecting and to avoid missing
+   * expected data.
+   * @param stream
+   * @param opts
+   */
+  getLastMessagesFor(
+    stream: string,
+    opts: DirectLastFor,
+  ): Promise<QueuedIterator<StoredMsg>>;
 }
 
 /**
@@ -857,6 +875,11 @@ export interface DirectMsg extends StoredMsg {
    * The name of the Stream storing message
    */
   stream: string;
+
+  /**
+   * Previous sequence delivered to the client
+   */
+  lastSequence: number;
 }
 
 /**
@@ -972,6 +995,7 @@ export enum DirectMsgHeaders {
   Sequence = "Nats-Sequence",
   TimeStamp = "Nats-Time-Stamp",
   Subject = "Nats-Subject",
+  LastSequence = "Nats-Last-Sequence",
 }
 
 export enum RepublishHeaders {

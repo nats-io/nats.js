@@ -1179,50 +1179,6 @@ Deno.test("jsm - stream update preserves other value", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jsm - direct getMessage", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf({}));
-
-  if (await notCompatible(ns, nc, "2.9.0")) {
-    return;
-  }
-
-  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
-  await jsm.streams.add({
-    name: "A",
-    subjects: ["foo", "bar"],
-    allow_direct: true,
-  });
-
-  const js = jetstream(nc);
-  await js.publish("foo", "a", { expect: { lastSequence: 0 } });
-  await js.publish("foo", "b", { expect: { lastSequence: 1 } });
-  await js.publish("foo", "c", { expect: { lastSequence: 2 } });
-  await js.publish("bar", "d", { expect: { lastSequence: 3 } });
-  await js.publish("foo", "e", { expect: { lastSequence: 4 } });
-
-  let m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "bar" });
-  assertExists(m);
-  assertEquals(m.seq, 4);
-
-  m = await jsm.direct.getMessage("A", { last_by_subj: "foo" });
-  assertExists(m);
-  assertEquals(m.seq, 5);
-
-  m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "foo" });
-  assertExists(m);
-  assertEquals(m.seq, 1);
-
-  m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "foo" });
-  assertExists(m);
-  assertEquals(m.seq, 5);
-
-  m = await jsm.direct.getMessage("A", { seq: 2, next_by_subj: "foo" });
-  assertExists(m);
-  assertEquals(m.seq, 2);
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jsm - consumer name", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
 
@@ -1938,30 +1894,6 @@ Deno.test("jsm - update from filter_subject to filter_subjects", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jsm - direct msg decode", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf());
-  const name = nuid.next();
-  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
-  const js = jetstream(nc);
-  await jsm.streams.add({ name, subjects: [`a.>`], allow_direct: true });
-
-  await js.publish("a.a", "hello");
-  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
-
-  let m = await jsm.direct.getMessage(name, { seq: 1 });
-  assertExists(m);
-  assertEquals(m.string(), "hello");
-
-  m = await jsm.direct.getMessage(name, { seq: 2 });
-  assertExists(m);
-  assertEquals(m.json(), {
-    one: "two",
-    a: [1, 2, 3],
-  });
-
-  await cleanup(ns, nc);
-});
-
 Deno.test("jsm - stored msg decode", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const name = nuid.next();
@@ -2662,75 +2594,6 @@ Deno.test("jsm - pause/unpause", async () => {
 
   pi = await jsm.consumers.resume("A", "a");
   assertEquals(pi.paused, false);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("jsm - batch direct get multi_last", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.11.0")) {
-    return;
-  }
-  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
-  await jsm.streams.add({
-    name: "A",
-    subjects: ["a.>"],
-    storage: StorageType.Memory,
-    allow_direct: true,
-  });
-
-  const js = jetstream(nc);
-  await Promise.all([
-    js.publish("a.foo", "foo"),
-    js.publish("a.bar", "bar"),
-    js.publish("a.baz", "baz"),
-  ]);
-
-  const iter = await jsm.direct.getBatch("A", {
-    multi_last: ["a.foo", "a.baz"],
-  });
-
-  const keys = [];
-  for await (const m of iter) {
-    keys.push(m.subject);
-  }
-  assertEquals(keys.length, 2);
-  assertArrayIncludes(keys, ["a.foo", "a.baz"]);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("jsm - batch direct get batch", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.11.0")) {
-    return;
-  }
-  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
-  await jsm.streams.add({
-    name: "A",
-    subjects: ["a.>"],
-    storage: StorageType.Memory,
-    allow_direct: true,
-  });
-
-  const js = jetstream(nc);
-  await Promise.all([
-    js.publish("a.foo", "foo"),
-    js.publish("a.bar", "bar"),
-    js.publish("a.baz", "baz"),
-    js.publish("a.foobar", "foobar"),
-  ]);
-
-  const iter = await jsm.direct.getBatch("A", {
-    batch: 3,
-    multi_last: [">"],
-  });
-
-  const buf = [];
-  for await (const m of iter) {
-    buf.push(m);
-  }
-  assertEquals(buf.length, 3);
 
   await cleanup(ns, nc);
 });

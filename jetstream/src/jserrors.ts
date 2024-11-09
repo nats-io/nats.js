@@ -172,6 +172,10 @@ export class JetStreamStatus {
   isMessageNotFound(): boolean {
     return this.code === 404 && this.description === "message not found";
   }
+
+  isEndOfBatch(): boolean {
+    return this.code === 204 && this.description === "eob";
+  }
 }
 
 export enum JetStreamApiCodes {

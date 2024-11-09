@@ -479,33 +479,51 @@ export type StreamInfoRequestOptions = {
    */
   "subjects_filter": string;
 } & ApiPagedRequest;
+
+export type MsgRequest = SeqMsgRequest | LastForMsgRequest;
+
 /**
- * Request the next stream message by sequence for the specified subject.
+ * Request the first message matching specified subject found on or after the specified optional sequence.
  */
-export type NextMsgRequest = {
-  /**
-   * The seq to start looking. If the message under the specified sequence
-   * matches, it will be returned.
-   */
-  seq: number;
-  /**
-   * The subject to look for
-   */
-  next_by_subj: string;
-};
+export type NextMsgRequest = { seq?: number; next_by_subj: string };
+
+/**
+ * Retrieves the last message with the given subject
+ */
+export type LastForMsgRequest = { "last_by_subj": string };
+
+/**
+ * Stream sequence number of the message to retrieve
+ */
+export type SeqMsgRequest = { seq: number };
+
+/**
+ * Start time for the message. This is only supported on servers
+ * 2.11.0 and better.
+ */
+export type StartTimeMsgRequest = { start_time: Date | string };
+
 export type DirectMsgRequest =
   | SeqMsgRequest
   | LastForMsgRequest
-  | NextMsgRequest;
+  | NextMsgRequest
+  | StartTimeMsgRequest;
 
-// FIXME: new options on the server
-export type DirectBatchOptions = {
+export type StartSeq = { seq?: number };
+export type StartTime = { start_time?: Date | string };
+export type DirectBatchLimits = {
   batch?: number;
   max_bytes?: number;
-  multi_last: string[];
-  up_to_seq?: number;
-  up_to_time?: Date | string;
 };
+export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
+export type DirectBatchStartTime = StartTime & DirectBatchLimits;
+export type DirectBatchOptions = DirectBatchStartSeq | DirectBatchStartTime;
+
+export type DirectLastFor = {
+  multi_last: string[];
+  up_to_time?: Date | string;
+  up_to_seq?: number;
+} & DirectBatchLimits;
 
 export interface StreamState {
   /**
@@ -789,30 +807,13 @@ export interface Success {
 
 export type SuccessResponse = ApiResponse & Success;
 
-export interface LastForMsgRequest {
-  /**
-   * Retrieves the last message for the given subject
-   */
-  "last_by_subj": string;
-}
-
-export interface SeqMsgRequest {
-  /**
-   * Stream sequence number of the message to retrieve
-   */
-  seq: number;
-}
-
-// FIXME: remove number as it is deprecated
-export type MsgRequest = SeqMsgRequest | LastForMsgRequest | number;
-
-export interface MsgDeleteRequest extends SeqMsgRequest {
+export type MsgDeleteRequest = SeqMsgRequest & {
   /**
    * Default will securely remove a message and rewrite the data with random data,
    * set this to true to only remove the message
    */
   "no_erase"?: boolean;
-}
+};
 
 export interface AccountLimits {
   /**
