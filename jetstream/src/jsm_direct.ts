@@ -32,6 +32,7 @@ import type {
 import {
   createInbox,
   Empty,
+  Feature,
   QueuedIteratorImpl,
   TD,
 } from "@nats-io/nats-core/internal";
@@ -55,6 +56,14 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     query: DirectMsgRequest,
   ): Promise<StoredMsg | null> {
     validateStreamName(stream);
+
+    if ("start_time" in query) {
+      const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
+      if (!ok) {
+        throw new Error(`start_time direct option require server ${min}`);
+      }
+    }
+
     // if doing a last_by_subj request, we append the subject
     // this allows last_by_subj to be subject to permissions (KV)
     let qq: DirectMsgRequest | null = query;
@@ -107,6 +116,10 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     stream: string,
     opts: DirectBatchOptions | DirectLastFor,
   ): Promise<QueuedIterator<StoredMsg>> {
+    const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
+    if (!ok) {
+      throw new Error(`batch direct require server ${min}`);
+    }
     validateStreamName(stream);
 
     const iter = new QueuedIteratorImpl<StoredMsg>();

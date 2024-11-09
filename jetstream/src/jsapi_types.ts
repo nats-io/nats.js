@@ -498,7 +498,8 @@ export type LastForMsgRequest = { "last_by_subj": string };
 export type SeqMsgRequest = { seq: number };
 
 /**
- * Start time for the message
+ * Start time for the message. This is only supported on servers
+ * 2.11.0 and better.
  */
 export type StartTimeMsgRequest = { start_time: Date | string };
 

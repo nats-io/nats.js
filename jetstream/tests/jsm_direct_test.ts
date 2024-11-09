@@ -16,6 +16,7 @@
 import {
   assertArrayIncludes,
   assertEquals,
+  assertExists,
   assertRejects,
 } from "jsr:@std/assert";
 
@@ -31,6 +32,7 @@ import {
   cleanup,
   jetstreamServerConf,
   notCompatible,
+  notSupported,
   setup,
 } from "test_helpers";
 
@@ -57,11 +59,13 @@ Deno.test("direct - decoder", async (t) => {
 
   await t.step("string", async () => {
     const m = await jsm.direct.getMessage("A", { seq: 1 });
+    assertExists(m);
     assertEquals(m.string(), "hello world");
   });
 
   await t.step("json", async () => {
     const m = await jsm.direct.getMessage("A", { seq: 2 });
+    assertExists(m);
     assertEquals(m.json(), { hello: "world" });
   });
 
@@ -108,35 +112,45 @@ Deno.test("direct - get", async (t) => {
 
   await t.step("seq", async () => {
     const m = await jsm.direct.getMessage("A", { seq: 1 });
+    assertExists(m);
     assertEquals(m.seq, 1);
     assertEquals(m.subject, "a.1");
   });
 
   await t.step("first with subject", async () => {
     const m = await jsm.direct.getMessage("A", { next_by_subj: "z.a" });
+    assertExists(m);
     assertEquals(m.seq, 3);
   });
 
   await t.step("next with subject from sequence", async () => {
     const m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "z.a" });
+    assertExists(m);
     assertEquals(m.seq, 6);
   });
 
   await t.step("second with subject", async () => {
     const m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "z.a" });
+    assertExists(m);
     assertEquals(m.seq, 6);
     assertEquals(m.subject, "z.a");
   });
 
   await t.step("start_time", async () => {
-    const start_time = (await jsm.direct.getMessage("A", { seq: 3 })).time;
+    if (await notSupported(ns, "2.11.0")) {
+      return Promise.resolve();
+    }
+    const start_time = (await jsm.direct.getMessage("A", { seq: 3 }))?.time;
+    assertExists(start_time);
     const m = await jsm.direct.getMessage("A", { start_time });
-    assertEquals(m.seq, 3);
-    assertEquals(m.subject, "z.a");
+    assertExists(m);
+    assertEquals(m?.seq, 3);
+    assertEquals(m?.subject, "z.a");
   });
 
   await t.step("last_by_subject", async () => {
     const m = await jsm.direct.getMessage("A", { last_by_subj: "z.a" });
+    assertExists(m);
     assertEquals(m.seq, 24);
     assertEquals(m.subject, "z.a");
   });
@@ -194,6 +208,7 @@ Deno.test("direct - batch", async (t) => {
 
   async function getDateFor(seq: number): Promise<Date> {
     const m = await jsm.direct.getMessage("A", { seq: seq });
+    assertExists(m);
     assertEquals(m.seq, seq);
     return m.time;
   }
@@ -317,6 +332,7 @@ Deno.test("direct - last message for", async (t) => {
 
   async function getDateFor(seq: number): Promise<Date> {
     const m = await jsm.direct.getMessage("A", { seq: seq });
+    assertExists(m);
     assertEquals(m.seq, seq);
     return m.time;
   }
