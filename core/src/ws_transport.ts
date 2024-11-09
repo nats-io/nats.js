@@ -15,27 +15,20 @@
 
 import type {
   ConnectionOptions,
-  Deferred,
   NatsConnection,
   Server,
   ServerInfo,
-  Transport,
-  TransportFactory,
-} from "./internal_mod.ts";
-import {
-  checkOptions,
-  DataBuffer,
-  deferred,
-  delay,
-  ErrorCode,
-  extractProtocolMessage,
-  INFO,
-  NatsConnectionImpl,
-  NatsError,
-  render,
-  setTransportFactory,
-} from "./internal_mod.ts";
+} from "./core.ts";
+import type { Deferred } from "./util.ts";
+import { deferred, delay, render } from "./util.ts";
+import type { Transport, TransportFactory } from "./transport.ts";
+import { extractProtocolMessage, setTransportFactory } from "./transport.ts";
+import { checkOptions } from "./options.ts";
+import { DataBuffer } from "./databuffer.ts";
+import { INFO } from "./protocol.ts";
+import { NatsConnectionImpl } from "./nats.ts";
 import { version } from "./version.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
 
 const VERSION = version;
 const LANG = "nats.ws";
@@ -83,13 +76,7 @@ export class WsTransport implements Transport {
     options: WsConnectionOptions,
   ): Promise<void> {
     const connected = false;
-    const connLock = deferred<void>();
-
-    // ws client doesn't support TLS setting
-    if (options.tls) {
-      connLock.reject(new NatsError("tls", ErrorCode.InvalidOption));
-      return connLock;
-    }
+    const ok = deferred<void>();
 
     this.options = options;
     const u = server.src;
@@ -107,14 +94,14 @@ export class WsTransport implements Transport {
     this.socket.binaryType = "arraybuffer";
 
     this.socket.onopen = () => {
-      if (this.isDiscarded()) {
-        return;
+      if (this.done) {
+        this._closed(new Error("aborted"));
       }
       // we don't do anything here...
     };
 
     this.socket.onmessage = (me: MessageEvent) => {
-      if (this.isDiscarded()) {
+      if (this.done) {
         return;
       }
       this.yields.push(new Uint8Array(me.data));
@@ -130,7 +117,7 @@ export class WsTransport implements Transport {
           if (options.debug) {
             console.error("!!!", render(t));
           }
-          connLock.reject(new Error("unexpected response from server"));
+          ok.reject(new Error("unexpected response from server"));
           return;
         }
         try {
@@ -139,9 +126,9 @@ export class WsTransport implements Transport {
           this.peeked = true;
           this.connected = true;
           this.signal.resolve();
-          connLock.resolve();
+          ok.resolve();
         } catch (err) {
-          connLock.reject(err);
+          ok.reject(err);
           return;
         }
       }
@@ -149,48 +136,48 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: CloseEvent is provided in browsers
     this.socket.onclose = (evt: CloseEvent) => {
-      if (this.isDiscarded()) {
-        return;
-      }
       this.socketClosed = true;
       let reason: Error | undefined;
-      if (this.done) return;
-      if (!evt.wasClean) {
+      if (!evt.wasClean && evt.reason !== "") {
         reason = new Error(evt.reason);
       }
       this._closed(reason);
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      this.socket.onerror = null;
+      this.socket.onclose = null;
+      this.closedNotification.resolve(this.closeError);
     };
 
     // @ts-ignore: signature can be any
     this.socket.onerror = (e: ErrorEvent | Event): void => {
-      if (this.isDiscarded()) {
+      if (this.done) {
         return;
       }
       const evt = e as ErrorEvent;
-      const err = new NatsError(
-        evt.message,
-        ErrorCode.Unknown,
-        new Error(evt.error),
-      );
+      const err = new errors.ConnectionError(evt.message);
       if (!connected) {
-        connLock.reject(err);
+        ok.reject(err);
       } else {
         this._closed(err);
       }
     };
-    return connLock;
+    return ok;
   }
 
   disconnect(): void {
     this._closed(undefined, true);
   }
 
-  private async _closed(err?: Error, internal = true): Promise<void> {
-    if (this.isDiscarded()) {
+  private async _closed(err?: Error, _internal = true): Promise<void> {
+    if (this.done) {
+      try {
+        this.socket.close();
+      } catch (_) {
+        // nothing
+      }
       return;
     }
-    if (!this.connected) return;
-    if (this.done) return;
     this.closeError = err;
     if (!err) {
       while (!this.socketClosed && this.socket.bufferedAmount > 0) {
@@ -199,14 +186,12 @@ export class WsTransport implements Transport {
     }
     this.done = true;
     try {
-      // 1002 endpoint error, 1000 is clean
-      this.socket.close(err ? 1002 : 1000, err ? err.message : undefined);
+      this.socket.close();
     } catch (_) {
       // ignore this
     }
-    if (internal) {
-      this.closedNotification.resolve(err);
-    }
+
+    return this.closedNotification as Promise<void>;
   }
 
   get isClosed(): boolean {
@@ -219,7 +204,7 @@ export class WsTransport implements Transport {
 
   async *iterate(): AsyncIterableIterator<Uint8Array> {
     while (true) {
-      if (this.isDiscarded()) {
+      if (this.done) {
         return;
       }
       if (this.yields.length === 0) {
@@ -251,7 +236,7 @@ export class WsTransport implements Transport {
   }
 
   send(frame: Uint8Array): void {
-    if (this.isDiscarded()) {
+    if (this.done) {
       return;
     }
     try {
@@ -278,28 +263,13 @@ export class WsTransport implements Transport {
     return this.closedNotification;
   }
 
-  // check to see if we are discarded, as the connection
-  // may not have been closed, we attempt it here as well.
-  isDiscarded(): boolean {
-    if (this.done) {
-      this.discard();
-      return true;
-    }
-    return false;
-  }
-
   // this is to allow a force discard on a connection
   // if the connection fails during the handshake protocol.
   // Firefox for example, will keep connections going,
   // so eventually if it succeeds, the client will have
   // an additional transport running. With this
   discard() {
-    this.done = true;
-    try {
-      this.socket?.close();
-    } catch (_err) {
-      // ignored
-    }
+    this.socket?.close();
   }
 }
 
@@ -361,6 +331,12 @@ export function wsconnect(
     defaultPort: 443,
     urlParseFn: wsUrlParseFn,
     factory: (): Transport => {
+      if (opts.tls) {
+        throw InvalidArgumentError.format(
+          "tls",
+          "is not configurable on w3c websocket connections",
+        );
+      }
       return new WsTransport();
     },
   } as TransportFactory);

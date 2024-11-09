@@ -16,9 +16,8 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert").strict;
 const {
   connect,
-  ErrorCode,
+  errors,
   createInbox,
-  StringCodec,
 } = require(
   "../lib/mod",
 );
@@ -75,13 +74,13 @@ describe(
     });
 
     it("basics - fail connect", async () => {
-      await connect({ servers: "127.0.0.1:32001" })
-        .then(() => {
-          assert.fail("should have not connected");
-        })
-        .catch((err) => {
-          assert.equal(err.code, ErrorCode.ConnectionRefused);
-        });
+      await assert.rejects(
+        () => {
+          return connect({ servers: "127.0.0.1:32001" });
+        },
+        errors.ConnectionError,
+        "connection refused",
+      );
     });
 
     it("basics - pubsub", async () => {
@@ -101,18 +100,17 @@ describe(
     });
 
     it("basics - request", async () => {
-      const sc = StringCodec();
       const nc = await connect({ servers: u });
       const s = createInbox();
       const sub = nc.subscribe(s);
       const _ = (async () => {
         for await (const m of sub) {
-          m.respond(sc.encode("foo"));
+          m.respond("foo");
         }
       })();
       const msg = await nc.request(s);
       await nc.close();
-      assert.equal(sc.decode(msg.data), "foo");
+      assert.equal(msg.string(), "foo");
     });
 
     it("basics - socket error", async () => {
@@ -139,7 +137,8 @@ describe(
       const closed = nc.closed();
       await ns.stop();
       const err = await closed;
-      assert.equal(err?.code, ErrorCode.ConnectionRefused);
+      assert.ok(err instanceof errors.ConnectionError);
+      assert.equal(err.message, "connection refused");
     });
 
     it("basics - server error", async () => {
@@ -149,7 +148,7 @@ describe(
         nc.protocol.sendCommand("X\r\n");
       });
       const err = await nc.closed();
-      assert.equal(err?.code, ErrorCode.ProtocolError);
+      assert(err instanceof errors.ProtocolError);
       await ns.stop();
     });
 

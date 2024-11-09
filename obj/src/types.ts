@@ -20,7 +20,11 @@ import type {
   StreamInfo,
   StreamInfoRequestOptions,
 } from "@nats-io/jetstream";
+
 import type { MsgHdrs, Nanos, QueuedIterator } from "@nats-io/nats-core";
+
+export type { Placement } from "@nats-io/jetstream";
+export { StorageType } from "@nats-io/jetstream";
 
 export type ObjectStoreLink = {
   /**
@@ -51,6 +55,10 @@ export type ObjectStoreMeta = {
   options?: ObjectStoreMetaOptions;
   metadata?: Record<string, string>;
 };
+
+export interface ObjectWatchInfo extends ObjectInfo {
+  isUpdate: boolean;
+}
 
 export interface ObjectInfo extends ObjectStoreMeta {
   /**
@@ -153,10 +161,7 @@ export type ObjectStoreStatus = {
    */
   compression: boolean;
 };
-/**
- * @deprecated {@link ObjectStoreStatus}
- */
-export type ObjectStoreInfo = ObjectStoreStatus;
+
 export type ObjectStoreOptions = {
   /**
    * A description for the object store
@@ -312,7 +317,7 @@ export interface ObjectStore {
         includeHistory?: boolean;
       }
     >,
-  ): Promise<QueuedIterator<ObjectInfo | null>>;
+  ): Promise<QueuedIterator<ObjectWatchInfo>>;
 
   /**
    * Seals the object store preventing any further modifications.

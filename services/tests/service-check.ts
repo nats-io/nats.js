@@ -15,7 +15,7 @@
 
 import { cli } from "https://deno.land/x/cobra@v0.0.9/mod.ts";
 import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
-import { collect, parseSemVer, StringCodec } from "@nats-io/nats-core/internal";
+import { collect, parseSemVer } from "@nats-io/nats-core/internal";
 
 import type { NatsConnection } from "@nats-io/nats-core/internal";
 
@@ -43,10 +43,10 @@ const root = cli({
     let nc: NatsConnection | null = null;
     try {
       nc = await connect({ servers });
-      await invoke(nc, name);
-      await checkPing(nc, name);
-      await checkInfo(nc, name);
-      await checkStats(nc, name);
+      await invoke(nc!, name);
+      await checkPing(nc!, name);
+      await checkInfo(nc!, name);
+      await checkStats(nc!, name);
     } catch (err) {
       cmd.stderr(err.message);
       console.log(err);
@@ -154,7 +154,7 @@ async function invoke(nc: NatsConnection, name: string): Promise<void> {
 
   // the service should throw/register an error if "error" is specified as payload
   proms = infos.map((v) => {
-    return nc.request(v.endpoints[0].subject, StringCodec().encode("error"));
+    return nc.request(v.endpoints[0].subject, "error");
   });
   responses = await Promise.all(proms);
   responses.forEach((m) => {
@@ -168,14 +168,14 @@ async function invoke(nc: NatsConnection, name: string): Promise<void> {
   proms = infos.map((v, idx) => {
     return nc.request(
       v.endpoints[0].subject,
-      StringCodec().encode(`hello ${idx}`),
+      `hello ${idx}`,
     );
   });
   responses = await Promise.all(proms);
   responses.forEach((m, idx) => {
     const r = `hello ${idx}`;
     assertEquals(
-      StringCodec().decode(m.data),
+      m.string(),
       r,
       `expected service response ${r}`,
     );

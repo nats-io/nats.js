@@ -107,7 +107,7 @@ is working.
 
 ```typescript
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 const servers = [
   {},
@@ -179,7 +179,7 @@ the server.
 
 ```typescript
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 // to create a connection to a nats-server:
 const nc = await connect({ servers: "demo.nats.io:4222" });
@@ -241,8 +241,8 @@ All subscriptions are independent. If two different subscriptions match a
 subject, both will get to process the message:
 
 ```typescript
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
-import type { Subscription } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import type { Subscription } from "jsr:@nats-io/transport-deno@3.0.0-7";
 const nc = await connect({ servers: "demo.nats.io:4222" });
 
 // subscriptions can have wildcard subjects
@@ -418,11 +418,11 @@ independent unit. Note that non-queue subscriptions are also independent of
 subscriptions in a queue group.
 
 ```typescript
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
 import type {
   NatsConnection,
   Subscription,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+} from "jsr:@nats-io/transport-deno@3.0.0-7";
 
 async function createService(
   name: string,
@@ -541,29 +541,33 @@ If you send a request for which there's no interest, the request will be
 immediately rejected:
 
 ```typescript
-import { connect, ErrorCode } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import type { NatsError } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import {
+  NoRespondersError,
+  RequestError,
+  TimeoutError,
+} from "jsr:@nats-io/transport-deno@3.0.0-7";
 
-const nc = await connect(
-  {
-    servers: `demo.nats.io`,
-  },
-);
+const nc = await connect({
+  servers: `demo.nats.io`,
+});
 
 try {
   const m = await nc.request("hello.world");
   console.log(m.data);
 } catch (err) {
-  const nerr = err as NatsError;
-  switch (nerr.code) {
-    case ErrorCode.NoResponders:
-      console.log("no one is listening to 'hello.world'");
-      break;
-    case ErrorCode.Timeout:
+  if (err instanceof RequestError) {
+    if (err.cause instanceof TimeoutError) {
       console.log("someone is listening but didn't respond");
-      break;
-    default:
-      console.log("request failed", err);
+    } else if (err.cause instanceof NoRespondersError) {
+      console.log("no one is listening to 'hello.world'");
+    } else {
+      console.log(
+        `failed due to unknown error: ${(err.cause as Error)?.message}`,
+      );
+    }
+  } else {
+    console.log(`request failed: ${(err as Error).message}`);
   }
 }
 
@@ -591,7 +595,7 @@ Setting the `user`/`pass` or `token` options, simply initializes an
 ```typescript
 // if the connection requires authentication, provide `user` and `pass` or
 // `token` options in the NatsConnectionOptions
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-5";
 
 const nc1 = await connect({
   servers: "127.0.0.1:4222",
@@ -680,8 +684,8 @@ You can specify several options when creating a subscription:
 - `timeout`: how long to wait for the first message
 - `queue`: the [queue group](#queue-groups) name the subscriber belongs to
 - `callback`: a function with the signature
-  `(err: NatsError|null, msg: Msg) => void;` that should be used for handling
-  the message. Subscriptions with callbacks are NOT iterators.
+  `(err: Error|null, msg: Msg) => void;` that should be used for handling the
+  message. Subscriptions with callbacks are NOT iterators.
 
 #### Auto Unsubscribe
 
@@ -701,7 +705,7 @@ const sub = nc.subscribe("hello", { timeout: 1000 });
     // handle the messages
   }
 })().catch((err) => {
-  if (err.code === ErrorCode.Timeout) {
+  if (err instanceof TimeoutError) {
     console.log(`sub timed out!`);
   } else {
     console.log(`sub iterator got an error!`);

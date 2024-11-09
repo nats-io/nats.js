@@ -19,10 +19,9 @@ import {
   DataBuffer,
   deferred,
   Empty,
-  ErrorCode,
+  errors,
   extractProtocolMessage,
   INFO,
-  NatsError,
   render,
 } from "@nats-io/nats-core/internal";
 
@@ -84,6 +83,9 @@ export class DenoTransport implements Transport {
       } else {
         this.conn = await Deno.connect(hp);
       }
+      if (this.done) {
+        this.conn.close();
+      }
       const info = await this.peekInfo();
       checkOptions(info, this.options);
       const { tls_required: tlsRequired, tls_available: tlsAvailable } = info;
@@ -92,11 +94,15 @@ export class DenoTransport implements Transport {
         const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
         await this.startTLS(tlsn);
       }
+      if (this.done) {
+        this.conn.close();
+      }
     } catch (err) {
       this.conn?.close();
-      throw err.name === "ConnectionRefused"
-        ? NatsError.errorForCode(ErrorCode.ConnectionRefused)
-        : err;
+      const _err = err as Error;
+      throw new errors.ConnectionError(_err.message.toLowerCase(), {
+        cause: err,
+      });
     }
   }
 
@@ -190,7 +196,7 @@ export class DenoTransport implements Transport {
           yield frame;
         }
       } catch (err) {
-        reason = err;
+        reason = err as Error;
         break;
       }
     }
@@ -244,7 +250,17 @@ export class DenoTransport implements Transport {
   }
 
   async _closed(err?: Error, internal = true): Promise<void> {
-    if (this.done) return;
+    if (this.done) {
+      // it is possible for close to be called before the connection
+      // ever happens or after the protocol requested a close (async connection/upgrade)
+      // so even if we already cleaned up, attempt to close the connection
+      try {
+        this.conn?.close();
+      } catch (_err) {
+        // ignored
+      }
+      return;
+    }
     this.done = true;
     this.closeError = err;
     if (!err && internal) {

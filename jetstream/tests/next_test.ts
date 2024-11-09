@@ -13,22 +13,22 @@
  * limitations under the License.
  */
 
-import {
-  _setup,
-  cleanup,
-  connect,
-  flakyTest,
-  jetstreamServerConf,
-} from "test_helpers";
+import { cleanup, flakyTest, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import { delay, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { jetstream, jetstreamManager } from "../src/mod.ts";
+import { delayUntilAssetNotFound } from "./util.ts";
+import {
+  ConsumerNotFoundError,
+  JetStreamStatusError,
+  StreamNotFoundError,
+} from "../src/jserrors.ts";
 
 Deno.test("next - basics", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream, subj } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -64,7 +64,7 @@ Deno.test("next - basics", async () => {
 });
 
 Deno.test("next - sub leaks", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -83,7 +83,7 @@ Deno.test("next - sub leaks", async () => {
 });
 
 Deno.test("next - listener leaks", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "messages", subjects: ["hello"] });
 
@@ -120,7 +120,7 @@ Deno.test("next - listener leaks", async () => {
 Deno.test(
   "next - consumer not found",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamServerConf());
+    const { ns, nc } = await setup(jetstreamServerConf());
     const jsm = await jetstreamManager(nc);
     await jsm.streams.add({ name: "A", subjects: ["hello"] });
 
@@ -135,21 +135,19 @@ Deno.test(
     await c.delete();
     await delay(1000);
 
-    const exited = assertRejects(
-      async () => {
-        await c.next({ expires: 1000 });
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
       },
-      Error,
-      "consumer not found",
+      ConsumerNotFoundError,
     );
 
-    await exited;
     await cleanup(ns, nc);
   }),
 );
 
 Deno.test("next - deleted consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["hello"] });
@@ -163,12 +161,11 @@ Deno.test("next - deleted consumer", async () => {
   const js = jetstream(nc);
   const c = await js.consumers.get("A", "a");
 
-  (nc as NatsConnectionImpl).options.debug = true;
   const exited = assertRejects(
     () => {
       return c.next({ expires: 4000 });
     },
-    Error,
+    JetStreamStatusError,
     "consumer deleted",
   );
   await delay(1000);
@@ -179,38 +176,41 @@ Deno.test("next - deleted consumer", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("next - stream not found", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+Deno.test(
+  "next - stream not found",
+  async () => {
+    const { ns, nc } = await setup(jetstreamServerConf());
 
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "A", subjects: ["hello"] });
+    const s = await jsm.streams.get("A");
 
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-  });
+    await jsm.consumers.add("A", {
+      durable_name: "a",
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
+    });
 
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
+    const js = jetstream(nc);
 
-  (nc as NatsConnectionImpl).options.debug = true;
-  await jsm.streams.delete("A");
-  await delay(1000);
+    const c = await js.consumers.get("A", "a");
 
-  await assertRejects(
-    () => {
-      return c.next({ expires: 4000 });
-    },
-    Error,
-    "stream not found",
-  );
+    await jsm.streams.delete("A");
+    await delayUntilAssetNotFound(s);
 
-  await cleanup(ns, nc);
-});
+    await assertRejects(
+      () => {
+        return c.next({ expires: 1000 });
+      },
+      StreamNotFoundError,
+    );
+
+    await cleanup(ns, nc);
+  },
+);
 
 Deno.test("next - consumer bind", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -227,14 +227,19 @@ Deno.test("next - consumer bind", async () => {
   const c = await js.consumers.get("A", "a");
   await c.delete();
 
+  // listen to see if the client does a consumer info
   const cisub = nc.subscribe("$JS.API.CONSUMER.INFO.A.a", {
-    callback: () => {},
+    callback: () => {
+      fail("saw a consumer info");
+    },
   });
 
   const msg = await c.next({
     expires: 1000,
     bind: true,
   });
+
+  await nc.flush();
 
   assertEquals(msg, null);
   assertEquals(cisub.getProcessed(), 0);

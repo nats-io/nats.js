@@ -3,9 +3,9 @@ name: Test Modules
 on:
   push:
     tags:
-      - '*'
+      - "*"
     branches:
-      - '*'
+      - "*"
   pull_request:
     branches: [main]
     types: [opened]
@@ -17,4 +17,3 @@ jobs:
     uses: ./.github/workflows/deno_checks.yml
   test-node:
     uses: ./.github/workflows/node_checks.yml
-

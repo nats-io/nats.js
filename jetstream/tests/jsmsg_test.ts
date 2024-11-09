@@ -12,7 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertRejects,
+  fail,
+} from "jsr:@std/assert";
 import {
   AckPolicy,
   jetstream,
@@ -20,20 +26,20 @@ import {
   StorageType,
 } from "../src/mod.ts";
 
-import { createInbox, Empty, nanos, StringCodec } from "@nats-io/nats-core";
-import type { Msg } from "@nats-io/nats-core";
-import type { MsgImpl } from "@nats-io/nats-core/internal";
+import { createInbox, Empty, nanos } from "@nats-io/nats-core";
+import type { Msg, MsgImpl } from "@nats-io/nats-core/internal";
 
 import type { JsMsgImpl } from "../src/jsmsg.ts";
 import { parseInfo, toJsMsg } from "../src/jsmsg.ts";
 import {
-  _setup,
   assertBetween,
   cleanup,
   connect,
   jetstreamServerConf,
+  setup,
 } from "test_helpers";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
+import { errors } from "../../core/src/mod.ts";
 
 Deno.test("jsmsg - parse", () => {
   // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
@@ -70,7 +76,7 @@ Deno.test("jsmsg - parse rejects subject is not 9 tokens", () => {
       }
     } catch (err) {
       if (ok) {
-        fail(`${s} shouldn't have failed to parse: ${err.message}`);
+        fail(`${s} shouldn't have failed to parse: ${(err as Error).message}`);
       }
     }
   };
@@ -133,7 +139,7 @@ Deno.test("jsmsg - acks", async () => {
   await nc.flush();
 
   assertEquals(replies.length, 4);
-  const sc = StringCodec();
+  const sc = new TextDecoder();
   assertEquals(sc.decode(replies[0].data), "-NAK");
   assertEquals(sc.decode(replies[1].data), "+WPI");
   assertEquals(sc.decode(replies[2].data), "+TERM");
@@ -143,7 +149,7 @@ Deno.test("jsmsg - acks", async () => {
 });
 
 Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -159,19 +165,20 @@ Deno.test("jsmsg - no ack consumer is ackAck 503", async () => {
   const c = await js.consumers.get("A", "a");
   const jm = await c.next();
 
-  await assertRejects(
+  const err = await assertRejects(
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "503",
+    errors.RequestError,
   );
+
+  assert(err.isNoResponders());
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsmsg - explicit consumer ackAck", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -196,7 +203,7 @@ Deno.test("jsmsg - explicit consumer ackAck", async () => {
 });
 
 Deno.test("jsmsg - explicit consumer ackAck timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -217,18 +224,17 @@ Deno.test("jsmsg - explicit consumer ackAck timeout", async () => {
   const start = Date.now();
   await assertRejects(
     (): Promise<boolean> => {
-      return jm!.ackAck({ timeout: 1500 });
+      return jm!.ackAck({ timeout: 1000 });
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
-  assertBetween(Date.now() - start, 1300, 1700);
+  assertBetween(Date.now() - start, 1000, 1500);
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsmsg - ackAck js options timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -252,8 +258,7 @@ Deno.test("jsmsg - ackAck js options timeout", async () => {
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
   assertBetween(Date.now() - start, 1300, 1700);
 
@@ -261,7 +266,7 @@ Deno.test("jsmsg - ackAck js options timeout", async () => {
 });
 
 Deno.test("jsmsg - ackAck legacy timeout", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   await jsm.streams.add({
     name: "A",
@@ -275,7 +280,8 @@ Deno.test("jsmsg - ackAck legacy timeout", async () => {
   await js.publish("a.a");
 
   await jsm.consumers.add("A", { durable_name: "a" });
-  const jm = await js.pull("A", "a");
+  const c = await js.consumers.get("A", "a");
+  const jm = await c.next();
   // change the subject
   ((jm as JsMsgImpl).msg as MsgImpl)._reply = "xxxx";
   nc.subscribe("xxxx");
@@ -284,10 +290,33 @@ Deno.test("jsmsg - ackAck legacy timeout", async () => {
     (): Promise<boolean> => {
       return jm!.ackAck();
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
   assertBetween(Date.now() - start, 1300, 1700);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsmsg - time and timestamp", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a.>"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a.a");
+
+  await jsm.consumers.add("A", { durable_name: "a" });
+  const oc = await js.consumers.get("A");
+  const m = await oc.next();
+
+  const date = m?.time;
+  assertExists(date);
+  assertEquals(date.toISOString(), m?.timestamp!);
 
   await cleanup(ns, nc);
 });

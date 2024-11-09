@@ -22,30 +22,20 @@ import {
   fail,
 } from "jsr:@std/assert";
 
-import { Feature } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import { Feature } from "@nats-io/nats-core/internal";
+import type { NatsConnection } from "@nats-io/nats-core";
 import {
   deferred,
   Empty,
-  ErrorCode,
+  errors,
   headers,
-  JSONCodec,
+  InvalidArgumentError,
   jwtAuthenticator,
   nanos,
   nkeys,
   nuid,
-  StringCodec,
 } from "@nats-io/nats-core";
-import type { NatsConnection, NatsError } from "@nats-io/nats-core";
-import {
-  AckPolicy,
-  AdvisoryKind,
-  DiscardPolicy,
-  jetstream,
-  jetstreamManager,
-  StorageType,
-} from "../src/mod.ts";
-
 import type {
   ConsumerConfig,
   ConsumerInfo,
@@ -55,10 +45,16 @@ import type {
   StreamInfo,
   StreamSource,
 } from "../src/mod.ts";
+import {
+  AckPolicy,
+  AdvisoryKind,
+  DiscardPolicy,
+  jetstream,
+  jetstreamManager,
+  StorageType,
+} from "../src/mod.ts";
 import { initStream } from "./jstest_util.ts";
 import {
-  _setup,
-  assertThrowsAsyncErrorCode,
   cleanup,
   connect,
   flakyTest,
@@ -66,6 +62,7 @@ import {
   jetstreamServerConf,
   NatsServer,
   notCompatible,
+  setup,
 } from "test_helpers";
 import { validateName } from "../src/jsutil.ts";
 import {
@@ -75,23 +72,32 @@ import {
 } from "jsr:@nats-io/jwt@0.0.9-3";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
-import { ConsumerApiAction, StoreCompression } from "../src/jsapi_types.ts";
+import {
+  ConsumerApiAction,
+  PriorityPolicy,
+  StoreCompression,
+} from "../src/jsapi_types.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
+import { stripNatsMetadata } from "./util.ts";
+import { jserrors } from "../src/jserrors.ts";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
 
 Deno.test("jsm - jetstream not enabled", async () => {
   // start a regular server - no js conf
-  const { ns, nc } = await _setup(connect);
-  await assertThrowsAsyncErrorCode(async () => {
-    await jetstreamManager(nc);
-  }, ErrorCode.JetStreamNotEnabled);
+  const { ns, nc } = await setup();
+  await assertRejects(
+    () => {
+      return jetstreamManager(nc);
+    },
+    jserrors.JetStreamNotEnabled,
+  );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - account info", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const ai = await jsm.getAccountInfo();
   assert(ai.limits.max_memory === -1 || ai.limits.max_memory > 0);
@@ -111,10 +117,13 @@ Deno.test("jsm - account not enabled", async () => {
       },
     },
   };
-  const { ns, nc } = await _setup(connect, jetstreamServerConf(conf));
-  await assertThrowsAsyncErrorCode(async () => {
-    await jetstreamManager(nc);
-  }, ErrorCode.JetStreamNotEnabled);
+  const { ns, nc } = await setup(jetstreamServerConf(conf));
+  await assertRejects(
+    () => {
+      return jetstreamManager(nc);
+    },
+    jserrors.JetStreamNotEnabled,
+  );
 
   const a = await connect(
     { port: ns.port, user: "a", pass: "a" },
@@ -125,7 +134,7 @@ Deno.test("jsm - account not enabled", async () => {
 });
 
 Deno.test("jsm - empty stream config fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -139,7 +148,7 @@ Deno.test("jsm - empty stream config fails", async () => {
 });
 
 Deno.test("jsm - empty stream config update fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   let ci = await jsm.streams.add({ name: name, subjects: [`${name}.>`] });
@@ -160,7 +169,7 @@ Deno.test("jsm - empty stream config update fails", async () => {
 });
 
 Deno.test("jsm - update stream name is internally added", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   const ci = await jsm.streams.add({
@@ -175,7 +184,7 @@ Deno.test("jsm - update stream name is internally added", async () => {
 });
 
 Deno.test("jsm - delete empty stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -189,7 +198,7 @@ Deno.test("jsm - delete empty stream name fails", async () => {
 });
 
 Deno.test("jsm - info empty stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -203,22 +212,20 @@ Deno.test("jsm - info empty stream name fails", async () => {
 });
 
 Deno.test("jsm - info msg not found stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   await assertRejects(
     async () => {
       await jsm.streams.info(name);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - delete msg empty stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -232,22 +239,20 @@ Deno.test("jsm - delete msg empty stream name fails", async () => {
 });
 
 Deno.test("jsm - delete msg not found stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   await assertRejects(
     async () => {
       await jsm.streams.deleteMessage(name, 1);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - no stream lister is empty", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const streams = await jsm.streams.list().next();
   assertEquals(streams.length, 0);
@@ -255,7 +260,7 @@ Deno.test("jsm - no stream lister is empty", async () => {
 });
 
 Deno.test("jsm - stream names is empty", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const names = await jsm.streams.names().next();
   assertEquals(names.length, 0);
@@ -263,7 +268,7 @@ Deno.test("jsm - stream names is empty", async () => {
 });
 
 Deno.test("jsm - lister after empty, empty", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const lister = jsm.streams.list();
   let streams = await lister.next();
@@ -274,13 +279,17 @@ Deno.test("jsm - lister after empty, empty", async () => {
 });
 
 Deno.test("jsm - add stream", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   let si = await jsm.streams.add({ name });
+
   assertEquals(si.config.name, name);
 
   const fn = (i: StreamInfo): boolean => {
+    stripNatsMetadata(si.config.metadata);
+    stripNatsMetadata(i.config.metadata);
+
     assertEquals(i.config, si.config);
     assertEquals(i.state, si.state);
     assertEquals(i.created, si.created);
@@ -301,22 +310,20 @@ Deno.test("jsm - add stream", async () => {
 });
 
 Deno.test("jsm - purge not found stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const name = nuid.next();
   await assertRejects(
     async () => {
       await jsm.streams.purge(name);
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - purge empty stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -330,7 +337,7 @@ Deno.test("jsm - purge empty stream name fails", async () => {
 });
 
 Deno.test("jsm - stream purge", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
 
@@ -347,7 +354,7 @@ Deno.test("jsm - stream purge", async () => {
 });
 
 Deno.test("jsm - purge by sequence", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -376,7 +383,7 @@ Deno.test("jsm - purge by sequence", async () => {
 });
 
 Deno.test("jsm - purge by filtered sequence", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -406,7 +413,7 @@ Deno.test("jsm - purge by filtered sequence", async () => {
 });
 
 Deno.test("jsm - purge by subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -436,7 +443,7 @@ Deno.test("jsm - purge by subject", async () => {
 });
 
 Deno.test("jsm - purge by subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -466,7 +473,7 @@ Deno.test("jsm - purge by subject", async () => {
 });
 
 Deno.test("jsm - purge keep", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -497,7 +504,7 @@ Deno.test("jsm - purge keep", async () => {
 });
 
 Deno.test("jsm - purge filtered keep", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add(
@@ -532,20 +539,20 @@ Deno.test("jsm - purge filtered keep", async () => {
 });
 
 Deno.test("jsm - purge seq and keep fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     () => {
       return jsm.streams.purge("a", { keep: 10, seq: 5 });
     },
     Error,
-    "can specify one of keep or seq",
+    "'keep','seq' are mutually exclusive",
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - stream delete", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
 
@@ -555,14 +562,13 @@ Deno.test("jsm - stream delete", async () => {
     async () => {
       await jsm.streams.info(stream);
     },
-    Error,
-    "stream not found",
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - stream delete message", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
 
@@ -583,7 +589,7 @@ Deno.test("jsm - stream delete message", async () => {
 });
 
 Deno.test("jsm - stream delete info", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const { stream, subj } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
@@ -602,7 +608,7 @@ Deno.test("jsm - stream delete info", async () => {
 });
 
 Deno.test("jsm - consumer info on empty stream name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -616,7 +622,7 @@ Deno.test("jsm - consumer info on empty stream name fails", async () => {
 });
 
 Deno.test("jsm - consumer info on empty consumer name fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
@@ -630,36 +636,32 @@ Deno.test("jsm - consumer info on empty consumer name fails", async () => {
 });
 
 Deno.test("jsm - consumer info on not found stream fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
       await jsm.consumers.info("foo", "dur");
     },
-    Error,
-    "stream not found",
-    undefined,
+    jserrors.StreamNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - consumer info on not found consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await assertRejects(
     async () => {
       await jsm.consumers.info(stream, "dur");
     },
-    Error,
-    "consumer not found",
-    undefined,
+    jserrors.ConsumerNotFoundError,
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - consumer info", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(
@@ -674,7 +676,7 @@ Deno.test("jsm - consumer info", async () => {
 });
 
 Deno.test("jsm - no consumer lister with empty stream fails", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   assertThrows(
     () => {
@@ -687,7 +689,7 @@ Deno.test("jsm - no consumer lister with empty stream fails", async () => {
 });
 
 Deno.test("jsm - no consumer lister with no consumers empty", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   const consumers = await jsm.consumers.list(stream).next();
@@ -696,7 +698,7 @@ Deno.test("jsm - no consumer lister with no consumers empty", async () => {
 });
 
 Deno.test("jsm - lister", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(
@@ -715,7 +717,7 @@ Deno.test("jsm - lister", async () => {
 });
 
 Deno.test("jsm - update stream", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
 
@@ -729,67 +731,68 @@ Deno.test("jsm - update stream", async () => {
 });
 
 Deno.test("jsm - get message", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
 
-  const jc = JSONCodec();
   const h = headers();
   h.set("xxx", "a");
 
   const js = jetstream(nc);
-  await js.publish(subj, jc.encode(1), { headers: h });
-  await js.publish(subj, jc.encode(2));
+  await js.publish(subj, JSON.stringify(1), { headers: h });
+  await js.publish(subj, JSON.stringify(2));
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
-  assertEquals(jc.decode(sm.data), 1);
+  assertEquals(sm.json<number>(), 1);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
-  assertEquals(jc.decode(sm.data), 2);
+  assertEquals(sm.json<number>(), 2);
 
-  const err = await assertRejects(
-    async () => {
-      await jsm.streams.getMessage(stream, { seq: 3 });
-    },
-  ) as Error;
-  if (
-    err.message !== "stream store eof" && err.message !== "no message found"
-  ) {
-    fail(`unexpected error message ${err.message}`);
-  }
+  assertEquals(await jsm.streams.getMessage(stream, { seq: 3 }), null);
 
   await cleanup(ns, nc);
 });
 
+Deno.test("jsm - get message (not found)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.streams.getMessage("A", { last_by_subj: "a" });
+  await cleanup(ns, nc);
+});
+
 Deno.test("jsm - get message payload", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream, subj } = await initStream(nc);
   const js = jetstream(nc);
-  const sc = StringCodec();
   await js.publish(subj, Empty, { msgID: "empty" });
-  await js.publish(subj, sc.encode(""), { msgID: "empty2" });
+  await js.publish(subj, "", { msgID: "empty2" });
 
   const jsm = await jetstreamManager(nc);
   let sm = await jsm.streams.getMessage(stream, { seq: 1 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 1);
   assertEquals(sm.data, Empty);
 
   sm = await jsm.streams.getMessage(stream, { seq: 2 });
+  assertExists(sm);
   assertEquals(sm.subject, subj);
   assertEquals(sm.seq, 2);
   assertEquals(sm.data, Empty);
-  assertEquals(sc.decode(sm.data), "");
+  assertEquals(sm.string(), "");
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - advisories", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
   const iter = jsm.advisories();
   const streamAction = deferred();
@@ -870,7 +873,7 @@ Deno.test("jsm - minValidation", () => {
 });
 
 Deno.test("jsm - cross account streams", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamExportServerConf(), {
+  const { ns, nc } = await setup(jetstreamExportServerConf(), {
     user: "a",
     pass: "s3cret",
   });
@@ -912,7 +915,7 @@ Deno.test("jsm - cross account streams", async () => {
 
   // get message
   const sm = await jsm.streams.getMessage(stream, { seq: 1 });
-  assertEquals(sm.seq, 1);
+  assertEquals(sm?.seq, 1);
 
   // delete message
   let ok = await jsm.streams.deleteMessage(stream, 1);
@@ -950,7 +953,7 @@ Deno.test("jsm - cross account streams", async () => {
 Deno.test(
   "jsm - cross account consumers",
   flakyTest(async () => {
-    const { ns, nc } = await _setup(connect, jetstreamExportServerConf(), {
+    const { ns, nc } = await setup(jetstreamExportServerConf(), {
       user: "a",
       pass: "s3cret",
     });
@@ -1014,32 +1017,26 @@ Deno.test(
 );
 
 Deno.test("jsm - jetstream error info", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
-  try {
-    await jsm.streams.add({
-      name: "a",
-      num_replicas: 3,
-      subjects: ["a.>"],
-    });
-    fail("should have failed");
-  } catch (err) {
-    const ne = err as NatsError;
-    assert(ne.isJetStreamError());
-    const jerr = ne.jsError();
-    assert(jerr);
-    assertEquals(jerr.code, 500);
-    assertEquals(jerr.err_code, 10074);
-    assertEquals(
-      jerr.description,
-      "replicas > 1 not supported in non-clustered mode",
-    );
-  }
+  await assertRejects(
+    () => {
+      return jsm.streams.add(
+        {
+          name: "a",
+          num_replicas: 3,
+          subjects: ["a.>"],
+        },
+      );
+    },
+    jserrors.JetStreamApiError,
+    "replicas > 1 not supported in non-clustered mode",
+  );
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - update consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.4")) {
     return;
   }
@@ -1074,7 +1071,7 @@ Deno.test("jsm - update consumer", async () => {
 });
 
 Deno.test("jsm - stream info subjects", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.7.2")) {
     return;
   }
@@ -1165,7 +1162,7 @@ Deno.test("jsm - account limits", async () => {
 });
 
 Deno.test("jsm - stream update preserves other value", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({
@@ -1183,7 +1180,7 @@ Deno.test("jsm - stream update preserves other value", async () => {
 });
 
 Deno.test("jsm - direct getMessage", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
@@ -1196,35 +1193,38 @@ Deno.test("jsm - direct getMessage", async () => {
     allow_direct: true,
   });
 
-  const sc = StringCodec();
-
   const js = jetstream(nc);
-  await js.publish("foo", sc.encode("a"), { expect: { lastSequence: 0 } });
-  await js.publish("foo", sc.encode("b"), { expect: { lastSequence: 1 } });
-  await js.publish("foo", sc.encode("c"), { expect: { lastSequence: 2 } });
-  await js.publish("bar", sc.encode("d"), { expect: { lastSequence: 3 } });
-  await js.publish("foo", sc.encode("e"), { expect: { lastSequence: 4 } });
+  await js.publish("foo", "a", { expect: { lastSequence: 0 } });
+  await js.publish("foo", "b", { expect: { lastSequence: 1 } });
+  await js.publish("foo", "c", { expect: { lastSequence: 2 } });
+  await js.publish("bar", "d", { expect: { lastSequence: 3 } });
+  await js.publish("foo", "e", { expect: { lastSequence: 4 } });
 
   let m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "bar" });
+  assertExists(m);
   assertEquals(m.seq, 4);
 
   m = await jsm.direct.getMessage("A", { last_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 5);
 
   m = await jsm.direct.getMessage("A", { seq: 0, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 1);
 
   m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 5);
 
   m = await jsm.direct.getMessage("A", { seq: 2, next_by_subj: "foo" });
+  assertExists(m);
   assertEquals(m.seq, 2);
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - consumer name", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
@@ -1342,8 +1342,8 @@ async function testConsumerNameAPI(nc: NatsConnection) {
         name: "a",
       }, "$JS.API.CONSUMER.CREATE.A");
     },
-    Error,
-    "consumer 'name' requires server",
+    errors.InvalidArgumentError,
+    "'name' requires server",
   );
 
   const ci = await addC({
@@ -1360,7 +1360,7 @@ async function testConsumerNameAPI(nc: NatsConnection) {
 }
 
 Deno.test("jsm - consumer name apis are not used on old servers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.7.0")) {
     return;
   }
@@ -1374,7 +1374,7 @@ Deno.test("jsm - consumer name apis are not used on old servers", async () => {
 });
 
 Deno.test("jsm - consumer name apis are not used when disabled", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
   }
@@ -1387,7 +1387,7 @@ Deno.test("jsm - consumer name apis are not used when disabled", async () => {
 });
 
 Deno.test("jsm - mirror_direct options", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
@@ -1418,7 +1418,7 @@ Deno.test("jsm - mirror_direct options", async () => {
 });
 
 Deno.test("jsm - consumers with name and durable_name", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
@@ -1451,7 +1451,7 @@ Deno.test("jsm - consumers with name and durable_name", async () => {
 });
 
 Deno.test("jsm - consumer name is validated", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.0")) {
     return;
@@ -1501,7 +1501,7 @@ Deno.test("jsm - consumer name is validated", async () => {
 });
 
 Deno.test("jsm - discard_new_per_subject option", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   if (await notCompatible(ns, nc, "2.9.2")) {
     return;
@@ -1547,8 +1547,7 @@ Deno.test("jsm - discard_new_per_subject option", async () => {
 });
 
 Deno.test("jsm - paginated subjects", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_memory_store: -1,
@@ -1584,8 +1583,7 @@ Deno.test("jsm - paginated subjects", async () => {
 });
 
 Deno.test("jsm - paged stream list", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_memory_store: -1,
@@ -1622,8 +1620,7 @@ Deno.test("jsm - paged stream list", async () => {
 });
 
 Deno.test("jsm - paged consumer infos", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_memory_store: -1,
@@ -1664,8 +1661,7 @@ Deno.test("jsm - paged consumer infos", async () => {
 });
 
 Deno.test("jsm - list filter", async () => {
-  const { ns, nc } = await _setup(
-    connect,
+  const { ns, nc } = await setup(
     jetstreamServerConf({
       jetstream: {
         max_memory_store: -1,
@@ -1710,7 +1706,7 @@ Deno.test("jsm - list filter", async () => {
 });
 
 Deno.test("jsm - stream names list filtering subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
 
   const jsm = await jetstreamManager(nc);
 
@@ -1789,7 +1785,7 @@ Deno.test("jsm - remap domain", () => {
 });
 
 Deno.test("jsm - filter_subjects", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1812,7 +1808,7 @@ Deno.test("jsm - filter_subjects", async () => {
 });
 
 Deno.test("jsm - filter_subjects rejects filter_subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1839,7 +1835,7 @@ Deno.test("jsm - filter_subjects rejects filter_subject", async () => {
 });
 
 Deno.test("jsm - update filter_subject", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1863,7 +1859,7 @@ Deno.test("jsm - update filter_subject", async () => {
 });
 
 Deno.test("jsm - update filter_subjects", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1887,7 +1883,7 @@ Deno.test("jsm - update filter_subjects", async () => {
 });
 
 Deno.test("jsm - update from filter_subject to filter_subjects", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1943,20 +1939,22 @@ Deno.test("jsm - update from filter_subject to filter_subjects", async () => {
 });
 
 Deno.test("jsm - direct msg decode", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const name = nuid.next();
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   const js = jetstream(nc);
   await jsm.streams.add({ name, subjects: [`a.>`], allow_direct: true });
 
-  await js.publish("a.a", StringCodec().encode("hello"));
-  await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
+  await js.publish("a.a", "hello");
+  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
-  assertEquals(
-    (await jsm.direct.getMessage(name, { seq: 1 })).string(),
-    "hello",
-  );
-  assertEquals((await jsm.direct.getMessage(name, { seq: 2 })).json(), {
+  let m = await jsm.direct.getMessage(name, { seq: 1 });
+  assertExists(m);
+  assertEquals(m.string(), "hello");
+
+  m = await jsm.direct.getMessage(name, { seq: 2 });
+  assertExists(m);
+  assertEquals(m.json(), {
     one: "two",
     a: [1, 2, 3],
   });
@@ -1965,20 +1963,20 @@ Deno.test("jsm - direct msg decode", async () => {
 });
 
 Deno.test("jsm - stored msg decode", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const name = nuid.next();
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
   const js = jetstream(nc);
   await jsm.streams.add({ name, subjects: [`a.>`], allow_direct: false });
 
-  await js.publish("a.a", StringCodec().encode("hello"));
-  await js.publish("a.a", JSONCodec().encode({ one: "two", a: [1, 2, 3] }));
+  await js.publish("a.a", "hello");
+  await js.publish("a.a", JSON.stringify({ one: "two", a: [1, 2, 3] }));
 
   assertEquals(
-    (await jsm.streams.getMessage(name, { seq: 1 })).string(),
+    (await jsm.streams.getMessage(name, { seq: 1 }))?.string(),
     "hello",
   );
-  assertEquals((await jsm.streams.getMessage(name, { seq: 2 })).json(), {
+  assertEquals((await jsm.streams.getMessage(name, { seq: 2 }))?.json(), {
     one: "two",
     a: [1, 2, 3],
   });
@@ -1987,7 +1985,7 @@ Deno.test("jsm - stored msg decode", async () => {
 });
 
 Deno.test("jsm - stream/consumer metadata", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -1999,12 +1997,18 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       subjects: [name],
       metadata: md,
     });
-    assertEquals(si.config.metadata, md);
+    if (md) {
+      stripNatsMetadata(si.config.metadata);
+      stripNatsMetadata(md);
+      assertEquals(si.config.metadata, md || {});
+    }
   }
   async function updateStream(name: string, md?: Record<string, string>) {
     const si = await jsm.streams.update(name, {
       metadata: md,
     });
+    stripNatsMetadata(si.config.metadata);
+    stripNatsMetadata(md);
     assertEquals(si.config.metadata, md);
   }
   async function addConsumer(
@@ -2016,7 +2020,10 @@ Deno.test("jsm - stream/consumer metadata", async () => {
       durable_name: name,
       metadata: md,
     });
-    assertEquals(ci.config.metadata, md);
+    stripNatsMetadata(ci.config.metadata);
+    if (md) {
+      assertEquals(ci.config.metadata, md);
+    }
   }
 
   async function updateConsumer(
@@ -2025,6 +2032,8 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     md?: Record<string, string>,
   ) {
     const ci = await jsm.consumers.update(stream, name, { metadata: md });
+    stripNatsMetadata(ci.config.metadata);
+    stripNatsMetadata(md);
     assertEquals(ci.config.metadata, md);
   }
   // we should be able to add/update metadata
@@ -2061,8 +2070,8 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     async () => {
       await addConsumer(stream, consumer, { hello: "world" });
     },
-    Error,
-    "consumer 'metadata' requires server 2.10.0",
+    InvalidArgumentError,
+    "'metadata' requires server",
   );
   // add w/o metadata
   await addConsumer(stream, consumer);
@@ -2071,15 +2080,15 @@ Deno.test("jsm - stream/consumer metadata", async () => {
     async () => {
       await updateConsumer(stream, consumer, { hello: "world" });
     },
-    Error,
-    "consumer 'metadata' requires server 2.10.0",
+    InvalidArgumentError,
+    "'metadata' requires server",
   );
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - consumer api action", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -2119,11 +2128,10 @@ Deno.test("jsm - consumer api action", async () => {
 });
 
 Deno.test("jsm - validate stream name in operations", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   const names = ["", ".", "*", ">", "\r", "\n", "\t", " "];
-  type fn = (name: string) => Promise<unknown>;
   const tests = [
     {
       name: "add stream",
@@ -2185,7 +2193,7 @@ Deno.test("jsm - validate stream name in operations", async () => {
         const m = v === ""
           ? "stream name required"
           : `invalid stream name - stream name cannot contain '${v}'`;
-        assertEquals(err.message, m, `${test.name} - ${m}`);
+        assertEquals((err as Error).message, m, `${test.name} - ${m}`);
       }
     }
   }
@@ -2193,7 +2201,7 @@ Deno.test("jsm - validate stream name in operations", async () => {
 });
 
 Deno.test("jsm - validate consumer name", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   const stream = nuid.next();
   await jsm.streams.add({ name: stream, subjects: [stream] });
@@ -2216,7 +2224,7 @@ Deno.test("jsm - validate consumer name", async () => {
       if (v === "\n") v = "\\n";
       if (v === "\t") v = "\\t";
       const m = `invalid durable name - durable name cannot contain '${v}'`;
-      assertEquals(err.message, m);
+      assertEquals((err as Error).message, m);
     }
   }
 
@@ -2233,7 +2241,7 @@ Deno.test("jsm - validate consumer name", async () => {
       if (v === "\n") v = "\\n";
       if (v === "\t") v = "\\t";
       const m = `consumer 'name' cannot contain '${v}'`;
-      assertEquals(err.message, m);
+      assertEquals((err as Error).message, m);
     }
   }
 
@@ -2241,12 +2249,10 @@ Deno.test("jsm - validate consumer name", async () => {
 });
 
 Deno.test("jsm - validate consumer name in operations", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
 
   const names = ["", ".", "*", ">", "\r", "\n", "\t", " "];
-  type fn = (name: string) => Promise<unknown>;
-  type t = { name: string; fn: fn };
   const tests = [
     {
       name: "consumer info",
@@ -2284,7 +2290,7 @@ Deno.test("jsm - validate consumer name in operations", async () => {
         const m = v === ""
           ? "durable name required"
           : `invalid durable name - durable name cannot contain '${v}'`;
-        assertEquals(err.message, m, `${test.name} - ${m}`);
+        assertEquals((err as Error).message, m, `${test.name} - ${m}`);
       }
     }
   }
@@ -2292,7 +2298,7 @@ Deno.test("jsm - validate consumer name in operations", async () => {
 });
 
 Deno.test("jsm - source transforms", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -2347,7 +2353,7 @@ Deno.test("jsm - source transforms", async () => {
 });
 
 Deno.test("jsm - source transforms rejected on old servers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const nci = nc as NatsConnectionImpl;
   nci.features.update("2.8.0");
   nci.info!.version = "2.8.0";
@@ -2422,7 +2428,7 @@ Deno.test("jsm - source transforms rejected on old servers", async () => {
 });
 
 Deno.test("jsm - stream compression not supported", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const nci = nc as NatsConnectionImpl;
   nci.features.update("2.9.0");
   nci.info!.version = "2.9.0";
@@ -2446,7 +2452,7 @@ Deno.test("jsm - stream compression not supported", async () => {
 });
 
 Deno.test("jsm - stream compression", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -2467,7 +2473,7 @@ Deno.test("jsm - stream compression", async () => {
 });
 
 Deno.test("jsm - stream consumer limits", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -2502,7 +2508,7 @@ Deno.test("jsm - stream consumer limits", async () => {
 });
 
 Deno.test("jsm - stream consumer limits override", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -2543,7 +2549,7 @@ Deno.test("jsm - stream consumer limits override", async () => {
 });
 
 Deno.test("jsm - stream consumer limits rejected on old servers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const nci = nc as NatsConnectionImpl;
   nci.features.update("2.9.0");
   nci.info!.version = "2.9.0";
@@ -2568,7 +2574,7 @@ Deno.test("jsm - stream consumer limits rejected on old servers", async () => {
 });
 
 Deno.test("jsm - api check not ok", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   let count = 0;
   nc.subscribe("$JS.API.INFO", {
     callback: () => {
@@ -2581,13 +2587,14 @@ Deno.test("jsm - api check not ok", async () => {
   await jetstream(nc, { checkAPI: false }).jetstreamManager();
   await jetstream(nc, { checkAPI: false }).jetstreamManager(true);
   await jetstream(nc).jetstreamManager();
+  await nc.flush();
   assertEquals(count, 2);
 
   await cleanup(ns, nc);
 });
 
 Deno.test("jsm - api check ok", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   let count = 0;
 
   nc.subscribe("$JS.API.INFO", {
@@ -2606,7 +2613,7 @@ Deno.test("jsm - api check ok", async () => {
 });
 
 Deno.test("jsm - consumer create paused", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
   }
@@ -2629,7 +2636,7 @@ Deno.test("jsm - consumer create paused", async () => {
 });
 
 Deno.test("jsm - pause/unpause", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
   }
@@ -2660,7 +2667,7 @@ Deno.test("jsm - pause/unpause", async () => {
 });
 
 Deno.test("jsm - batch direct get multi_last", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
   }
@@ -2694,7 +2701,7 @@ Deno.test("jsm - batch direct get multi_last", async () => {
 });
 
 Deno.test("jsm - batch direct get batch", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
   }
@@ -2724,6 +2731,118 @@ Deno.test("jsm - batch direct get batch", async () => {
     buf.push(m);
   }
   assertEquals(buf.length, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - storage", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  let si = await jsm.streams.add({
+    name: "Mem",
+    subjects: ["a"],
+    storage: StorageType.Memory,
+  });
+  assertEquals(si.config.storage, StorageType.Memory);
+
+  let ci = await jsm.consumers.add("Mem", { name: "mc", mem_storage: true });
+  assertEquals(ci.config.mem_storage, true);
+
+  si = await jsm.streams.add({
+    name: "File",
+    subjects: ["b"],
+    storage: StorageType.File,
+  });
+  assertEquals(si.config.storage, StorageType.File);
+
+  ci = await jsm.consumers.add("File", { name: "fc", mem_storage: false });
+  assertEquals(ci.config.mem_storage, undefined);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - pull consumer priority groups", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  await t.step("priority group is not an array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: "hello",
+        });
+      },
+      Error,
+      "'priority_groups' must be an array",
+    );
+  });
+
+  await t.step("priority_group empty array", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          //@ts-ignore: testing
+          priority_groups: [],
+        });
+      },
+      Error,
+      "'priority_groups' must have at least one group",
+    );
+  });
+
+  await t.step("missing priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("bad priority_policy ", async () => {
+    await assertRejects(
+      () => {
+        return jsm.consumers.add("A", {
+          name: "a",
+          ack_policy: AckPolicy.None,
+          priority_groups: ["hello"],
+          //@ts-ignore: test
+          priority_policy: "hello",
+        });
+      },
+      Error,
+      "'priority_policy' must be 'none' or 'overflow'",
+    );
+  });
+
+  await t.step("check config", async () => {
+    const ci = await jsm.consumers.add("A", {
+      name: "a",
+      ack_policy: AckPolicy.None,
+      priority_groups: ["hello"],
+      priority_policy: PriorityPolicy.Overflow,
+    });
+    assertEquals(ci.config.priority_policy, PriorityPolicy.Overflow);
+    assertEquals(ci.config.priority_groups, ["hello"]);
+  });
 
   await cleanup(ns, nc);
 });

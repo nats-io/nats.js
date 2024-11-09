@@ -26,6 +26,7 @@ type PackageJSON = {
   name: string;
   version: string;
   dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
 };
 type DenoJSON = {
   name: string;
@@ -207,6 +208,15 @@ class NodeModule extends BaseModule {
     return null;
   }
 
+  hasDev(module: string): SemVer | null {
+    if (this.data.devDependencies) {
+      return NodeModule.parseVersion(
+        this.data.devDependencies[module],
+      );
+    }
+    return null;
+  }
+
   static parseVersion(v: string): SemVer | null {
     if (v) {
       return v.startsWith("^") || v.startsWith("~")
@@ -220,12 +230,26 @@ class NodeModule extends BaseModule {
     if (this.data.dependencies) {
       const have = this.has(module);
       if (have && version.compare(have) !== 0) {
-        this.data.dependencies[module] = `~${version.string()}`;
+        let prefix = this.data.dependencies[module].charAt(0);
+        if (prefix !== "^" && prefix !== "~") {
+          prefix = "";
+        }
+        this.data.dependencies[module] = `${prefix}${version.string()}`;
         this.changed = true;
-        return true;
       }
     }
-    return false;
+    if (this.data.devDependencies) {
+      const have = this.hasDev(module);
+      if (have && version.compare(have) !== 0) {
+        let prefix = this.data.devDependencies[module].charAt(0);
+        if (prefix !== "^" && prefix !== "~") {
+          prefix = "";
+        }
+        this.data.devDependencies[module] = `${prefix}${version.string()}`;
+        this.changed = true;
+      }
+    }
+    return this.changed;
   }
 
   store(dir: string): Promise<void> {
@@ -279,15 +303,15 @@ for (const dir of dirs) {
     }
     const nmm = await NodeModule.load(d);
     if (nmm) {
-      if (nmm.has(moduleName)) {
+      if (nmm.has(moduleName) || nmm.hasDev(moduleName)) {
         nmm.update(moduleName, v);
         await nmm.store(d);
       }
-      const onuid = nmm.has("@nats-io/nuid");
+      const onuid = nmm.has("@nats-io/nuid") || nmm.hasDev("@nats-io/nuid");
       if (onuid) {
         nuid = nuid.max(onuid);
       }
-      const onkeys = nmm.has("@nats-io/nkeys");
+      const onkeys = nmm.has("@nats-io/nkeys") || nmm.hasDev("@nats-io/nkeys");
       if (onkeys) {
         nkeys = nkeys.max(onkeys);
       }

@@ -8,6 +8,7 @@ export type {
   KvOptions,
   KvPutOptions,
   KvStatus,
+  KvWatchEntry,
   KvWatchOptions,
   RoKV,
 } from "./types.ts";

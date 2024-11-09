@@ -13,49 +13,9 @@
  * limitations under the License.
  */
 
-import { assert, assertThrows, fail } from "jsr:@std/assert";
-import type { NatsError } from "../core/src/mod.ts";
-import { isNatsError } from "../core/src/internal_mod.ts";
-
-export function assertErrorCode(err?: Error, ...codes: string[]) {
-  if (!err) {
-    fail(`expected an error to be thrown`);
-  }
-  if (isNatsError(err)) {
-    const { code } = err as NatsError;
-    assert(code);
-    const ok = codes.find((c) => {
-      return code.indexOf(c) !== -1;
-    });
-    if (ok === "") {
-      fail(`got ${code} - expected any of [${codes.join(", ")}]`);
-    }
-  } else {
-    fail(`didn't get a nats error - got: ${err.message}`);
-  }
-}
-
-export function assertThrowsErrorCode<T = void>(
-  fn: () => T,
-  ...codes: string[]
-) {
-  const err = assertThrows(fn);
-  assertErrorCode(err as Error, ...codes);
-}
-
-export async function assertThrowsAsyncErrorCode<T = void>(
-  fn: () => Promise<T>,
-  ...codes: string[]
-) {
-  try {
-    await fn();
-    fail("expected to throw");
-  } catch (err) {
-    assertErrorCode(err, ...codes);
-  }
-}
+import { assertGreaterOrEqual, assertLessOrEqual } from "jsr:@std/assert";
 
 export function assertBetween(n: number, low: number, high: number) {
-  console.assert(n >= low, `${n} >= ${low}`);
-  console.assert(n <= high, `${n} <= ${low}`);
+  assertGreaterOrEqual(n, low, `${n} >= ${low}`);
+  assertLessOrEqual(n, high, `${n} <= ${high}`);
 }

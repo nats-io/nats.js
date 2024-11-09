@@ -16,8 +16,6 @@
 export { NatsConnectionImpl } from "./nats.ts";
 export { Nuid, nuid } from "./nuid.ts";
 
-export type { TypedSubscriptionOptions } from "./types.ts";
-
 export { MsgImpl } from "./msg.ts";
 export { getResolveFn, setTransportFactory } from "./transport.ts";
 export type { Transport, TransportFactory } from "./transport.ts";
@@ -67,14 +65,7 @@ export {
   usernamePasswordAuthenticator,
 } from "./authenticator.ts";
 export type { Codec } from "./codec.ts";
-export { JSONCodec, StringCodec } from "./codec.ts";
 export * from "./nkeys.ts";
-export type {
-  DispatchedFn,
-  IngestionFilterFn,
-  IngestionFilterFnResult,
-  ProtocolFilterFn,
-} from "./queued_iterator.ts";
 export { QueuedIteratorImpl } from "./queued_iterator.ts";
 export type { MsgArg, ParserEvent } from "./parser.ts";
 export { Kind, Parser, State } from "./parser.ts";
@@ -83,8 +74,6 @@ export { Bench, Metric } from "./bench.ts";
 export type { BenchOpts } from "./bench.ts";
 export { TD, TE } from "./encoders.ts";
 export { ipV4, isIP, parseIP } from "./ipparser.ts";
-export { checkFn, TypedSubscription } from "./typedsub.ts";
-export type { MsgAdapter, TypedCallback } from "./typedsub.ts";
 
 export type { SemVer } from "./semver.ts";
 export { compare, Feature, Features, parseSemVer } from "./semver.ts";
@@ -92,7 +81,6 @@ export { Empty } from "./types.ts";
 export { extractProtocolMessage, protoLen } from "./transport.ts";
 
 export type {
-  ApiError,
   Auth,
   Authenticator,
   CallbackFn,
@@ -119,7 +107,6 @@ export type {
   ServersChanged,
   Stats,
   Status,
-  Sub,
   SubOpts,
   Subscription,
   SubscriptionOptions,
@@ -131,11 +118,8 @@ export type {
 export {
   createInbox,
   DebugEvents,
-  ErrorCode,
   Events,
-  isNatsError,
   Match,
-  NatsError,
   RequestStrategy,
   syncIterator,
 } from "./core.ts";
@@ -154,3 +138,20 @@ export { Base64Codec, Base64UrlCodec, Base64UrlPaddedCodec } from "./base64.ts";
 export { SHA256 } from "./sha256.ts";
 
 export { wsconnect, wsUrlParseFn } from "./ws_transport.ts";
+
+export {
+  AuthorizationError,
+  ClosedConnectionError,
+  ConnectionError,
+  DrainingConnectionError,
+  errors,
+  InvalidArgumentError,
+  InvalidOperationError,
+  InvalidSubjectError,
+  NoRespondersError,
+  PermissionViolationError,
+  ProtocolError,
+  RequestError,
+  TimeoutError,
+  UserAuthenticationExpiredError,
+} from "./errors.ts";

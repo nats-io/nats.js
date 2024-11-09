@@ -15,45 +15,13 @@
 import type { Deferred } from "./util.ts";
 import { deferred } from "./util.ts";
 import type { QueuedIterator } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
 import type { CallbackFn, Dispatcher } from "./core.ts";
-
-export type IngestionFilterFnResult = { ingest: boolean; protocol: boolean };
-
-/**
- * IngestionFilterFn prevents a value from being ingested by the
- * iterator. It is executed on `push`. If ingest is false the value
- * shouldn't be pushed. If protcol is true, the value is a protcol
- * value
- *
- * @param: data is the value
- * @src: is the source of the data if set.
- */
-export type IngestionFilterFn<T = unknown> = (
-  data: T | null,
-  src?: unknown,
-) => IngestionFilterFnResult;
-/**
- * ProtocolFilterFn allows filtering of values that shouldn't be presented
- * to the iterator. ProtocolFilterFn is executed when a value is about to be presented
- *
- * @param data: the value
- * @returns boolean: true if the value should presented to the iterator
- */
-export type ProtocolFilterFn<T = unknown> = (data: T | null) => boolean;
-/**
- * DispatcherFn allows for values to be processed after being presented
- * to the iterator. Note that if the ProtocolFilter rejected the value
- * it will _not_ be presented to the DispatchedFn. Any processing should
- * instead have been handled by the ProtocolFilterFn.
- * @param data: the value
- */
-export type DispatchedFn<T = unknown> = (data: T | null) => void;
+import { InvalidOperationError } from "./errors.ts";
 
 export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
   inflight: number;
   processed: number;
-  // FIXME: this is updated by the protocol
+  // this is updated by the protocol
   received: number;
   noIterator: boolean;
   iterClosed: Deferred<void | Error>;
@@ -62,13 +30,11 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
   yields: (T | CallbackFn)[];
   filtered: number;
   pendingFiltered: number;
-  ingestionFilterFn?: IngestionFilterFn<T>;
-  protocolFilterFn?: ProtocolFilterFn<T>;
-  dispatchedFn?: DispatchedFn<T>;
   ctx?: unknown;
   _data?: unknown; //data is for use by extenders in any way they like
   err?: Error;
   time: number;
+  profile: boolean;
   yielding: boolean;
   didBreak: boolean;
 
@@ -86,6 +52,7 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
     this.time = 0;
     this.yielding = false;
     this.didBreak = false;
+    this.profile = false;
   }
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -110,30 +77,18 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
       }
       return;
     }
-    if (typeof v === "function") {
-      this.yields.push(v);
-      this.signal.resolve();
-      return;
-    }
-    const { ingest, protocol } = this.ingestionFilterFn
-      ? this.ingestionFilterFn(v, this.ctx || this)
-      : { ingest: true, protocol: false };
-    if (ingest) {
-      if (protocol) {
-        this.filtered++;
-        this.pendingFiltered++;
-      }
-      this.yields.push(v);
-      this.signal.resolve();
-    }
+    this.yields.push(v);
+    this.signal.resolve();
   }
 
   async *iterate(): AsyncIterableIterator<T> {
     if (this.noIterator) {
-      throw new NatsError("unsupported iterator", ErrorCode.ApiError);
+      throw new InvalidOperationError(
+        "iterator cannot be used when a callback is registered",
+      );
     }
     if (this.yielding) {
-      throw new NatsError("already yielding", ErrorCode.ApiError);
+      throw new InvalidOperationError("iterator is already yielding");
     }
     this.yielding = true;
     try {
@@ -163,21 +118,12 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
             }
             continue;
           }
-          // only pass messages that pass the filter
-          const ok = this.protocolFilterFn
-            ? this.protocolFilterFn(yields[i] as T)
-            : true;
-          if (ok) {
-            this.processed++;
-            const start = Date.now();
-            yield yields[i] as T;
-            this.time = Date.now() - start;
-            if (this.dispatchedFn && yields[i]) {
-              this.dispatchedFn(yields[i] as T);
-            }
-          } else {
-            this.pendingFiltered--;
-          }
+
+          this.processed++;
+          const start = this.profile ? Date.now() : 0;
+          yield yields[i] as T;
+          this.time = this.profile ? Date.now() - start : 0;
+
           this.inflight--;
         }
         // yielding could have paused and microtask

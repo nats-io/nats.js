@@ -13,13 +13,17 @@
  * limitations under the License.
  */
 
+import type {
+  MsgHdrs,
+  NatsConnection,
+  QueuedIterator,
+} from "@nats-io/nats-core/internal";
 import {
   Base64UrlPaddedCodec,
   DataBuffer,
   deferred,
   Feature,
   headers,
-  JSONCodec,
   MsgHdrsImpl,
   nuid,
   QueuedIteratorImpl,
@@ -27,23 +31,7 @@ import {
 } from "@nats-io/nats-core/internal";
 
 import type {
-  MsgHdrs,
-  NatsConnection,
-  NatsError,
-  QueuedIterator,
-} from "@nats-io/nats-core/internal";
-
-import {
-  consumerOpts,
-  DiscardPolicy,
-  JsHeaders,
-  ListerImpl,
-  PubHeaders,
-  StoreCompression,
-  toJetStreamClient,
-} from "@nats-io/jetstream/internal";
-
-import type {
+  ConsumerConfig,
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
@@ -58,6 +46,18 @@ import type {
   StreamInfoRequestOptions,
   StreamListResponse,
 } from "@nats-io/jetstream/internal";
+import {
+  DeliverPolicy,
+  DiscardPolicy,
+  isMessageNotFound,
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JsHeaders,
+  ListerImpl,
+  PubHeaders,
+  StoreCompression,
+  toJetStreamClient,
+} from "@nats-io/jetstream/internal";
 
 import type {
   ObjectInfo,
@@ -68,6 +68,7 @@ import type {
   ObjectStoreOptions,
   ObjectStorePutOpts,
   ObjectStoreStatus,
+  ObjectWatchInfo,
 } from "./types.ts";
 
 export const osPrefix = "OBJ_";
@@ -339,13 +340,12 @@ export class ObjectStoreImpl implements ObjectStore {
     const iter = await this.watch({
       ignoreDeletes: true,
       includeHistory: true,
+      //@ts-ignore: hidden
+      historyOnly: true,
     });
+
+    // historyOnly will stop the iterator
     for await (const info of iter) {
-      // watch will give a null when it has initialized
-      // for us that is the hint we are done
-      if (info === null) {
-        break;
-      }
       buf.push(info);
     }
     return Promise.resolve(buf);
@@ -362,14 +362,13 @@ export class ObjectStoreImpl implements ObjectStore {
       const m = await this.jsm.streams.getMessage(this.stream, {
         last_by_subj: meta,
       });
-      const jc = JSONCodec<ServerObjectInfo>();
-      const soi = jc.decode(m.data) as ServerObjectInfo;
+      if (m === null) {
+        return null;
+      }
+      const soi = m.json<ServerObjectInfo>();
       soi.revision = m.seq;
       return soi;
     } catch (err) {
-      if (err.code === "404") {
-        return null;
-      }
       return Promise.reject(err);
     }
   }
@@ -380,8 +379,10 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       return await this.jsm.streams.info(this.stream, opts);
     } catch (err) {
-      const nerr = err as NatsError;
-      if (nerr.code === "404") {
+      if (
+        err instanceof JetStreamApiError &&
+        err.code === JetStreamApiCodes.StreamNotFound
+      ) {
         return null;
       }
       return Promise.reject(err);
@@ -491,7 +492,7 @@ export class ObjectStoreImpl implements ObjectStore {
           h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
           // try to update the metadata
-          const pa = await this.js.publish(metaSubj, JSONCodec().encode(info), {
+          const pa = await this.js.publish(metaSubj, JSON.stringify(info), {
             headers: h,
             timeout,
           });
@@ -635,15 +636,16 @@ export class ObjectStoreImpl implements ObjectStore {
       return Promise.resolve(r as ObjectResult);
     }
 
+    const sha = new SHA256();
     let controller: ReadableStreamDefaultController;
 
-    const oc = consumerOpts();
-    oc.orderedConsumer();
-    const sha = new SHA256();
-    const subj = `$O.${this.name}.C.${info.nuid}`;
-    const sub = await this.js.subscribe(subj, oc);
+    const cc: Partial<ConsumerConfig> = {};
+    cc.filter_subject = `$O.${this.name}.C.${info.nuid}`;
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const iter = await oc.consume();
+
     (async () => {
-      for await (const jm of sub) {
+      for await (const jm of iter) {
         if (jm.data.length > 0) {
           sha.update(jm.data);
           controller!.enqueue(jm.data);
@@ -663,7 +665,7 @@ export class ObjectStoreImpl implements ObjectStore {
           } else {
             controller!.close();
           }
-          sub.unsubscribe();
+          break;
         }
       }
     })()
@@ -680,7 +682,7 @@ export class ObjectStoreImpl implements ObjectStore {
         controller = c;
       },
       cancel() {
-        sub.unsubscribe();
+        iter.stop();
       },
     });
 
@@ -743,11 +745,10 @@ export class ObjectStoreImpl implements ObjectStore {
     info.chunks = 0;
     info.digest = "";
 
-    const jc = JSONCodec();
     const h = headers();
     h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
-    await this.js.publish(this._metaSubject(info.name), jc.encode(info), {
+    await this.js.publish(this._metaSubject(info.name), JSON.stringify(info), {
       headers: h,
     });
     return this.jsm.streams.purge(this.stream, {
@@ -801,61 +802,67 @@ export class ObjectStoreImpl implements ObjectStore {
       ignoreDeletes?: boolean;
       includeHistory?: boolean;
     }
-  > = {}): Promise<QueuedIterator<ObjectInfo | null>> {
+  > = {}): Promise<QueuedIterator<ObjectWatchInfo>> {
     opts.includeHistory = opts.includeHistory ?? false;
     opts.ignoreDeletes = opts.ignoreDeletes ?? false;
-    let initialized = false;
-    const qi = new QueuedIteratorImpl<ObjectInfo | null>();
+    // @ts-ignore: not exposed
+    const historyOnly = opts.historyOnly ?? false;
+    const qi = new QueuedIteratorImpl<ObjectWatchInfo>();
     const subj = this._metaSubjectAll();
     try {
       await this.jsm.streams.getMessage(this.stream, { last_by_subj: subj });
     } catch (err) {
-      if (err.code === "404") {
-        qi.push(null);
-        initialized = true;
-      } else {
-        qi.stop(err);
+      if (!isMessageNotFound(err as Error)) {
+        qi.stop(err as Error);
       }
     }
-    const jc = JSONCodec<ObjectInfo>();
-    const copts = consumerOpts();
-    copts.orderedConsumer();
+    const cc: Partial<ConsumerConfig> = {};
+    cc.name = `OBJ_WATCHER_${nuid.next()}`;
+    cc.filter_subject = subj;
     if (opts.includeHistory) {
-      copts.deliverLastPerSubject();
+      cc.deliver_policy = DeliverPolicy.LastPerSubject;
     } else {
       // FIXME: Go's implementation doesn't seem correct - if history is not desired
       //  the watch should only be giving notifications on new entries
-      initialized = true;
-      copts.deliverNew();
+      cc.deliver_policy = DeliverPolicy.New;
     }
-    copts.callback((err: NatsError | null, jm: JsMsg | null) => {
-      if (err) {
-        qi.stop(err);
-        return;
-      }
-      if (jm !== null) {
-        const oi = jc.decode(jm.data);
+
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info(true);
+    const count = info.num_pending;
+    let isUpdate = cc.deliver_policy === DeliverPolicy.New || count === 0;
+    qi._data = oc;
+    let i = 0;
+    const iter = await oc.consume({
+      callback: (jm: JsMsg) => {
+        if (!isUpdate) {
+          i++;
+          isUpdate = i >= count;
+        }
+        const oi = jm.json<ObjectWatchInfo>();
+        oi.isUpdate = isUpdate;
         if (oi.deleted && opts.ignoreDeletes === true) {
           // do nothing
         } else {
           qi.push(oi);
         }
-        if (jm.info?.pending === 0 && !initialized) {
-          initialized = true;
-          qi.push(null);
+        if (historyOnly && i === count) {
+          iter.stop();
         }
-      }
+      },
     });
 
-    const sub = await this.js.subscribe(subj, copts);
-    qi._data = sub;
-    qi.iterClosed.then(() => {
-      sub.unsubscribe();
+    if (historyOnly && count === 0) {
+      iter.stop();
+    }
+
+    iter.closed().then(() => {
+      qi.push(() => {
+        qi.stop();
+      });
     });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err) => {
-      qi.stop(err);
+    qi.iterClosed.then(() => {
+      iter.stop();
     });
 
     return qi;
@@ -903,7 +910,7 @@ export class ObjectStoreImpl implements ObjectStore {
     try {
       await this.jsm.streams.info(sc.name);
     } catch (err) {
-      if (err.message === "stream not found") {
+      if ((err as Error).message === "stream not found") {
         await this.jsm.streams.add(sc);
       }
     }

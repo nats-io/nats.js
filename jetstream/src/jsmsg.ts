@@ -23,10 +23,9 @@ import type {
 import {
   DataBuffer,
   deferred,
-  JSONCodec,
+  millis,
   nanos,
   RequestOne,
-  StringCodec,
 } from "@nats-io/nats-core/internal";
 import type { DeliveryInfo, PullOptions } from "./jsapi_types.ts";
 
@@ -71,6 +70,16 @@ export interface JsMsg {
   sid: number;
 
   /**
+   * The time the message was received
+   */
+  time: Date;
+
+  /**
+   * The time the message was received as an ISO formatted date string
+   */
+  timestamp: string;
+
+  /**
    * Indicate to the JetStream server that the message was processed
    * successfully.
    */
@@ -78,7 +87,7 @@ export interface JsMsg {
 
   /**
    * Indicate to the JetStream server that processing of the message
-   * failed, and that it should be resent after the spefied number of
+   * failed, and that it should be resent after the specified number of
    * milliseconds.
    * @param millis
    */
@@ -149,7 +158,7 @@ export function parseInfo(s: string): DeliveryInfo {
   if (
     (tokens.length < 11) || tokens[0] !== "$JS" || tokens[1] !== "ACK"
   ) {
-    throw new Error(`not js message`);
+    throw new Error(`unable to parse delivery info - not a jetstream message`);
   }
 
   // old
@@ -218,6 +227,15 @@ export class JsMsgImpl implements JsMsg {
     return this.info.streamSequence;
   }
 
+  get time(): Date {
+    const ms = millis(this.info.timestampNanos);
+    return new Date(ms);
+  }
+
+  get timestamp(): string {
+    return this.time.toISOString();
+  }
+
   doAck(payload: Uint8Array) {
     if (!this.didAck) {
       // all acks are final with the exception of +WPI
@@ -244,7 +262,7 @@ export class JsMsgImpl implements JsMsg {
         const proto = mi.publisher as unknown as ProtocolHandler;
         const trace = !(proto.options?.noAsyncTraces || false);
         const r = new RequestOne(proto.muxSubscriptions, this.msg.reply, {
-          timeout: this.timeout,
+          timeout: opts.timeout,
         }, trace);
         proto.request(r);
         try {
@@ -256,13 +274,13 @@ export class JsMsgImpl implements JsMsg {
             },
           );
         } catch (err) {
-          r.cancel(err);
+          r.cancel(err as Error);
         }
         try {
           await Promise.race([r.timer, r.deferred]);
           d.resolve(true);
         } catch (err) {
-          r.cancel(err);
+          r.cancel(err as Error);
           d.reject(err);
         }
       } else {
@@ -279,9 +297,9 @@ export class JsMsgImpl implements JsMsg {
   }
 
   nak(millis?: number) {
-    let payload = NAK;
+    let payload: Uint8Array | string = NAK;
     if (millis) {
-      payload = StringCodec().encode(
+      payload = new TextEncoder().encode(
         `-NAK ${JSON.stringify({ delay: nanos(millis) })}`,
       );
     }
@@ -299,7 +317,7 @@ export class JsMsgImpl implements JsMsg {
     if (opts.expires && opts.expires > 0) {
       args.expires = nanos(opts.expires);
     }
-    const data = JSONCodec().encode(args);
+    const data = new TextEncoder().encode(JSON.stringify(args));
     const payload = DataBuffer.concat(NXT, SPACE, data);
     const reqOpts = subj ? { reply: subj } as RequestOptions : undefined;
     this.msg.respond(payload, reqOpts);
@@ -308,7 +326,7 @@ export class JsMsgImpl implements JsMsg {
   term(reason = "") {
     let term = TERM;
     if (reason?.length > 0) {
-      term = StringCodec().encode(`+TERM ${reason}`);
+      term = new TextEncoder().encode(`+TERM ${reason}`);
     }
     this.doAck(term);
   }

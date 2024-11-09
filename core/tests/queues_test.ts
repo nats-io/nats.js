@@ -13,14 +13,13 @@
  * limitations under the License.
  */
 
-import { createInbox } from "../src/internal_mod.ts";
-import type { Subscription } from "../src/internal_mod.ts";
+import { createInbox } from "../src/core.ts";
+import type { Subscription } from "../src/core.ts";
 import { assertEquals } from "jsr:@std/assert";
-import { connect } from "./connect.ts";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 
 Deno.test("queues - deliver to single queue", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const subs = [];
   for (let i = 0; i < 5; i++) {
@@ -36,7 +35,7 @@ Deno.test("queues - deliver to single queue", async () => {
 });
 
 Deno.test("queues - deliver to multiple queues", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
 
   const fn = (queue: string) => {
@@ -65,7 +64,7 @@ Deno.test("queues - deliver to multiple queues", async () => {
 });
 
 Deno.test("queues - queues and subs independent", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const subs = [];
   let queueCount = 0;

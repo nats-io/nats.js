@@ -12,23 +12,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { _setup, cleanup } from "test_helpers";
-import { connect } from "./connect.ts";
-import type { NatsConnectionImpl } from "../src/internal_mod.ts";
+import { cleanup, setup } from "test_helpers";
+import type {
+  Msg,
+  NatsConnectionImpl,
+  QueuedIteratorImpl,
+} from "../src/internal_mod.ts";
 import {
   createInbox,
   deferred,
   delay,
   Empty,
-  Events,
   RequestStrategy,
-  StringCodec,
 } from "../src/internal_mod.ts";
 
 import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { errors } from "../src/errors.ts";
 
 async function requestManyCount(noMux = false): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   let payload = "";
@@ -72,7 +74,7 @@ Deno.test("mreq - request many count noMux", async () => {
 });
 
 async function requestManyJitter(noMux = false): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -114,16 +116,14 @@ async function requestManySentinel(
   noMux = false,
   partial = false,
 ): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
       if (!partial) {
         msg.respond();
@@ -167,7 +167,7 @@ Deno.test("mreq - nomux request many sentinel partial noMux", async () => {
 });
 
 async function requestManyTimerNoResponse(noMux = false): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -205,7 +205,7 @@ Deno.test("mreq - request many wait for timer noMux - no response", async () => 
 });
 
 async function requestTimerLateResponse(noMux = false): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -244,7 +244,7 @@ Deno.test("mreq - request many waits for timer late response noMux", async () =>
 });
 
 async function requestManyStopsOnError(noMux = false): Promise<void> {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup({});
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -260,8 +260,8 @@ async function requestManyStopsOnError(noMux = false): Promise<void> {
         // do nothing
       }
     },
-    Error,
-    "503",
+    errors.NoRespondersError,
+    subj,
   );
   await cleanup(ns, nc);
 }
@@ -275,7 +275,7 @@ Deno.test("mreq - request many stops on error noMux", async () => {
 });
 
 Deno.test("mreq - pub permission error", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -288,8 +288,10 @@ Deno.test("mreq - pub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === Events.Error && s.permissionContext?.subject === "q") {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (s.error.subject === "q" && s.error.operation === "publish") {
+          d.resolve();
+        }
       }
     }
   })().then();
@@ -314,7 +316,7 @@ Deno.test("mreq - pub permission error", async () => {
 });
 
 Deno.test("mreq - sub permission error", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -333,11 +335,13 @@ Deno.test("mreq - sub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.type === Events.Error &&
-        s.permissionContext?.operation === "subscription"
-      ) {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (
+          s.error.operation === "subscription" &&
+          s.error.subject.startsWith("_INBOX.")
+        ) {
+          d.resolve();
+        }
       }
     }
   })().then();
@@ -354,7 +358,7 @@ Deno.test("mreq - sub permission error", async () => {
         // nothing;
       }
     },
-    Error,
+    errors.PermissionViolationError,
     "Permissions Violation for Subscription",
   );
   await d;
@@ -362,7 +366,7 @@ Deno.test("mreq - sub permission error", async () => {
 });
 
 Deno.test("mreq - lost sub permission", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -393,36 +397,43 @@ Deno.test("mreq - lost sub permission", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (
-        s.type === Events.Error &&
-        s.permissionContext?.operation === "subscription"
-      ) {
-        d.resolve();
+      if (s.error instanceof errors.PermissionViolationError) {
+        if (
+          s.error.operation === "subscription" &&
+          s.error.subject.startsWith("_INBOX.")
+        ) {
+          d.resolve();
+        }
       }
     }
   })().then();
 
+  const iter = await nc.requestMany("q", Empty, {
+    strategy: RequestStrategy.Count,
+    maxMessages: 100,
+    jitter: 2000,
+    maxWait: 2000,
+    noMux: true,
+  }) as QueuedIteratorImpl<Msg>;
+
   await assertRejects(
-    async () => {
-      const iter = await nc.requestMany("q", Empty, {
-        strategy: RequestStrategy.Count,
-        maxMessages: 3,
-        maxWait: 5000,
-        noMux: true,
-      });
-      for await (const _m of iter) {
-        // nothing
-      }
+    () => {
+      return (async () => {
+        for await (const _m of iter) {
+          // nothing;
+        }
+      })();
     },
-    Error,
+    errors.PermissionViolationError,
     "Permissions Violation for Subscription",
   );
-  await d;
+
+  await iter.iterClosed;
   await cleanup(ns, nc);
 });
 
 Deno.test("mreq - timeout doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   nc.subscribe("q", { callback: () => {} });
   const nci = nc as NatsConnectionImpl;
@@ -443,7 +454,7 @@ Deno.test("mreq - timeout doesn't leak subs", async () => {
 });
 
 Deno.test("mreq - no responder doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.subscriptions.size(), 0);
@@ -459,8 +470,8 @@ Deno.test("mreq - no responder doesn't leak subs", async () => {
         // nothing
       }
     },
-    Error,
-    "503",
+    errors.NoRespondersError,
+    "no responders: 'q'",
   );
 
   // the mux subscription
@@ -469,7 +480,7 @@ Deno.test("mreq - no responder doesn't leak subs", async () => {
 });
 
 Deno.test("mreq - no mux request no perms doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "s",

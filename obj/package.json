@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-5",
+  "version": "3.0.0-20",
   "files": [
     "lib/",
     "LICENSE",
@@ -23,8 +23,10 @@
     "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
-    "doc": "npm run build && node_modules/.bin/typedoc --out ../docs/obj && touch ../docs/obj/.nojekyll",
-    "prepack": "npm run build"
+    "doc": "npm run build && typedoc --out ../docs/obj && touch ../docs/obj/.nojekyll",
+    "prepack": "npm run build",
+    "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
+    "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
   },
   "keywords": [],
   "author": {
@@ -32,13 +34,13 @@
   },
   "description": "obj library - this library implements all the base functionality for NATS objectstore for javascript clients",
   "dependencies": {
-    "@nats-io/jetstream": "~3.0.0-9",
-    "@nats-io/nats-core": "~3.0.0-24"
+    "@nats-io/jetstream": "3.0.0-25",
+    "@nats-io/nats-core": "3.0.0-38"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.7.6",
     "shx": "^0.3.4",
-    "typedoc": "^0.26.5",
-    "typescript": "^5.5.4"
+    "typedoc": "^0.26.10",
+    "typescript": "^5.6.3"
   }
 }

@@ -12,28 +12,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import type { ConnectionOptions } from "./nats-base-client";
 import {
   checkOptions,
   DataBuffer,
   Deferred,
   deferred,
-  ErrorCode,
+  errors,
   extend,
   extractProtocolMessage,
   INFO,
-  NatsError,
   render,
   ServerInfo,
   Transport,
 } from "./nats-base-client";
+import { createConnection, Socket } from "node:net";
+import { connect as tlsConnect, TlsOptions, TLSSocket } from "node:tls";
+import { resolve } from "node:path";
+import { existsSync, readFile } from "node:fs";
+import dns from "node:dns";
+import { Buffer } from "node:buffer";
+import { version } from "./version";
 
-import type { ConnectionOptions } from "./nats-base-client";
-import { createConnection, Socket } from "net";
-import { connect as tlsConnect, TlsOptions, TLSSocket } from "tls";
-const { resolve } = require("path");
-const { readFile, existsSync } = require("fs");
-const dns = require("dns");
-const { version } = require("./version");
 export const VERSION = version;
 const LANG = "nats.js";
 
@@ -54,7 +54,6 @@ export class NodeTransport implements Transport {
     this.lang = LANG;
     this.version = VERSION;
   }
-
   async connect(
     hp: { hostname: string; port: number; tlsName: string },
     options: ConnectionOptions,
@@ -69,6 +68,10 @@ export class NodeTransport implements Transport {
       } else {
         this.socket = await this.dial(hp);
       }
+      // protocol could have terminated
+      if (this.done) {
+        this.socket?.destroy();
+      }
 
       const info = await this.peekInfo();
       checkOptions(info, options);
@@ -78,9 +81,16 @@ export class NodeTransport implements Transport {
         this.socket = await this.startTLS();
       }
 
+      if (this.done) {
+        this.socket?.destroy();
+      }
+
       //@ts-ignore: this is possibly a TlsSocket
       if (tlsRequired && this.socket.encrypted !== true) {
-        throw new NatsError("tls", ErrorCode.ServerOptionNotAvailable);
+        throw errors.InvalidArgumentError.format(
+          "tls",
+          "is not available on this server",
+        );
       }
 
       this.connected = true;
@@ -93,18 +103,16 @@ export class NodeTransport implements Transport {
         // this seems to be possible in Kubernetes
         // where an error is thrown, but it is undefined
         // when something like istio-init is booting up
-        err = NatsError.errorForCode(
-          ErrorCode.ConnectionRefused,
-          new Error("node provided an undefined error!"),
+        err = new errors.ConnectionError(
+          "error connecting - node provided an undefined error",
         );
       }
+      // @ts-ignore: node error
       const { code } = err;
       const perr = code === "ECONNREFUSED"
-        ? NatsError.errorForCode(ErrorCode.ConnectionRefused, err)
+        ? new errors.ConnectionError("connection refused", { cause: err })
         : err;
-      if (this.socket) {
-        this.socket.destroy();
-      }
+      this.socket?.destroy();
       throw perr;
     }
   }
@@ -242,7 +250,9 @@ export class NodeTransport implements Transport {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);
       } catch (err) {
-        return Promise.reject(new NatsError(err.message, ErrorCode.Tls, err));
+        return Promise.reject(
+          new errors.ConnectionError((err as Error).message, { cause: err }),
+        );
       }
     }
     const d = deferred<TLSSocket>();
@@ -271,7 +281,9 @@ export class NodeTransport implements Transport {
       tlsSocket.setNoDelay(true);
     } catch (err) {
       // tls throws errors on bad certs see nats.js#310
-      d.reject(NatsError.errorForCode(ErrorCode.Tls, err));
+      d.reject(
+        new errors.ConnectionError((err as Error).message, { cause: err }),
+      );
     }
     return d;
   }
@@ -288,7 +300,11 @@ export class NodeTransport implements Transport {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);
       } catch (err) {
-        return Promise.reject(new NatsError(err.message, ErrorCode.Tls, err));
+        return Promise.reject(
+          new errors.ConnectionError((err as Error).message, {
+            cause: err,
+          }),
+        );
       }
     }
     const d = deferred<TLSSocket>();
@@ -315,7 +331,9 @@ export class NodeTransport implements Transport {
       });
     } catch (err) {
       // tls throws errors on bad certs see nats.js#310
-      d.reject(NatsError.errorForCode(ErrorCode.Tls, err));
+      d.reject(
+        new errors.ConnectionError((err as Error).message, { cause: err }),
+      );
     }
     return d;
   }
@@ -427,7 +445,10 @@ export class NodeTransport implements Transport {
   private async _closed(err?: Error, internal = true): Promise<void> {
     // if this connection didn't succeed, then ignore it.
     if (!this.connected) return;
-    if (this.done) return;
+    if (this.done) {
+      this.socket?.destroy();
+      return;
+    }
     this.closeError = err;
     // only try to flush the outbound buffer if we got no error and
     // the close is internal, if the transport closed, we are done.
@@ -443,7 +464,7 @@ export class NodeTransport implements Transport {
     try {
       if (this.socket) {
         this.socket.removeAllListeners();
-        this.socket.destroy();
+        this.socket?.destroy();
         this.socket = undefined;
       }
     } catch (err) {

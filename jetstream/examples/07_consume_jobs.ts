@@ -13,10 +13,10 @@
  * limitations under the License.
  */
 
-import { connect, delay } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { SimpleMutex } from "jsr:@nats-io/nats-core@3.0.0-17/internal";
-import { jetstream } from "../src/mod.ts";
-import type { JsMsg } from "../src/mod.ts";
+import { connect, delay } from "@nats-io/transport-deno";
+import { SimpleMutex } from "@nats-io/nats-core/internal";
+import { jetstream } from "@nats-io/jetstream";
+import type { JsMsg } from "@nats-io/jetstream";
 import { setupStreamAndConsumer } from "./util.ts";
 
 // create a connection

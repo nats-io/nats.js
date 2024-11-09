@@ -16,12 +16,12 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert").strict;
 const {
   connect,
-  ErrorCode,
 } = require(
   "../index",
 );
-const { resolve, join } = require("path");
-const { readFileSync } = require("fs");
+const process = require("node:process");
+const { resolve, join } = require("node:path");
+const { readFileSync } = require("node:fs");
 const { Lock } = require("./helpers/lock");
 const { NatsServer } = require("./helpers/launcher");
 const { buildAuthenticator, extend, Connect } = require(
@@ -46,7 +46,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
         assert.fail("shouldn't have connected");
       })
       .catch((err) => {
-        assert.equal(err.code, ErrorCode.ServerOptionNotAvailable);
+        assert.equal(err.message, "server does not support 'tls'");
         lock.unlock();
       });
     await lock;
@@ -188,9 +188,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     await assert.rejects(() => {
       return connect({ servers: `localhost:${ns.port}`, tls: conf });
     }, (err) => {
-      assert.equal(err.code, ErrorCode.Tls);
-      assert.ok(err.chainedError);
-      assert.ok(re.exec(err.chainedError.message));
+      assert.ok(re.exec(err.message));
       return true;
     });
     await ns.stop();
@@ -232,7 +230,6 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
       await connect({ servers: `localhost:${ns.port}`, tls: conf });
       assert.fail("shouldn't have connected");
     } catch (err) {
-      assert.equal(err.code, ErrorCode.Tls);
       const v = conf[arg];
       assert.equal(err.message, `${v} doesn't exist`);
     }

@@ -12,23 +12,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertInstanceOf, fail } from "jsr:@std/assert";
 import { connect } from "./connect.ts";
-import { assertErrorCode, Lock, NatsServer } from "test_helpers";
+import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,
   DataBuffer,
   DebugEvents,
   deferred,
   delay,
-  ErrorCode,
   Events,
   tokenAuthenticator,
 } from "../src/internal_mod.ts";
-import type { NatsConnectionImpl, NatsError } from "../src/internal_mod.ts";
+import type { NatsConnectionImpl } from "../src/nats.ts";
 
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { deadline } from "jsr:@std/async";
+import { ConnectionError } from "../src/errors.ts";
 
 Deno.test("reconnect - should receive when some servers are invalid", async () => {
   const lock = Lock(1);
@@ -77,11 +77,8 @@ Deno.test("reconnect - events", async () => {
     }
   })().then();
   await srv.stop();
-  try {
-    await nc.closed();
-  } catch (err) {
-    assertErrorCode(err, ErrorCode.ConnectionRefused);
-  }
+  const err = await nc.closed();
+  assertInstanceOf(err, ConnectionError, "connection closed");
   assertEquals(disconnects, 1);
   assertEquals(reconnecting, 10);
 });
@@ -275,32 +272,13 @@ Deno.test("reconnect - wait on first connect", async () => {
 
   // stop the server
   await srv.stop();
-  // no reconnect, will quit the client
-  const what = await nc.closed() as NatsError;
-  assertEquals(what.code, ErrorCode.ConnectionRefused);
-});
-
-Deno.test("reconnect - wait on first connect off", async () => {
-  const srv = await NatsServer.start({});
-  const port = srv.port;
-  await delay(500);
-  await srv.stop();
-  await delay(1000);
-  const pnc = connect({
-    port: port,
-  });
-
-  try {
-    // should fail
-    await pnc;
-  } catch (err) {
-    const nerr = err as NatsError;
-    assertEquals(nerr.code, ErrorCode.ConnectionRefused);
-  }
+  // no re will quit the client
+  const err = await nc.closed();
+  assertInstanceOf(err, ConnectionError, "connection refused");
 });
 
 Deno.test("reconnect - close stops reconnects", async () => {
-  const { ns, nc } = await _setup(connect, {}, {
+  const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,
     reconnectTimeWait: 500,
   });
@@ -329,7 +307,7 @@ Deno.test("reconnect - close stops reconnects", async () => {
     });
   // await some more, because the close could have a timer pending that
   // didn't complete flapping the test on resource leak
-  await delay(750);
+  await delay(1000);
 });
 
 Deno.test("reconnect - stale connections don't close", async () => {
@@ -428,7 +406,7 @@ Deno.test("reconnect - stale connections don't close", async () => {
 });
 
 Deno.test("reconnect - protocol errors don't close client", async () => {
-  const { ns, nc } = await _setup(connect, {}, {
+  const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,
     reconnectTimeWait: 500,
   });
@@ -467,7 +445,7 @@ Deno.test("reconnect - authentication timeout reconnects", async () => {
     },
   });
 
-  let counter = 4;
+  let counter = 3;
   const authenticator = tokenAuthenticator(() => {
     if (counter-- <= 0) {
       return "hello";
@@ -485,7 +463,7 @@ Deno.test("reconnect - authentication timeout reconnects", async () => {
     port: ns.port,
     token: "hello",
     waitOnFirstConnect: true,
-    timeout: 2000,
+    ignoreAuthErrorAbort: true,
     authenticator,
   });
 

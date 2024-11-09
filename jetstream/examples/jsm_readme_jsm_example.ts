@@ -1,5 +1,20 @@
-import { connect, Empty } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { AckPolicy, jetstreamManager } from "../src/mod.ts";
+/*
+ * Copyright 2024 Synadia Communications, Inc
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { connect, Empty } from "@nats-io/transport-deno";
+import { AckPolicy, jetstreamManager } from "@nats-io/jetstream";
 
 const nc = await connect();
 const jsm = await jetstreamManager(nc);
@@ -33,7 +48,7 @@ await jsm.streams.update(name, si.config);
 // get a particular stored message in the stream by sequence
 // this is not associated with a consumer
 const sm = await jsm.streams.getMessage("mystream", { seq: 1 });
-console.log(sm.seq);
+console.log(sm?.seq);
 
 // delete the 5th message in the stream, securely erasing it
 await jsm.streams.deleteMessage("mystream", 5);

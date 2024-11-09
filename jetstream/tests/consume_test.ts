@@ -14,12 +14,11 @@
  */
 
 import {
-  _setup,
   cleanup,
   connect,
   jetstreamServerConf,
-  Lock,
   NatsServer,
+  setup,
 } from "test_helpers";
 import { setupStreamAndConsumer } from "../examples/util.ts";
 import {
@@ -27,13 +26,13 @@ import {
   assertEquals,
   assertExists,
   assertRejects,
-  fail,
 } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
 import {
   deadline,
   deferred,
   delay,
+  errors,
   nanos,
   syncIterator,
 } from "@nats-io/nats-core";
@@ -47,10 +46,9 @@ import {
 } from "../src/mod.ts";
 
 import type { ConsumerStatus } from "../src/mod.ts";
-import { ConsumerDebugEvents } from "../src/mod.ts";
 
 Deno.test("consumers - consume", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const count = 1000;
   const { stream, consumer } = await setupStreamAndConsumer(nc, count);
@@ -78,7 +76,7 @@ Deno.test("consumers - consume", async () => {
 });
 
 Deno.test("consumers - consume callback rejects iter", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream, consumer } = await setupStreamAndConsumer(nc, 0);
   const js = jetstream(nc);
   const c = await js.consumers.get(stream, consumer);
@@ -96,8 +94,8 @@ Deno.test("consumers - consume callback rejects iter", async () => {
         // should fail
       }
     },
-    Error,
-    "unsupported iterator",
+    errors.InvalidOperationError,
+    "iterator cannot be used when a callback is registered",
   );
   iter.stop();
 
@@ -135,7 +133,7 @@ Deno.test("consume - heartbeats", async () => {
   const d = deferred<ConsumerStatus>();
 
   await (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       d.resolve(s);
       iter.stop();
@@ -158,7 +156,7 @@ Deno.test("consume - heartbeats", async () => {
 });
 
 Deno.test("consume - deleted consumer", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -176,7 +174,7 @@ Deno.test("consume - deleted consumer", async () => {
   let notFound = 0;
   const done = deferred<number>();
   (async () => {
-    const status = await iter.status();
+    const status = iter.status();
     for await (const s of status) {
       if (s.type === ConsumerEvents.ConsumerDeleted) {
         deleted.resolve();
@@ -208,7 +206,7 @@ Deno.test("consume - deleted consumer", async () => {
 });
 
 Deno.test("consume - sub leaks", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -237,7 +235,7 @@ Deno.test("consume - sub leaks", async () => {
 });
 
 Deno.test("consume - drain", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
 
   const jsm = await jetstreamManager(nc);
@@ -264,7 +262,7 @@ Deno.test("consume - drain", async () => {
 });
 
 Deno.test("consume - sync", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "messages", subjects: ["hello"] });
 
@@ -291,7 +289,7 @@ Deno.test("consume - sync", async () => {
 });
 
 Deno.test("consume - stream not found request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -324,7 +322,7 @@ Deno.test("consume - stream not found request abort", async () => {
 });
 
 Deno.test("consume - consumer deleted request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -360,7 +358,7 @@ Deno.test("consume - consumer deleted request abort", async () => {
 });
 
 Deno.test("consume - consumer not found request abort", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -394,7 +392,7 @@ Deno.test("consume - consumer not found request abort", async () => {
 });
 
 Deno.test("consume - consumer bind", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
+  const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({ name: "A", subjects: ["a"] });
@@ -422,7 +420,7 @@ Deno.test("consume - consumer bind", async () => {
   let cnf = 0;
 
   (async () => {
-    for await (const s of await iter.status()) {
+    for await (const s of iter.status()) {
       switch (s.type) {
         case ConsumerEvents.HeartbeatsMissed:
           hbm++;
@@ -447,46 +445,6 @@ Deno.test("consume - consumer bind", async () => {
   assert(hbm > 1);
   assertEquals(cnf, 0);
   assertEquals(cisub.getProcessed(), 0);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("consume - exceeding max_messages will continue", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf());
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["a"] });
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    max_batch: 100,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
-  const lock = Lock(2, 0);
-  const iter = await c.consume({ max_messages: 1000, expires: 1000 });
-  (async () => {
-    const status = await iter.status();
-    for await (const s of status) {
-      if (s.type === ConsumerDebugEvents.DebugEvent) {
-        const d = s.data as string;
-        if (d.includes("exceeded maxrequestbatch of 100")) {
-          lock.unlock();
-        }
-      }
-    }
-  })().catch((err) => {
-    fail(err.message);
-  });
-
-  (async () => {
-    for await (const m of iter) {
-      console.log(m);
-    }
-  })().then();
-
-  await lock;
-  iter.stop();
-  await iter.closed();
 
   await cleanup(ns, nc);
 });

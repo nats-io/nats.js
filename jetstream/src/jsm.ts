@@ -14,13 +14,13 @@
  */
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
-import { DirectMsgHeaders } from "./types.ts";
 import type {
   DirectMsg,
   DirectStreamAPI,
   JetStreamOptions,
   StoredMsg,
 } from "./types.ts";
+import { DirectMsgHeaders } from "./types.ts";
 import type {
   Codec,
   Msg,
@@ -31,7 +31,7 @@ import type {
 } from "@nats-io/nats-core";
 import {
   Empty,
-  JSONCodec,
+  errors,
   QueuedIteratorImpl,
   RequestStrategy,
   TD,
@@ -41,7 +41,8 @@ import type {
   DirectMsgRequest,
   LastForMsgRequest,
 } from "./jsapi_types.ts";
-import { checkJsError, validateStreamName } from "./jsutil.ts";
+import { validateStreamName } from "./jsutil.ts";
+import { JetStreamStatus } from "./jserrors.ts";
 
 export class DirectStreamAPIImpl extends BaseApiClientImpl
   implements DirectStreamAPI {
@@ -52,7 +53,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
   async getMessage(
     stream: string,
     query: DirectMsgRequest,
-  ): Promise<StoredMsg> {
+  ): Promise<StoredMsg | null> {
     validateStreamName(stream);
     // if doing a last_by_subj request, we append the subject
     // this allows last_by_subj to be subject to permissions (KV)
@@ -62,7 +63,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       qq = null;
     }
 
-    const payload = qq ? this.jc.encode(qq) : Empty;
+    const payload = qq ? JSON.stringify(qq) : Empty;
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = last_by_subj
       ? `${pre}.DIRECT.GET.${stream}.${last_by_subj}`
@@ -71,13 +72,18 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const r = await this.nc.request(
       subj,
       payload,
+      { timeout: this.timeout },
     );
 
-    // response is not a JS.API response
-    const err = checkJsError(r);
-    if (err) {
-      return Promise.reject(err);
+    if (r.headers?.code !== 0) {
+      const status = new JetStreamStatus(r);
+      if (status.isMessageNotFound()) {
+        return Promise.resolve(null);
+      } else {
+        return Promise.reject(status.toError());
+      }
     }
+
     const dm = new DirectMsgImpl(r);
     return Promise.resolve(dm);
   }
@@ -90,7 +96,9 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = `${pre}.DIRECT.GET.${stream}`;
     if (!Array.isArray(opts.multi_last) || opts.multi_last.length === 0) {
-      return Promise.reject("multi_last is required");
+      return Promise.reject(
+        errors.InvalidArgumentError.format("multi_last", "is required"),
+      );
     }
     const payload = JSON.stringify(opts, (key, value) => {
       if (key === "up_to_time" && value instanceof Date) {
@@ -112,13 +120,12 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     (async () => {
       let gotFirst = false;
       let badServer = false;
-      let badRequest: string | undefined;
+      let status: JetStreamStatus | null = null;
       for await (const m of raw) {
         if (!gotFirst) {
           gotFirst = true;
-          const code = m.headers?.code || 0;
-          if (code !== 0 && code < 200 || code > 299) {
-            badRequest = m.headers?.description.toLowerCase();
+          status = JetStreamStatus.maybeParseStatus(m);
+          if (status) {
             break;
           }
           // inspect the message and make sure that we have a supported server
@@ -138,12 +145,14 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         if (badServer) {
           throw new Error("batch direct get not supported by the server");
         }
-        if (badRequest) {
-          throw new Error(`bad request: ${badRequest}`);
+        if (status) {
+          throw status.toError();
         }
         iter.stop();
       });
-    })();
+    })().catch((err) => {
+      iter.stop(err);
+    });
 
     return Promise.resolve(iter);
   }
@@ -184,7 +193,7 @@ export class DirectMsgImpl implements DirectMsg {
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
-    return JSONCodec<T>(reviver).decode(this.data);
+    return JSON.parse(new TextDecoder().decode(this.data), reviver);
   }
 
   string(): string {

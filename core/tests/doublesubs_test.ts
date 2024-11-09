@@ -20,7 +20,6 @@ import {
   Events,
   extend,
   headers,
-  StringCodec,
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
 import { assertArrayIncludes, assertEquals } from "jsr:@std/assert";
@@ -77,7 +76,7 @@ async function runDoubleSubsTest(tls: boolean) {
   const bar = nc.subscribe("bar");
   const baz = nc.subscribe("baz");
   nc.publish("foo", Empty);
-  nc.publish("bar", StringCodec().encode("hello"));
+  nc.publish("bar", "hello");
   const h = headers();
   h.set("foo", "bar");
   nc.publish("baz", Empty, { headers: h });

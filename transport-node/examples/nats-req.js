@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { connect, StringCodec, headers, credsAuthenticator } = require(
+const { connect, StringCodec, headers, credsAuthenticator, delay } = require(
   "../index",
 );
-const { delay } = require("./util");
-const fs = require("fs");
+const fs = require("node:fs");
+const process = require("node:process");
 
 const argv = parse(
   process.argv.slice(2),

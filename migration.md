@@ -2,7 +2,7 @@
 
 The NATS ecosystem has grown a lot since the 2.0 release of the `nats` (nats.js)
 client. NATS currently runs in several JavaScript runtimes: Deno, Browser, and
-Node (Bun).
+Node/Bun.
 
 While the organization of the library has served developers well, there are a
 number of issues we would like to address going forward:
@@ -13,7 +13,7 @@ number of issues we would like to address going forward:
 - Better presentation of NATS technologies to developers that are interested in
   KV, ObjectStore or JetStream.
 - Smaller dependencies for those that are only interested in the NATS core
-  functionality (no JetStream)
+  functionality.
 - More agility and independence to each of the modules, as well as their own
   version.
 - Easier understanding of the functionality in question, as each repository
@@ -35,26 +35,26 @@ The transports have also been migrated:
 - `@nats-io/transport-node` has all the functionality of the original `nats.js`
 - `@nats-io/transport-deno` has all the functionality of `nats.deno`
 - `nats.ws` is now part of `@nats-io/nats-core` as it can be used from Deno or
-  latest version of Node directly.
+  latest version of Node directly or any runtime that has standard W3C Websocket
+  support.
 
 Note that when installing `@nats-io/transport-node` or
 `@nats-io/transport-deno`, the `@nats-io/core` APIs are also made available.
 
 Your library selection process will start by selecting your runtime, and
 importing any additional functionality you may be interested in. The
-`@nats-io/node`, `@nats-io/deno`, `@nats-io/es-websocket` depend and re-export
+`@nats-io/transport-node`, `@nats-io/transport-deno` depend on and re-export
 `@nats-io/core`.
 
 To use the extended functionality (JetStream, KV, ObjectStore, Services) you
-will need to install and import from the other libraries and call API to create
-an instance of the functionality the need.
+will need to install and import from the other libraries to access those APIs.
 
 For example, developers that use JetStream can access it by using the functions
 `jetstream()` and `jetstreamManager()` and provide their NATS connection. Note
 that the `NatsConnection#jetstream/Manager()` APIs are no longer available.
 
 Developers interested in KV or ObjectStore can access the resources by calling
-creating a Kvm and calling `create()` or `open()` using wither a
+creating a Kvm and calling `create()` or `open()` using either a
 `JetStreamClient` or a plain `NatsConnection`. Note that the
 `JetStreamClient#views` API is also no longer available.
 
@@ -75,6 +75,21 @@ these modules for cross-runtime consumption.
 
 - QueuedIterator type incorrectly exposed a `push()` operation - this operation
   is not public API and was removed from the interface.
+- The internal type `TypedSubscription` and associated interfaces have been
+  removed, these were supporting legacy JetStream APIs
+  (`subscribe/pullSubscribe()`. If you were using these internal types to
+  transform the types in the subscription, take a look at
+  [messagepipeline](https://github.com/synadia-io/orbit.js/tree/main/messagepipeline).
+- The utilities `JSONCodec` and `StringCodec` have been removed, the `Msg` types
+  and derivatives can set string or Uint8Array payloads. To read payloads as
+  string or JSON use `string()` and `json()` methods on Msg or its derivatives.
+  For publishing JSON payloads, simply specify the output of `JSON.stringify()`
+  to the publish or request operation.
+- NatsError was removed in favor of more descriptive types. For example, if you
+  make a request, the request could fail with a RequestError or TimeoutError.
+  The RequestError in turn will contain the `cause` such as `NoRespondersError`.
+  This also means that in TypeScript, the callback signature has been relaxed to
+  just `(Error, Msg)=>void`. For more information see the JsDocs.
 
 ## Changes in JetStream
 
@@ -83,9 +98,6 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - `jetStream()` and `jetStreamManager()` functions on the `NatsConnection` have
   been removed. Install and import the `JetStream` library, and call
   `jetstream(nc: NatsConnection)` or `jetstreamManager(nc: NatsConnection)`
-- `services` property has been removed. Install and import the `Services`
-  library, and call `services(nc: NatsConnection)`
-
 - The `views` property in the JetStream client has been removed - install the
   `KV` or `ObjectStore` library.
 - `jetstreamManager.listKvs()` and `jetstreamManager.listObjectStores()` apis
@@ -93,6 +105,24 @@ To use JetStream, you must install and import `@nats/jetstream`.
   instead.
 - `JetStreamClient#subscribe()`, `JetStreamClient#fetch()` have been removed.
   Use the `Consumers` API to `get()` your consumer.
+- `OrderedConsumerOptions#filterSubjects` changed to
+  `OrderedConsumerOptions#filter_subjects`.
+- Consumer.status() now returns `AsyncIterable<ConsumerStatus>` instead of a
+  `Promise<AsyncIterable<ConsumerStatus>>`
+- `JetStreamClient.pull()` was deprecated and was removed. Use
+  `Consumer.next()`.
+- The utility function `consumerOpts()` and associated function
+  `isConsumerOptsBuilder()` have been removed. Alongside of it
+  `ConsumerOptsBuilder` which was used by `subscribe()` and `pullSubscribe()`
+  type has also been removed.
+- JetStream errors are now expressed by the type `JetStreamError` and
+  `JetStreamAPIError`. Common errors such as `ConsumerNotFound`, and
+  `StreamNotFound`, `JetStreamNotEnabled` are subtypes of the above. For API
+  calls where the server could return an error, these are `JetStreamAPIError`
+  and contain all the information returned by the server.
+- JetStream `Stream.getMessage()` will now return null if when a message not
+  found error raises, this simplifies client usage and aligns with other APIs in
+  the client.
 
 ## Changes to KV
 
@@ -119,6 +149,23 @@ await kvm.create("mykv");
 await kvm.open("mykv");
 ```
 
+### KvWatchOption.initializedFn has been removed
+
+Previous versions of `Kv.watch()` allowed the client to specify a function that
+was called when the watch was done providing history values. In this version,
+you can find out if a watch is yielding an update by examining the `isUpdate`
+property. Note that an empty Kv will not yield any watch information. You can
+test for this initial condition, by getting the status of the KV, and inspecting
+the `values` property, which will state the number of entries in the Kv. Also
+note that watches with the option to do updates only, cannot notify until
+there's an update.
+
+### Removal of deprecations
+
+Removed deprecated KV apis (`KvRemove` - `remove(k)=>Promise<void>`,
+`close()=>Promise<void>`) and options (`maxBucketSize`,
+`placementCluster`,`bucket_location`)
+
 ## Changes to ObjectStore
 
 > [!CAUTION]
@@ -135,6 +182,19 @@ await kvm.open("mykv");
 > ```
 
 To use ObjectStore, you must install and import `@nats-io/obj`.
+
+### Watch
+
+Object.watch() now returns an `ObjectWatchInfo` which is an `ObjectInfo` but
+adding the property `isUpdate` this property is now true when the watch is
+notifying of a new entry. Note that previously the iterator would yield
+`ObjectInfo | null`, the `null` signal has been removed. This means that when
+doing a watch on an empty ObjectStore you won't get an update notification until
+an actual value arrives.
+
+### Removed deprecations
+
+Removed deprecated `ObjectStoreInfo` - use `ObjectStoreStatus`
 
 ## Changes to Services Framework
 
@@ -153,3 +213,6 @@ const service = await svc.add({
 
 // other manipulation as per service api...
 ```
+
+- `services` property has been removed. Install and import the `Services`
+  library, and call `services(nc: NatsConnection)`

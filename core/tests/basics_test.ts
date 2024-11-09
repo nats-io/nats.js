@@ -14,15 +14,13 @@
  */
 import {
   assert,
-  assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertInstanceOf,
   assertRejects,
   assertThrows,
   fail,
 } from "jsr:@std/assert";
-
-import { assertThrowsAsyncErrorCode } from "../../test_helpers/asserts.ts";
 
 import {
   collect,
@@ -30,34 +28,25 @@ import {
   deferred,
   delay,
   Empty,
-  ErrorCode,
   Feature,
   headers,
   isIP,
-  JSONCodec,
   nuid,
   RequestStrategy,
-  StringCodec,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type {
   Msg,
   MsgHdrs,
   NatsConnectionImpl,
-  NatsError,
   Payload,
   Publisher,
   PublishOptions,
   SubscriptionImpl,
 } from "../src/internal_mod.ts";
-import {
-  _setup,
-  assertErrorCode,
-  cleanup,
-  Lock,
-  NatsServer,
-} from "test_helpers";
+import { cleanup, Lock, NatsServer, setup } from "test_helpers";
 import { connect } from "./connect.ts";
+import { errors } from "../src/errors.ts";
 
 Deno.test("basics - connect port", async () => {
   const ns = await NatsServer.start();
@@ -88,36 +77,36 @@ Deno.test("basics - connect servers", async () => {
 });
 
 Deno.test("basics - fail connect", async () => {
-  await connect({ servers: `127.0.0.1:32001` })
-    .then(() => {
-      fail();
-    })
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.ConnectionRefused);
-    });
+  await assertRejects(
+    () => {
+      return connect({ servers: `127.0.0.1:32001` });
+    },
+    errors.ConnectionError,
+    "connection refused",
+  );
 });
 
 Deno.test("basics - publish", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   nc.publish(createInbox());
   await nc.flush();
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - no publish without subject", async () => {
-  const { ns, nc } = await _setup(connect);
-  try {
-    nc.publish("");
-    fail("should not be able to publish without a subject");
-  } catch (err) {
-    assertEquals(err.code, ErrorCode.BadSubject);
-  } finally {
-    await cleanup(ns, nc);
-  }
+  const { ns, nc } = await setup();
+  assertThrows(
+    () => {
+      nc.publish("");
+    },
+    errors.InvalidSubjectError,
+    "illegal subject: ''",
+  );
+  await cleanup(ns, nc);
 });
 
 Deno.test("basics - pubsub", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const iter = (async () => {
@@ -133,7 +122,7 @@ Deno.test("basics - pubsub", async () => {
 });
 
 Deno.test("basics - subscribe and unsubscribe", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const subj = createInbox();
   const sub = nc.subscribe(subj, { max: 1000, queue: "aaa" });
@@ -168,7 +157,7 @@ Deno.test("basics - subscribe and unsubscribe", async () => {
 });
 
 Deno.test("basics - subscriptions iterate", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const lock = Lock();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
@@ -184,7 +173,7 @@ Deno.test("basics - subscriptions iterate", async () => {
 });
 
 Deno.test("basics - subscriptions pass exact subject to cb", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const s = createInbox();
   const subj = `${s}.foo.bar.baz`;
   const sub = nc.subscribe(`${s}.*.*.*`);
@@ -201,7 +190,7 @@ Deno.test("basics - subscriptions pass exact subject to cb", async () => {
 });
 
 Deno.test("basics - subscribe returns Subscription", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj) as SubscriptionImpl;
   assertEquals(sub.sid, 1);
@@ -209,7 +198,7 @@ Deno.test("basics - subscribe returns Subscription", async () => {
 });
 
 Deno.test("basics - wildcard subscriptions", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const single = 3;
   const partial = 2;
@@ -237,8 +226,7 @@ Deno.test("basics - wildcard subscriptions", async () => {
 });
 
 Deno.test("basics - correct data in message", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const mp = deferred<Msg>();
   const sub = nc.subscribe(subj);
@@ -249,16 +237,16 @@ Deno.test("basics - correct data in message", async () => {
     }
   })().then();
 
-  nc.publish(subj, sc.encode(subj));
+  nc.publish(subj, subj);
   const m = await mp;
   assertEquals(m.subject, subj);
-  assertEquals(sc.decode(m.data), subj);
+  assertEquals(m.string(), subj);
   assertEquals(m.reply, "");
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - correct reply in message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const s = createInbox();
   const r = createInbox();
 
@@ -276,7 +264,7 @@ Deno.test("basics - correct reply in message", async () => {
 });
 
 Deno.test("basics - respond returns false if no reply subject set", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const s = createInbox();
   const dr = deferred<boolean>();
   const sub = nc.subscribe(s);
@@ -293,7 +281,7 @@ Deno.test("basics - respond returns false if no reply subject set", async () => 
 });
 
 Deno.test("basics - closed cannot subscribe", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await nc.close();
   let failed = false;
   try {
@@ -307,7 +295,7 @@ Deno.test("basics - closed cannot subscribe", async () => {
 });
 
 Deno.test("basics - close cannot request", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await nc.close();
   let failed = false;
   try {
@@ -321,7 +309,7 @@ Deno.test("basics - close cannot request", async () => {
 });
 
 Deno.test("basics - flush returns promise", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const p = nc.flush();
   if (!p) {
     fail("should have returned a promise");
@@ -331,7 +319,7 @@ Deno.test("basics - flush returns promise", async () => {
 });
 
 Deno.test("basics - unsubscribe after close", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe(createInbox());
   await nc.close();
   sub.unsubscribe();
@@ -339,7 +327,7 @@ Deno.test("basics - unsubscribe after close", async () => {
 });
 
 Deno.test("basics - unsubscribe stops messages", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   // in this case we use a callback otherwise messages are buffered.
   const sub = nc.subscribe(subj, {
@@ -358,67 +346,92 @@ Deno.test("basics - unsubscribe stops messages", async () => {
 });
 
 Deno.test("basics - request", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+  const { ns, nc } = await setup();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
-      m.respond(sc.encode("foo"));
+      m.respond("foo");
     }
   })().then();
   const msg = await nc.request(s);
-  assertEquals(sc.decode(msg.data), "foo");
+  assertEquals(msg.string(), "foo");
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request no responders", async () => {
-  const { ns, nc } = await _setup(connect);
-  const s = createInbox();
-  await assertThrowsAsyncErrorCode(async () => {
-    await nc.request(s, Empty, { timeout: 100 });
-  }, ErrorCode.NoResponders);
+  const { ns, nc } = await setup();
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { timeout: 100 });
+    },
+    errors.RequestError,
+    "no responders: 'q'",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request no responders noMux", async () => {
+  const { ns, nc } = await setup();
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { timeout: 100, noMux: true });
+    },
+    errors.RequestError,
+    "no responders: 'q'",
+  );
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request timeout", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const s = createInbox();
   nc.subscribe(s, { callback: () => {} });
-  await assertThrowsAsyncErrorCode(async () => {
-    await nc.request(s, Empty, { timeout: 100 });
-  }, ErrorCode.Timeout);
+  await assertRejects(() => {
+    return nc.request(s, Empty, { timeout: 100 });
+  }, errors.TimeoutError);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request timeout noMux", async () => {
+  const { ns, nc } = await setup();
+  const s = createInbox();
+  nc.subscribe(s, { callback: () => {} });
+  await assertRejects(() => {
+    return nc.request(s, Empty, { timeout: 100, noMux: true });
+  }, errors.TimeoutError);
+
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request cancel rejects", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const s = createInbox();
-  const lock = Lock();
 
-  nc.request(s, Empty, { timeout: 1000 })
-    .then(() => {
-      fail();
-    })
-    .catch((err) => {
-      assertEquals(err.code, ErrorCode.Cancelled);
-      lock.unlock();
-    });
+  const check = assertRejects(
+    () => {
+      return nc.request(s, Empty, { timeout: 1000 });
+    },
+    errors.RequestError,
+    "cancelled",
+  );
 
   nci.protocol.muxSubscriptions.reqs.forEach((v) => {
     v.cancel();
   });
-  await lock;
+
+  await check;
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - old style requests", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+  const { ns, nc } = await setup();
   nc.subscribe("q", {
     callback: (_err, msg) => {
-      msg.respond(sc.encode("hello"));
+      msg.respond("hello");
     },
   });
 
@@ -427,45 +440,39 @@ Deno.test("basics - old style requests", async () => {
     Empty,
     { reply: "bar", noMux: true, timeout: 1000 },
   );
-  assertEquals("hello", sc.decode(m.data));
+  assertEquals("hello", m.string());
   assertEquals("bar", m.subject);
 
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - request with custom subject", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+Deno.test("basics - reply can only be used with noMux", async () => {
+  const { ns, nc } = await setup();
   nc.subscribe("q", {
     callback: (_err, msg) => {
-      msg.respond(sc.encode("hello"));
+      msg.respond("hello");
     },
   });
 
-  try {
-    await nc.request(
-      "q",
-      Empty,
-      { reply: "bar", timeout: 1000 },
-    );
+  await assertRejects(
+    () => {
+      return nc.request("q", Empty, { reply: "bar", timeout: 1000 });
+    },
+    errors.InvalidArgumentError,
+    "'reply','noMux' are mutually exclusive",
+  );
 
-    fail("should have failed");
-  } catch (err) {
-    const nerr = err as NatsError;
-    assertEquals(ErrorCode.InvalidOption, nerr.code);
-  }
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request with headers", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+  const { ns, nc } = await setup();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
       const headerContent = m.headers?.get("test-header");
-      m.respond(sc.encode(`header content: ${headerContent}`));
+      m.respond(`header content: ${headerContent}`);
     }
   })().then();
   const requestHeaders = headers();
@@ -474,19 +481,18 @@ Deno.test("basics - request with headers", async () => {
     headers: requestHeaders,
     timeout: 5000,
   });
-  assertEquals(sc.decode(msg.data), "header content: Hello, world!");
+  assertEquals(msg.string(), "header content: Hello, world!");
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request with headers and custom subject", async () => {
-  const { ns, nc } = await _setup(connect);
-  const sc = StringCodec();
+  const { ns, nc } = await setup();
   const s = createInbox();
   const sub = nc.subscribe(s);
   (async () => {
     for await (const m of sub) {
       const headerContent = m.headers?.get("test-header");
-      m.respond(sc.encode(`header content: ${headerContent}`));
+      m.respond(`header content: ${headerContent}`);
     }
   })().then();
   const requestHeaders = headers();
@@ -497,55 +503,50 @@ Deno.test("basics - request with headers and custom subject", async () => {
     reply: "reply-subject",
     noMux: true,
   });
-  assertEquals(sc.decode(msg.data), "header content: Hello, world!");
+  assertEquals(msg.string(), "header content: Hello, world!");
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - request requires a subject", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await assertRejects(
-    async () => {
-      //@ts-ignore: subject missing on purpose
-      await nc.request();
+    () => {
+      //@ts-ignore: testing
+      return nc.request();
     },
-    Error,
-    "BAD_SUBJECT",
-    undefined,
+    errors.InvalidSubjectError,
+    "illegal subject: ''",
   );
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - closed returns error", async () => {
-  const { ns, nc } = await _setup(connect, {}, { reconnect: false });
+  const { ns, nc } = await setup({}, { reconnect: false });
   setTimeout(() => {
     (nc as NatsConnectionImpl).protocol.sendCommand("Y\r\n");
-  }, 1000);
-  await nc.closed()
-    .then((v) => {
-      assertEquals((v as NatsError).code, ErrorCode.ProtocolError);
-    });
-
+  }, 100);
+  const done = await nc.closed();
+  assertInstanceOf(done, errors.ProtocolError);
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - subscription with timeout", async () => {
-  const { ns, nc } = await _setup(connect);
-  const lock = Lock(1);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe(createInbox(), { max: 1, timeout: 250 });
-  (async () => {
-    for await (const _m of sub) {
-      // ignored
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.Timeout);
-    lock.unlock();
-  });
-  await lock;
+  await assertRejects(
+    async () => {
+      for await (const _m of sub) {
+        // ignored
+      }
+    },
+    errors.TimeoutError,
+    "timeout",
+  );
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - subscription expecting 2 doesn't fire timeout", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj, { max: 2, timeout: 500 });
   (async () => {
@@ -565,7 +566,7 @@ Deno.test("basics - subscription expecting 2 doesn't fire timeout", async () => 
 });
 
 Deno.test("basics - subscription timeout auto cancels", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   let c = 0;
   const sub = nc.subscribe(subj, { max: 2, timeout: 300 });
@@ -585,7 +586,7 @@ Deno.test("basics - subscription timeout auto cancels", async () => {
 });
 
 Deno.test("basics - no mux requests create normal subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   nc.request(createInbox(), Empty, { timeout: 1000, noMux: true }).then();
   assertEquals(nci.protocol.subscriptions.size(), 1);
@@ -599,26 +600,21 @@ Deno.test("basics - no mux requests create normal subs", async () => {
 });
 
 Deno.test("basics - no mux requests timeout", async () => {
-  const { ns, nc } = await _setup(connect);
-  const lock = Lock();
+  const { ns, nc } = await setup();
   const subj = createInbox();
   nc.subscribe(subj, { callback: () => {} });
+  await assertRejects(
+    () => {
+      return nc.request(subj, Empty, { timeout: 500, noMux: true });
+    },
+    errors.TimeoutError,
+  );
 
-  await nc.request(
-    subj,
-    Empty,
-    { timeout: 1000, noMux: true },
-  )
-    .catch((err) => {
-      assertErrorCode(err, ErrorCode.Timeout);
-      lock.unlock();
-    });
-  await lock;
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - no mux requests", async () => {
-  const { ns, nc } = await _setup(connect, { max_payload: 2048 });
+  const { ns, nc } = await setup({ max_payload: 2048 });
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const data = Uint8Array.from([1234]);
@@ -634,18 +630,17 @@ Deno.test("basics - no mux requests", async () => {
 });
 
 Deno.test("basics - no mux request timeout doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   nc.subscribe("q", { callback: () => {} });
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.subscriptions.size(), 1);
 
   await assertRejects(
-    async () => {
-      await nc.request("q", Empty, { noMux: true, timeout: 1000 });
+    () => {
+      return nc.request("q", Empty, { noMux: true, timeout: 1000 });
     },
-    Error,
-    "TIMEOUT",
+    errors.TimeoutError,
   );
 
   assertEquals(nci.protocol.subscriptions.size(), 1);
@@ -653,25 +648,20 @@ Deno.test("basics - no mux request timeout doesn't leak subs", async () => {
 });
 
 Deno.test("basics - no mux request no responders doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.subscriptions.size(), 0);
-
-  await assertRejects(
-    async () => {
-      await nc.request("q", Empty, { noMux: true, timeout: 1000 });
-    },
-    Error,
-    "503",
-  );
+  await assertRejects(() => {
+    return nc.request("q", Empty, { noMux: true, timeout: 500 });
+  });
 
   assertEquals(nci.protocol.subscriptions.size(), 0);
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - no mux request no perms doesn't leak subs", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "s",
@@ -712,48 +702,79 @@ Deno.test("basics - no mux request no perms doesn't leak subs", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - no max_payload messages", async () => {
-  const { ns, nc } = await _setup(connect, { max_payload: 2048 });
+Deno.test("basics - max_payload errors", async () => {
+  const { ns, nc } = await setup({ max_payload: 2048 });
   const nci = nc as NatsConnectionImpl;
   assert(nci.protocol.info);
   const big = new Uint8Array(nci.protocol.info.max_payload + 1);
 
-  const subj = createInbox();
-  try {
-    nc.publish(subj, big);
-    fail();
-  } catch (err) {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
-  }
+  assertThrows(
+    () => {
+      nc.publish("foo", big);
+    },
+    errors.InvalidArgumentError,
+    `payload size exceeded`,
+  );
 
-  try {
-    await nc.request(subj, big).then();
-    fail();
-  } catch (err) {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
-  }
+  assertRejects(
+    () => {
+      return nc.request("foo", big);
+    },
+    errors.InvalidArgumentError,
+    `payload size exceeded`,
+  );
 
-  const sub = nc.subscribe(subj);
-  (async () => {
-    for await (const m of sub) {
-      m.respond(big);
-      fail();
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.MaxPayloadExceeded);
+  const d = deferred();
+  setTimeout(() => {
+    nc.request("foo").catch((err) => {
+      d.reject(err);
+    });
   });
 
-  await nc.request(subj).then(() => {
-    fail();
-  }).catch((err) => {
-    assertErrorCode(err, ErrorCode.Timeout);
-  });
+  const sub = nc.subscribe("foo");
+
+  for await (const m of sub) {
+    assertThrows(
+      () => {
+        m.respond(big);
+      },
+      errors.InvalidArgumentError,
+      `payload size exceeded`,
+    );
+    break;
+  }
+
+  await assertRejects(
+    () => {
+      return d;
+    },
+    errors.TimeoutError,
+    "timeout",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - close cancels requests", async () => {
+  const { ns, nc } = await setup();
+  nc.subscribe("q", { callback: () => {} });
+
+  const done = assertRejects(
+    () => {
+      return nc.request("q");
+    },
+    errors.RequestError,
+    "connection closed",
+  );
+
+  await nc.close();
+  await done;
 
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - empty message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const mp = deferred<Msg>();
   const sub = nc.subscribe(subj);
@@ -772,7 +793,7 @@ Deno.test("basics - empty message", async () => {
 });
 
 Deno.test("basics - msg buffers dont overwrite", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const N = 100;
   const sub = nc.subscribe(">");
@@ -837,7 +858,7 @@ Deno.test("basics - get client ip", async () => {
 });
 
 Deno.test("basics - subs pending count", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
 
   const sub = nc.subscribe(subj, { max: 10 });
@@ -883,46 +904,44 @@ Deno.test("basics - create inbox", () => {
 });
 
 Deno.test("basics - custom prefix", async () => {
-  const { ns, nc } = await _setup(connect, {}, { inboxPrefix: "_x" });
-  const jc = JSONCodec();
+  const { ns, nc } = await setup({}, { inboxPrefix: "_x" });
   const subj = createInbox();
   nc.subscribe(subj, {
     max: 1,
     callback: (_err, msg) => {
-      msg.respond(jc.encode(msg.reply!.startsWith("_x.")));
+      msg.respond();
     },
   });
 
   const v = await nc.request(subj);
-  assert(jc.decode(v.data));
+  assert(v.subject.startsWith("_x."));
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - custom prefix noMux", async () => {
-  const { ns, nc } = await _setup(connect, {}, { inboxPrefix: "_y" });
-  const jc = JSONCodec();
+  const { ns, nc } = await setup({}, { inboxPrefix: "_y" });
   const subj = createInbox();
   nc.subscribe(subj, {
     max: 1,
     callback: (_err, msg) => {
-      msg.respond(jc.encode(msg.reply!.startsWith("_y.")));
+      msg.respond();
     },
   });
 
   const v = await nc.request(subj);
-  assert(jc.decode(v.data));
+  assert(v.subject.startsWith("_y."));
   await cleanup(ns, nc);
 });
 
 Deno.test("basics - debug", async () => {
-  const { ns, nc } = await _setup(connect, {}, { debug: true });
+  const { ns, nc } = await setup({}, { debug: true });
   await nc.flush();
   await cleanup(ns, nc);
   assertEquals(nc.isClosed(), true);
 });
 
 Deno.test("basics - subscription with timeout cancels on message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj, { max: 1, timeout: 500 }) as SubscriptionImpl;
   assert(sub.timer !== undefined);
@@ -937,7 +956,7 @@ Deno.test("basics - subscription with timeout cancels on message", async () => {
 });
 
 Deno.test("basics - subscription cb with timeout cancels on message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const done = Lock();
   const sub = nc.subscribe(subj, {
@@ -970,43 +989,39 @@ Deno.test("basics - port and server are mutually exclusive", async () => {
     async () => {
       await connect({ servers: "localhost", port: 4222 });
     },
-    Error,
-    "port and servers options are mutually exclusive",
+    errors.InvalidArgumentError,
+    "'servers','port' are mutually exclusive",
     undefined,
   );
 });
 
 Deno.test("basics - rtt", async () => {
-  const { ns, nc } = await _setup(connect, {}, {
-    maxReconnectAttempts: 5,
-    reconnectTimeWait: 250,
+  const { ns, nc } = await setup({}, {
+    maxReconnectAttempts: 1,
+    reconnectTimeWait: 750,
   });
   const rtt = await nc.rtt();
   assert(rtt >= 0);
 
   await ns.stop();
-  await delay(500);
+
   await assertRejects(
-    async () => {
-      await nc.rtt();
+    () => {
+      return nc.rtt();
     },
-    Error,
-    ErrorCode.Disconnect,
+    errors.RequestError,
+    "disconnected",
   );
 
   await nc.closed();
 
-  await assertRejects(
-    async () => {
-      await nc.rtt();
-    },
-    Error,
-    ErrorCode.ConnectionClosed,
-  );
+  await assertRejects(() => {
+    return nc.rtt();
+  }, errors.ClosedConnectionError);
 });
 
 Deno.test("basics - request many count", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -1037,7 +1052,7 @@ Deno.test("basics - request many count", async () => {
 });
 
 Deno.test("basics - request many jitter", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -1068,16 +1083,14 @@ Deno.test("basics - request many jitter", async () => {
 });
 
 Deno.test("basics - request many sentinel", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
       msg.respond();
     },
@@ -1102,16 +1115,14 @@ Deno.test("basics - request many sentinel", async () => {
 });
 
 Deno.test("basics - request many sentinel - partial response", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
-  const sc = StringCodec();
-  const payload = sc.encode("hello");
   nc.subscribe(subj, {
     callback: (_err, msg) => {
       for (let i = 0; i < 10; i++) {
-        msg.respond(payload);
+        msg.respond("hello");
       }
     },
   });
@@ -1135,7 +1146,7 @@ Deno.test("basics - request many sentinel - partial response", async () => {
 });
 
 Deno.test("basics - request many wait for timer - no respone", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -1164,7 +1175,7 @@ Deno.test("basics - request many wait for timer - no respone", async () => {
 });
 
 Deno.test("basics - request many waits for timer late response", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
 
   const subj = createInbox();
@@ -1194,7 +1205,7 @@ Deno.test("basics - request many waits for timer late response", async () => {
 });
 
 Deno.test("basics - server version", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   assertEquals(nci.protocol.features.require("3.0.0"), false);
   assertEquals(nci.protocol.features.require("2.8.2"), true);
@@ -1209,7 +1220,7 @@ Deno.test("basics - server version", async () => {
 });
 
 Deno.test("basics - info", async () => {
-  const { ns, nc } = await _setup(connect, {});
+  const { ns, nc } = await setup();
   assertExists(nc.info);
   await cleanup(ns, nc);
 });
@@ -1217,8 +1228,7 @@ Deno.test("basics - info", async () => {
 Deno.test("basics - initial connect error", async () => {
   const listener = Deno.listen({ port: 0 });
   const port = (listener.addr as Deno.NetAddr).port;
-  const sc = StringCodec();
-  const INFO = sc.encode(
+  const INFO = new TextEncoder().encode(
     `INFO {"server_id":"FAKE","server_name":"FAKE","version":"2.9.4","proto":1,"go":"go1.19.2","host":"127.0.0.1","port":${port},"headers":true,"max_payload":1048576,"jetstream":true,"client_id":4,"client_ip":"127.0.0.1"}\r\n`,
   );
 
@@ -1231,15 +1241,15 @@ Deno.test("basics - initial connect error", async () => {
     }
   })();
 
-  try {
-    await connect({ port, reconnect: false });
-    fail("shouldn't have connected");
-  } catch (err) {
-    // in node we may get a disconnect which we generated
-    // in deno we get the connection reset - but if running in CI this may turn out to be
-    // a connection refused
-    assertArrayIncludes(["ECONNRESET", "CONNECTION_REFUSED"], [err.code]);
-  }
+  const err = await assertRejects(() => {
+    return connect({ port, reconnect: false });
+  });
+
+  assert(
+    err instanceof errors.ConnectionError ||
+      err instanceof Deno.errors.ConnectionReset,
+  );
+
   listener.close();
   await done;
 });
@@ -1257,16 +1267,16 @@ Deno.test("basics - inbox prefixes cannot have wildcards", async () => {
     async () => {
       await connect({ inboxPrefix: "_inbox.foo.>" });
     },
-    Error,
-    "inbox prefixes cannot have wildcards",
+    errors.InvalidArgumentError,
+    "'prefix' cannot have wildcards",
   );
 
   assertThrows(
     () => {
       createInbox("_inbox.foo.*");
     },
-    Error,
-    "inbox prefixes cannot have wildcards",
+    errors.InvalidArgumentError,
+    "'prefix' cannot have wildcards",
   );
 });
 
@@ -1281,14 +1291,8 @@ Deno.test("basics - msg typed payload", async () => {
   });
 
   assertEquals((await nc.request("echo", Empty)).string(), "");
-  assertEquals(
-    (await nc.request("echo", StringCodec().encode("hello"))).string(),
-    "hello",
-  );
-  assertEquals(
-    (await nc.request("echo", StringCodec().encode("5"))).string(),
-    "5",
-  );
+  assertEquals((await nc.request("echo", "hello")).string(), "hello");
+  assertEquals((await nc.request("echo", "5")).string(), "5");
 
   await assertRejects(
     async () => {
@@ -1296,32 +1300,24 @@ Deno.test("basics - msg typed payload", async () => {
       r.json<number>();
     },
     Error,
-    "Bad JSON",
+    "Unexpected end of JSON input",
   );
 
+  assertEquals((await nc.request("echo", JSON.stringify(null))).json(), null);
+  assertEquals((await nc.request("echo", JSON.stringify(5))).json(), 5);
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode(null))).json(),
-    null,
-  );
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode(undefined))).json(),
-    null,
-  );
-  assertEquals((await nc.request("echo", JSONCodec().encode(5))).json(), 5);
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode("hello"))).json(),
+    (await nc.request("echo", JSON.stringify("hello"))).json(),
     "hello",
   );
+  assertEquals((await nc.request("echo", JSON.stringify(["hello"]))).json(), [
+    "hello",
+  ]);
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode(["hello"]))).json(),
-    ["hello"],
-  );
-  assertEquals(
-    (await nc.request("echo", JSONCodec().encode({ one: "two" }))).json(),
+    (await nc.request("echo", JSON.stringify({ one: "two" }))).json(),
     { one: "two" },
   );
   assertEquals(
-    (await nc.request("echo", JSONCodec().encode([{ one: "two" }]))).json(),
+    (await nc.request("echo", JSON.stringify([{ one: "two" }]))).json(),
     [{ one: "two" }],
   );
 
@@ -1336,7 +1332,7 @@ Deno.test("basics - ipv4 mapped to ipv6", async () => {
 });
 
 Deno.test("basics - data types empty", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = nuid.next();
   nc.subscribe(subj, {
     callback: (_err, msg) => {
@@ -1367,7 +1363,7 @@ Deno.test("basics - data types empty", async () => {
 });
 
 Deno.test("basics - data types string", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = nuid.next();
   nc.subscribe(subj, {
     callback: (_err, msg) => {
@@ -1401,12 +1397,12 @@ Deno.test("basics - data types string", async () => {
 });
 
 Deno.test("basics - json reviver", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = nuid.next();
 
   nc.subscribe(subj, {
     callback: (_err, msg) => {
-      msg.respond(JSONCodec().encode({ date: Date.now(), auth: true }));
+      msg.respond(JSON.stringify({ date: Date.now(), auth: true }));
     },
   });
 
@@ -1430,7 +1426,7 @@ Deno.test("basics - json reviver", async () => {
 });
 
 Deno.test("basics - sync subscription", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = nuid.next();
 
   const sub = nc.subscribe(subj);
@@ -1448,7 +1444,7 @@ Deno.test("basics - sync subscription", async () => {
 });
 
 Deno.test("basics - publish message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe("q");
 
   const nis = new MM(nc);
@@ -1470,7 +1466,7 @@ Deno.test("basics - publish message", async () => {
 });
 
 Deno.test("basics - respond message", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const sub = nc.subscribe("q");
 
   const nis = new MM(nc);
@@ -1500,6 +1496,47 @@ Deno.test("basics - resolve false", async () => {
   const srv = nci.protocol.servers.getCurrentServer();
   assertEquals(srv.resolves, undefined);
   await nci.close();
+});
+
+Deno.test("basics - stats", async () => {
+  const { ns, nc } = await setup();
+
+  const cid = nc.info?.client_id || -1;
+  if (cid === -1) {
+    fail("client_id not found");
+  }
+
+  async function check(m = ""): Promise<void> {
+    await nc.flush();
+    const client = nc.stats();
+    const { in_msgs, out_msgs, in_bytes, out_bytes } =
+      (await ns.connz(cid, "detail")).connections[0];
+    const server = { in_msgs, out_msgs, in_bytes, out_bytes };
+
+    console.log(m, client, server);
+
+    assertEquals(client.outBytes, in_bytes);
+    assertEquals(client.inBytes, out_bytes);
+    assertEquals(client.outMsgs, in_msgs);
+    assertEquals(client.inMsgs, out_msgs);
+  }
+
+  await check("start");
+
+  // publish
+  nc.publish("hello", "world");
+  await check("simple publish");
+
+  nc.subscribe("hello", { callback: () => {} });
+  nc.publish("hello", "hi");
+  await check("subscribe");
+
+  const h = headers();
+  h.set("hello", "very long value that we want to add here");
+  nc.publish("hello", "hello", { headers: h });
+  await check("headers");
+
+  await cleanup(ns, nc);
 });
 
 class MM implements Msg {

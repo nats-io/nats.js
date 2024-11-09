@@ -15,9 +15,7 @@
 
 import {
   compare,
-  deferred,
   Empty,
-  ErrorCode,
   Feature,
   headers,
   millis,
@@ -31,16 +29,16 @@ import type {
   MsgHdrs,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   Payload,
   QueuedIterator,
 } from "@nats-io/nats-core/internal";
 
 import {
   AckPolicy,
-  consumerOpts,
   DeliverPolicy,
   DiscardPolicy,
+  JetStreamApiCodes,
+  JetStreamApiError,
   JsHeaders,
   ListerImpl,
   PubHeaders,
@@ -52,13 +50,11 @@ import {
 
 import type {
   ConsumerConfig,
-  ConsumerInfo,
   DirectStreamAPI,
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
   JetStreamPublishOptions,
-  JetStreamSubscriptionInfoable,
   JsMsg,
   Lister,
   ListerFieldFilter,
@@ -82,8 +78,8 @@ import type {
   KvEntry,
   KvOptions,
   KvPutOptions,
-  KvRemove,
   KvStatus,
+  KvWatchEntry,
   KvWatchOptions,
 } from "./types.ts";
 
@@ -266,7 +262,7 @@ export class Kvm {
   }
 }
 
-export class Bucket implements KV, KvRemove {
+export class Bucket implements KV {
   js: JetStreamClient;
   jsm: JetStreamManager;
   stream!: string;
@@ -331,20 +327,11 @@ export class Bucket implements KV, KvRemove {
     this.stream = sc.name = opts.streamName ?? this.bucketName();
     sc.retention = RetentionPolicy.Limits;
     sc.max_msgs_per_subject = bo.history;
-    if (bo.maxBucketSize) {
-      bo.max_bytes = bo.maxBucketSize;
-    }
     if (bo.max_bytes) {
       sc.max_bytes = bo.max_bytes;
     }
     sc.max_msg_size = bo.maxValueSize;
     sc.storage = bo.storage;
-    const location = opts.placementCluster ?? "";
-    if (location) {
-      opts.placement = {} as Placement;
-      opts.placement.cluster = location;
-      opts.placement.tags = [];
-    }
     if (opts.placement) {
       sc.placement = opts.placement;
     }
@@ -432,7 +419,7 @@ export class Bucket implements KV, KvRemove {
         this.direct = false;
       }
     } catch (err) {
-      if (err.message === "stream not found") {
+      if ((err as Error).message === "stream not found") {
         info = await this.jsm.streams.add(sc);
       } else {
         throw err;
@@ -558,9 +545,9 @@ export class Bucket implements KV, KvRemove {
     return new KvStoredEntryImpl(this.bucket, this.prefixLen, sm);
   }
 
-  jmToEntry(jm: JsMsg): KvEntry {
+  jmToWatchEntry(jm: JsMsg, isUpdate: boolean): KvWatchEntry {
     const key = this.decodeKey(jm.subject.substring(this.prefixLen));
-    return new KvJsMsgEntryImpl(this.bucket, key, jm);
+    return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
   }
 
   async create(k: string, data: Payload): Promise<number> {
@@ -570,8 +557,11 @@ export class Bucket implements KV, KvRemove {
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
-      if (err?.api_error?.err_code !== 10071) {
-        return Promise.reject(err);
+      if (err instanceof JetStreamApiError) {
+        const jserr = err as JetStreamApiError;
+        if (jserr.code !== JetStreamApiCodes.StreamWrongLastSequence) {
+          return Promise.reject(err);
+        }
       }
     }
     let rev = 0;
@@ -613,12 +603,6 @@ export class Bucket implements KV, KvRemove {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
       return pa.seq;
     } catch (err) {
-      const ne = err as NatsError;
-      if (ne.isJetStreamError()) {
-        ne.message = ne.api_error?.description!;
-        ne.code = `${ne.api_error?.code!}`;
-        return Promise.reject(ne);
-      }
       return Promise.reject(err);
     }
   }
@@ -635,7 +619,7 @@ export class Bucket implements KV, KvRemove {
       arg = { seq: opts.revision };
     }
 
-    let sm: StoredMsg;
+    let sm: StoredMsg | null = null;
     try {
       if (this.direct) {
         const direct =
@@ -644,17 +628,15 @@ export class Bucket implements KV, KvRemove {
       } else {
         sm = await this.jsm.streams.getMessage(this.bucketName(), arg);
       }
+      if (sm === null) {
+        return null;
+      }
       const ke = this.smToEntry(sm);
       if (ke.key !== ek) {
         return null;
       }
       return ke;
     } catch (err) {
-      if (
-        err.code === ErrorCode.JetStream404NoMessages
-      ) {
-        return null;
-      }
       throw err;
     }
   }
@@ -670,22 +652,17 @@ export class Bucket implements KV, KvRemove {
   async purgeDeletes(
     olderMillis: number = 30 * 60 * 1000,
   ): Promise<PurgeResponse> {
-    const done = deferred();
     const buf: KvEntry[] = [];
-    const i = await this.watch({
+    const i = await this.history({
       key: ">",
-      initializedFn: () => {
-        done.resolve();
-      },
     });
-    (async () => {
+    await (async () => {
       for await (const e of i) {
         if (e.operation === "DEL" || e.operation === "PURGE") {
           buf.push(e);
         }
       }
     })().then();
-    await done;
     i.stop();
     const min = Date.now() - olderMillis;
     const proms = buf.map((e) => {
@@ -786,76 +763,43 @@ export class Bucket implements KV, KvRemove {
 
   async history(
     opts: { key?: string | string[]; headers_only?: boolean } = {},
-  ): Promise<QueuedIterator<KvEntry>> {
+  ): Promise<QueuedIterator<KvWatchEntry>> {
     const k = opts.key ?? ">";
-    const qi = new QueuedIteratorImpl<KvEntry>();
     const co = {} as ConsumerConfig;
     co.headers_only = opts.headers_only || false;
 
-    let fn: (() => void) | undefined;
-    fn = () => {
+    const qi = new QueuedIteratorImpl<KvWatchEntry>();
+    const fn = () => {
       qi.stop();
     };
-    let count = 0;
 
     const cc = this._buildCC(k, KvWatchInclude.AllHistory, co);
-    const subj = cc.filter_subject!;
-    const copts = consumerOpts(cc);
-    copts.bindStream(this.stream);
-    copts.orderedConsumer();
-    copts.callback((err, jm) => {
-      if (err) {
-        // sub done
-        qi.stop(err);
-        return;
-      }
-      if (jm) {
-        const e = this.jmToEntry(jm);
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    qi._data = oc;
+    const info = await oc.info(true);
+    if (info.num_pending === 0) {
+      qi.push(fn);
+      return qi;
+    }
+
+    const iter = await oc.consume({
+      callback: (m) => {
+        const e = this.jmToWatchEntry(m, false);
         qi.push(e);
         qi.received++;
-        //@ts-ignore - function will be removed
-        if (fn && count > 0 && qi.received >= count || jm.info.pending === 0) {
-          //@ts-ignore: we are injecting an unexpected type
+        if (m.info.pending === 0) {
           qi.push(fn);
-          fn = undefined;
         }
-      }
+      },
     });
 
-    const sub = await this.js.subscribe(subj, copts);
-    // by the time we are here, likely the subscription got messages
-    if (fn) {
-      const { info: { last } } = sub as unknown as {
-        info: { last: ConsumerInfo };
-      };
-      // this doesn't sound correct - we should be looking for a seq number instead
-      // then if we see a greater one, we are done.
-      const expect = last.num_pending + last.delivered.consumer_seq;
-      // if the iterator already queued - the only issue is other modifications
-      // did happen like stream was pruned, and the ordered consumer reset, etc
-      // we won't get what we are expecting - so the notification will never fire
-      // the sentinel ought to be coming from the server
-      if (expect === 0 || qi.received >= expect) {
-        try {
-          fn();
-        } catch (err) {
-          // fail it - there's something wrong in the user callback
-          qi.stop(err);
-        } finally {
-          fn = undefined;
-        }
-      } else {
-        count = expect;
-      }
-    }
-    qi._data = sub;
-    qi.iterClosed.then(() => {
-      sub.unsubscribe();
+    iter.closed().then(() => {
+      qi.push(fn);
     });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err) => {
-      qi.stop(err);
+
+    // if they break from the iterator stop the consumer
+    qi.iterClosed.then(() => {
+      iter.stop();
     });
 
     return qi;
@@ -872,9 +816,9 @@ export class Bucket implements KV, KvRemove {
 
   async watch(
     opts: KvWatchOptions = {},
-  ): Promise<QueuedIterator<KvEntry>> {
+  ): Promise<QueuedIterator<KvWatchEntry>> {
     const k = opts.key ?? ">";
-    const qi = new QueuedIteratorImpl<KvEntry>();
+    const qi = new QueuedIteratorImpl<KvWatchEntry>();
     const co = {} as Partial<ConsumerConfig>;
     co.headers_only = opts.headers_only || false;
 
@@ -886,80 +830,42 @@ export class Bucket implements KV, KvRemove {
     }
     const ignoreDeletes = opts.ignoreDeletes === true;
 
-    let fn = opts.initializedFn;
-    let count = 0;
-
     const cc = this._buildCC(k, content, co);
-    const subj = cc.filter_subject!;
-    const copts = consumerOpts(cc);
-
-    if (this.canSetWatcherName()) {
-      copts.consumerName(nuid.next());
-    }
-    copts.bindStream(this.stream);
+    cc.name = `KV_WATCHER_${nuid.next()}`;
     if (opts.resumeFromRevision && opts.resumeFromRevision > 0) {
-      copts.startSequence(opts.resumeFromRevision);
+      cc.deliver_policy = DeliverPolicy.StartSequence;
+      cc.opt_start_seq = opts.resumeFromRevision;
     }
-    copts.orderedConsumer();
-    copts.callback((err, jm) => {
-      if (err) {
-        // sub done
-        qi.stop(err);
-        return;
-      }
-      if (jm) {
-        const e = this.jmToEntry(jm);
+
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info(true);
+    const count = info.num_pending;
+    let isUpdate = content === KvWatchInclude.UpdatesOnly || count === 0;
+
+    qi._data = oc;
+    let i = 0;
+    const iter = await oc.consume({
+      callback: (m) => {
+        if (!isUpdate) {
+          i++;
+          isUpdate = i >= count;
+        }
+        const e = this.jmToWatchEntry(m, isUpdate);
         if (ignoreDeletes && e.operation === "DEL") {
           return;
         }
         qi.push(e);
         qi.received++;
-
-        // count could have changed or has already been received
-        if (
-          fn && (count > 0 && qi.received >= count || jm.info.pending === 0)
-        ) {
-          //@ts-ignore: we are injecting an unexpected type
-          qi.push(fn);
-          fn = undefined;
-        }
-      }
+      },
     });
 
-    const sub = await this.js.subscribe(subj, copts);
-    // by the time we are here, likely the subscription got messages
-    if (fn) {
-      const { info: { last } } = sub as unknown as {
-        info: { last: ConsumerInfo };
-      };
-      // this doesn't sound correct - we should be looking for a seq number instead
-      // then if we see a greater one, we are done.
-      const expect = last.num_pending + last.delivered.consumer_seq;
-      // if the iterator already queued - the only issue is other modifications
-      // did happen like stream was pruned, and the ordered consumer reset, etc
-      // we won't get what we are expecting - so the notification will never fire
-      // the sentinel ought to be coming from the server
-      if (expect === 0 || qi.received >= expect) {
-        try {
-          fn();
-        } catch (err) {
-          // fail it - there's something wrong in the user callback
-          qi.stop(err);
-        } finally {
-          fn = undefined;
-        }
-      } else {
-        count = expect;
-      }
-    }
-    qi._data = sub;
     qi.iterClosed.then(() => {
-      sub.unsubscribe();
+      iter.stop();
     });
-    sub.closed.then(() => {
-      qi.stop();
-    }).catch((err: Error) => {
-      qi.stop(err);
+    iter.closed().then(() => {
+      qi.push(() => {
+        qi.stop();
+      });
     });
 
     return qi;
@@ -970,35 +876,38 @@ export class Bucket implements KV, KvRemove {
     const cc = this._buildCC(k, KvWatchInclude.LastValue, {
       headers_only: true,
     });
-    const subj = Array.isArray(k) ? ">" : cc.filter_subject!;
-    const copts = consumerOpts(cc);
-    copts.bindStream(this.stream);
-    copts.orderedConsumer();
 
-    const sub = await this.js.subscribe(subj, copts);
-    (async () => {
-      for await (const jm of sub) {
-        const op = jm.headers?.get(kvOperationHdr);
+    const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const info = await oc.info();
+    if (info.num_pending === 0) {
+      keys.stop();
+      return keys;
+    }
+
+    keys._data = oc;
+
+    const iter = await oc.consume({
+      callback: (m) => {
+        const op = m.headers?.get(kvOperationHdr);
         if (op !== "DEL" && op !== "PURGE") {
-          const key = this.decodeKey(jm.subject.substring(this.prefixLen));
+          const key = this.decodeKey(m.subject.substring(this.prefixLen));
           keys.push(key);
         }
-        if (jm.info.pending === 0) {
-          sub.unsubscribe();
+        if (m.info.pending === 0) {
+          iter.stop();
         }
-      }
-    })()
-      .then(() => {
-        keys.stop();
-      })
-      .catch((err) => {
-        keys.stop(err);
-      });
+      },
+    });
 
-    const si = sub as unknown as JetStreamSubscriptionInfoable;
-    if (si.info!.last.num_pending === 0) {
-      sub.unsubscribe();
-    }
+    iter.closed().then(() => {
+      keys.push(() => {
+        keys.stop();
+      });
+    });
+    keys.iterClosed.then(() => {
+      iter.stop();
+    });
+
     return keys;
   }
 
@@ -1162,15 +1071,17 @@ class KvStoredEntryImpl implements KvEntry {
   }
 }
 
-class KvJsMsgEntryImpl implements KvEntry {
+class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
   bucket: string;
   key: string;
   sm: JsMsg;
+  update: boolean;
 
-  constructor(bucket: string, key: string, sm: JsMsg) {
+  constructor(bucket: string, key: string, sm: JsMsg, isUpdate: boolean) {
     this.bucket = bucket;
     this.key = key;
     this.sm = sm;
+    this.update = isUpdate;
   }
 
   get value(): Uint8Array {
@@ -1199,6 +1110,10 @@ class KvJsMsgEntryImpl implements KvEntry {
       return parseInt(slen, 10);
     }
     return this.sm.data.length;
+  }
+
+  get isUpdate(): boolean {
+    return this.update;
   }
 
   json<T>(): T {

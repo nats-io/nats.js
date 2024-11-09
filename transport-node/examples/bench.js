@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { Nuid, connect } = require("../index");
-const { Bench, Metric } = require("../lib/nats-base-client/bench");
+const { Bench, Metric, connect, Nuid } = require("../lib/mod");
+const process = require("node:process");
 
 const defaults = {
   s: "127.0.0.1:4222",
@@ -42,7 +42,7 @@ const argv = parse(
 
 if (argv.h || argv.help || (!argv.sub && !argv.pub && !argv.req && !argv.rep)) {
   console.log(
-    "usage: bench.ts [--json] [--callbacks] [--csv] [--csvheader] [--pub] [--sub] [--req (--asyncRequests)] [--count <#messages>=100000] [--payload <#bytes>=128] [--iterations <#loop>=1>] [--server server] [--subject <subj>]\n",
+    "usage: bench.js [--json] [--callbacks] [--csv] [--csvheader] [--pub] [--sub] [--req (--asyncRequests)] [--count <#messages>=100000] [--payload <#bytes>=128] [--iterations <#loop>=1>] [--server server] [--subject <subj>]\n",
   );
   process.exit(0);
 }

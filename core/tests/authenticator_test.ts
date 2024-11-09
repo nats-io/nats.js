@@ -13,8 +13,7 @@
  * limitations under the License.
  */
 
-import { _setup, cleanup } from "test_helpers";
-import { connect } from "./connect.ts";
+import { cleanup, setup } from "test_helpers";
 
 import {
   credsAuthenticator,
@@ -35,7 +34,7 @@ import type {
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "jsr:@std/assert";
 import {
   encodeAccount,
   encodeOperator,
@@ -74,7 +73,7 @@ async function testAuthenticatorFn(
     return fn(nonce);
   };
   conf = Object.assign({}, conf, { debug });
-  const { ns, nc } = await _setup(connect, conf, {
+  const { ns, nc } = await setup(conf, {
     authenticator,
   });
 
@@ -252,4 +251,14 @@ Deno.test("authenticator - creds fn", async () => {
   };
 
   await testAuthenticatorFn(authenticator, conf);
+});
+
+Deno.test("authenticator - bad creds", () => {
+  assertThrows(
+    () => {
+      credsAuthenticator(new TextEncoder().encode("hello"))();
+    },
+    Error,
+    "unable to parse credentials",
+  );
 });

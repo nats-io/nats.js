@@ -3,20 +3,19 @@ name: nats-core release
 on:
   push:
     paths:
-      - 'core/**'
-      - '.github/workflows/core.yml'
-    tags: [ 'core/*' ]
+      - "core/**"
+      - ".github/workflows/core.yml"
+    tags: ["core/*"]
     branches:
-      - '*'
+      - "*"
 jobs:
   test:
     name: Test core changes with released dependencies
     runs-on: ubuntu-latest-4-cores
-    environment: CI
     strategy:
       matrix:
-        deno-version: [1.45.x]
-        node-version: [ 22.x ]
+        deno-version: [2.0.x]
+        node-version: [22.x]
     permissions:
       contents: read
       id-token: write

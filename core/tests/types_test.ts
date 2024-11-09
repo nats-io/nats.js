@@ -15,13 +15,7 @@
 
 import { connect } from "./connect.ts";
 import type { Msg, NatsConnection } from "../src/internal_mod.ts";
-import {
-  createInbox,
-  DataBuffer,
-  deferred,
-  JSONCodec,
-  StringCodec,
-} from "../src/internal_mod.ts";
+import { createInbox, DataBuffer, deferred } from "../src/internal_mod.ts";
 import { assert, assertEquals } from "jsr:@std/assert";
 import { NatsServer } from "../../test_helpers/launcher.ts";
 
@@ -38,27 +32,25 @@ function mh(nc: NatsConnection, subj: string): Promise<Msg> {
 
 Deno.test("types - json types", async () => {
   const ns = await NatsServer.start();
-  const jc = JSONCodec();
   const nc = await connect({ port: ns.port });
   const subj = createInbox();
   const dm = mh(nc, subj);
-  nc.publish(subj, jc.encode(6691));
+  nc.publish(subj, JSON.stringify(6691));
   const msg = await dm;
-  assertEquals(typeof jc.decode(msg.data), "number");
-  assertEquals(jc.decode(msg.data), 6691);
+  assertEquals(typeof msg.json(), "number");
+  assertEquals(msg.json<number>(), 6691);
   await nc.close();
   await ns.stop();
 });
 
 Deno.test("types - string types", async () => {
   const ns = await NatsServer.start();
-  const sc = StringCodec();
   const nc = await connect({ port: ns.port });
   const subj = createInbox();
   const dm = mh(nc, subj);
-  nc.publish(subj, sc.encode("hello world"));
+  nc.publish(subj, "hello world");
   const msg = await dm;
-  assertEquals(sc.decode(msg.data), "hello world");
+  assertEquals(msg.string(), "hello world");
   await nc.close();
   await ns.stop();
 });

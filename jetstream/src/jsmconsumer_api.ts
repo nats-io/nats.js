@@ -24,17 +24,21 @@ import type {
   NatsConnection,
   NatsConnectionImpl,
 } from "@nats-io/nats-core/internal";
-import { Feature } from "@nats-io/nats-core/internal";
-import { ConsumerApiAction } from "./jsapi_types.ts";
-
+import {
+  errors,
+  Feature,
+  InvalidArgumentError,
+} from "@nats-io/nats-core/internal";
 import type {
   ConsumerConfig,
   ConsumerInfo,
   ConsumerListResponse,
   ConsumerUpdateConfig,
   CreateConsumerRequest,
+  PriorityGroups,
   SuccessResponse,
 } from "./jsapi_types.ts";
+import { ConsumerApiAction, PriorityPolicy } from "./jsapi_types.ts";
 
 import type {
   ConsumerAPI,
@@ -56,14 +60,30 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     validateStreamName(stream);
 
     if (cfg.deliver_group && cfg.flow_control) {
-      throw new Error(
-        "jetstream flow control is not supported with queue groups",
+      throw InvalidArgumentError.format(
+        ["flow_control", "deliver_group"],
+        "are mutually exclusive",
       );
     }
     if (cfg.deliver_group && cfg.idle_heartbeat) {
-      throw new Error(
-        "jetstream idle heartbeat is not supported with queue groups",
+      throw InvalidArgumentError.format(
+        ["idle_heartbeat", "deliver_group"],
+        "are mutually exclusive",
       );
+    }
+
+    if (isPriorityGroup(cfg)) {
+      const { min, ok } = this.nc.features.get(Feature.JS_PRIORITY_GROUPS);
+      if (!ok) {
+        throw new Error(`priority_groups require server ${min}`);
+      }
+      if (cfg.deliver_subject) {
+        throw InvalidArgumentError.format(
+          "deliver_subject",
+          "cannot be set when using priority groups",
+        );
+      }
+      validatePriorityGroups(cfg);
     }
 
     const cr = {} as CreateConsumerRequest;
@@ -82,14 +102,14 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
 
     const name = cfg.name === "" ? undefined : cfg.name;
     if (name && !newAPI) {
-      throw new Error(`consumer 'name' requires server ${min}`);
+      throw InvalidArgumentError.format("name", `requires server ${min}`);
     }
     if (name) {
       try {
         minValidation("name", name);
       } catch (err) {
         // if we have a cannot contain the message, massage a bit
-        const m = err.message;
+        const m = (err as Error).message;
         const idx = m.indexOf("cannot contain");
         if (idx !== -1) {
           throw new Error(`consumer 'name' ${m.substring(idx)}`);
@@ -106,14 +126,17 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     if (Array.isArray(cfg.filter_subjects)) {
       const { min, ok } = nci.features.get(Feature.JS_MULTIPLE_CONSUMER_FILTER);
       if (!ok) {
-        throw new Error(`consumer 'filter_subjects' requires server ${min}`);
+        throw InvalidArgumentError.format(
+          "filter_subjects",
+          `requires server ${min}`,
+        );
       }
       newAPI = false;
     }
     if (cfg.metadata) {
       const { min, ok } = nci.features.get(Feature.JS_STREAM_CONSUMER_METADATA);
       if (!ok) {
-        throw new Error(`consumer 'metadata' requires server ${min}`);
+        throw InvalidArgumentError.format("metadata", `requires server ${min}`);
       }
     }
     if (newAPI) {
@@ -207,5 +230,46 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     return this.pause(stream, name, new Date(0)) as Promise<
       { paused: boolean; pause_until?: string; pause_remaining: Nanos }
     >;
+  }
+}
+
+function isPriorityGroup(config: unknown): config is PriorityGroups {
+  const pg = config as PriorityGroups;
+  return pg && pg.priority_groups !== undefined ||
+    pg.priority_policy !== undefined;
+}
+
+function validatePriorityGroups(pg: unknown): void {
+  if (isPriorityGroup(pg)) {
+    if (!Array.isArray(pg.priority_groups)) {
+      throw InvalidArgumentError.format(
+        ["priority_groups"],
+        "must be an array",
+      );
+    }
+    if (pg.priority_groups.length === 0) {
+      throw InvalidArgumentError.format(
+        ["priority_groups"],
+        "must have at least one group",
+      );
+    }
+    pg.priority_groups.forEach((g) => {
+      minValidation("priority_group", g);
+      if (g.length > 16) {
+        throw errors.InvalidArgumentError.format(
+          "group",
+          "must be 16 characters or less",
+        );
+      }
+    });
+    if (
+      pg.priority_policy !== PriorityPolicy.None &&
+      pg.priority_policy !== PriorityPolicy.Overflow
+    ) {
+      throw InvalidArgumentError.format(
+        ["priority_policy"],
+        "must be 'none' or 'overflow'",
+      );
+    }
   }
 }

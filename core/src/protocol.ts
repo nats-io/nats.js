@@ -13,32 +13,23 @@
  * limitations under the License.
  */
 import { decode, Empty, encode, TE } from "./encoders.ts";
-import { CR_LF, CRLF, getResolveFn, newTransport } from "./transport.ts";
 import type { Transport } from "./transport.ts";
-import { deferred, delay, extend, timeout } from "./util.ts";
+import { CR_LF, CRLF, getResolveFn, newTransport } from "./transport.ts";
 import type { Deferred, Timeout } from "./util.ts";
+import { deferred, delay, extend, timeout } from "./util.ts";
 import { DataBuffer } from "./databuffer.ts";
-import { Servers } from "./servers.ts";
 import type { ServerImpl } from "./servers.ts";
-import type {
-  DispatchedFn,
-  IngestionFilterFn,
-  IngestionFilterFnResult,
-  ProtocolFilterFn,
-} from "./queued_iterator.ts";
+import { Servers } from "./servers.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
 import type { MsgHdrsImpl } from "./headers.ts";
 import { MuxSubscription } from "./muxsubscription.ts";
-import { Heartbeat } from "./heartbeats.ts";
 import type { PH } from "./heartbeats.ts";
+import { Heartbeat } from "./heartbeats.ts";
 import type { MsgArg, ParserEvent } from "./parser.ts";
 import { Kind, Parser } from "./parser.ts";
 import { MsgImpl } from "./msg.ts";
 import { Features, parseSemVer } from "./semver.ts";
-import { DebugEvents, ErrorCode, Events, NatsError } from "./core.ts";
-
 import type {
-  Base,
   ConnectionOptions,
   Dispatcher,
   Msg,
@@ -52,12 +43,20 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
+import { DebugEvents, Events } from "./core.ts";
 
 import {
   DEFAULT_MAX_PING_OUT,
   DEFAULT_PING_INTERVAL,
   DEFAULT_RECONNECT_TIME_WAIT,
 } from "./options.ts";
+import { errors, InvalidArgumentError } from "./errors.ts";
+
+import type {
+  AuthorizationError,
+  PermissionViolationError,
+  UserAuthenticationExpiredError,
+} from "./errors.ts";
 
 const FLUSH_THRESHOLD = 1024 * 32;
 
@@ -107,7 +106,7 @@ export class Connect {
 }
 
 export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
-  implements Base, Subscription {
+  implements Subscription {
   sid!: number;
   queue?: string;
   draining: boolean;
@@ -161,42 +160,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     }
   }
 
-  setPrePostHandlers(
-    opts: {
-      ingestionFilterFn?: IngestionFilterFn<Msg>;
-      protocolFilterFn?: ProtocolFilterFn<Msg>;
-      dispatchedFn?: DispatchedFn<Msg>;
-    },
-  ) {
-    if (this.noIterator) {
-      const uc = this.callback;
-
-      const ingestion = opts.ingestionFilterFn
-        ? opts.ingestionFilterFn
-        : (): IngestionFilterFnResult => {
-          return { ingest: true, protocol: false };
-        };
-      const filter = opts.protocolFilterFn ? opts.protocolFilterFn : () => {
-        return true;
-      };
-      const dispatched = opts.dispatchedFn ? opts.dispatchedFn : () => {};
-      this.callback = (err: NatsError | null, msg: Msg) => {
-        const { ingest } = ingestion(msg);
-        if (!ingest) {
-          return;
-        }
-        if (filter(msg)) {
-          uc(err, msg);
-          dispatched(msg);
-        }
-      };
-    } else {
-      this.protocolFilterFn = opts.protocolFilterFn;
-      this.dispatchedFn = opts.dispatchedFn;
-    }
-  }
-
-  callback(err: NatsError | null, msg: Msg) {
+  callback(err: Error | null, msg: Msg) {
     this.cancelTimeout();
     err ? this.stop(err) : this.push(msg);
   }
@@ -237,10 +201,12 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
 
   drain(): Promise<void> {
     if (this.protocol.isClosed()) {
-      return Promise.reject(NatsError.errorForCode(ErrorCode.ConnectionClosed));
+      return Promise.reject(new errors.ClosedConnectionError());
     }
     if (this.isClosed()) {
-      return Promise.reject(NatsError.errorForCode(ErrorCode.SubClosed));
+      return Promise.reject(
+        new errors.InvalidOperationError("subscription is already closed"),
+      );
     }
     if (!this.drained) {
       this.draining = true;
@@ -331,28 +297,26 @@ export class Subscriptions {
     }
   }
 
-  handleError(err?: NatsError): boolean {
-    if (err && err.permissionContext) {
-      const ctx = err.permissionContext;
-      const subs = this.all();
-      let sub;
-      if (ctx.operation === "subscription") {
-        sub = subs.find((s) => {
-          return s.subject === ctx.subject && s.queue === ctx.queue;
-        });
-      } else if (ctx.operation === "publish") {
-        // we have a no mux subscription
-        sub = subs.find((s) => {
-          return s.requestSubject === ctx.subject;
-        });
-      }
-      if (sub) {
-        sub.callback(err, {} as Msg);
-        sub.close();
-        this.subs.delete(sub.sid);
-        return sub !== this.mux;
-      }
+  handleError(err: PermissionViolationError): boolean {
+    const subs = this.all();
+    let sub;
+    if (err.operation === "subscription") {
+      sub = subs.find((s) => {
+        return s.subject === err.subject && s.queue === err.queue;
+      });
+    } else if (err.operation === "publish") {
+      // we have a no mux subscription
+      sub = subs.find((s) => {
+        return s.requestSubject === err.subject;
+      });
     }
+    if (sub) {
+      sub.callback(err, {} as Msg);
+      sub.close();
+      this.subs.delete(sub.sid);
+      return sub !== this.mux;
+    }
+
     return false;
   }
 
@@ -387,7 +351,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   outBytes: number;
   inBytes: number;
   pendingLimit: number;
-  lastError?: NatsError;
+  lastError?: Error;
   abortReconnect: boolean;
   whyClosed: string;
 
@@ -395,6 +359,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   server!: ServerImpl;
   features: Features;
   connectPromise: Promise<void> | null;
+  raceTimer?: Timeout<void>;
 
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
@@ -444,7 +409,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.pongs = [];
     // reject the pongs - the disconnect from here shouldn't have a trace
     // because that confuses API consumers
-    const err = NatsError.errorForCode(ErrorCode.Disconnect);
+    const err = new errors.RequestError("connection disconnected");
     err.stack = "";
     pongs.forEach((p) => {
       p.reject(err);
@@ -534,7 +499,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
           // two of these, and the default for the client will be to
           // close, rather than attempt again - possibly they have an
           // authenticator that dynamically updates
-          if (this.lastError?.code === ErrorCode.AuthenticationExpired) {
+          if (this.lastError instanceof errors.UserAuthenticationExpiredError) {
             this.lastError = undefined;
           }
         })
@@ -548,11 +513,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   async dial(srv: Server): Promise<void> {
     const pong = this.prepare();
-    let timer;
     try {
-      timer = timeout(this.options.timeout || 20000);
+      this.raceTimer = timeout(this.options.timeout || 20000);
       const cp = this.transport.connect(srv, this.options);
-      await Promise.race([cp, timer]);
+      await Promise.race([cp, this.raceTimer]);
       (async () => {
         try {
           for await (const b of this.transport) {
@@ -567,10 +531,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
 
     try {
-      await Promise.race([timer, pong]);
-      if (timer) {
-        timer.cancel();
-      }
+      await Promise.race([this.raceTimer, pong]);
+      this.raceTimer?.cancel();
       this.connected = true;
       this.connectError = undefined;
       this.sendSubscriptions();
@@ -580,10 +542,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       this.flushPending();
       this.heartbeats.start();
     } catch (err) {
-      if (timer) {
-        timer.cancel();
-      }
-      await this.transport.close(err);
+      this.raceTimer?.cancel();
+      await this.transport.close(err as Error);
       throw err;
     }
   }
@@ -608,7 +568,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         // if here we connected
         return;
       } catch (err) {
-        lastErr = err;
+        lastErr = err as Error;
       }
     }
     // if we are here, we failed, and we have no additional
@@ -649,7 +609,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         } else if (this.lastError) {
           throw this.lastError;
         } else {
-          throw NatsError.errorForCode(ErrorCode.ConnectionRefused);
+          throw new errors.ConnectionError("connection refused");
         }
       }
       const now = Date.now();
@@ -659,7 +619,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
           await this._doDial(srv);
           break;
         } catch (err) {
-          lastError = err;
+          lastError = err as Error;
           if (!this.connectedOnce) {
             if (this.options.waitOnFirstConnect) {
               continue;
@@ -688,40 +648,20 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return h;
   }
 
-  static toError(s: string): NatsError {
-    const t = s ? s.toLowerCase() : "";
-    if (t.indexOf("permissions violation") !== -1) {
-      const err = new NatsError(s, ErrorCode.PermissionsViolation);
-      const m = s.match(/(Publish|Subscription) to "(\S+)"/);
-      if (m) {
-        const operation = m[1].toLowerCase();
-        const subject = m[2];
-        let queue = undefined;
-
-        if (operation === "subscription") {
-          const qm = s.match(/using queue "(\S+)"/);
-          if (qm) {
-            queue = qm[1];
-          }
-        }
-        err.permissionContext = {
-          operation,
-          subject,
-          queue,
-        };
-      }
+  static toError(s: string): Error {
+    let err: Error | null = errors.PermissionViolationError.parse(s);
+    if (err) {
       return err;
-    } else if (t.indexOf("authorization violation") !== -1) {
-      return new NatsError(s, ErrorCode.AuthorizationViolation);
-    } else if (t.indexOf("user authentication expired") !== -1) {
-      return new NatsError(s, ErrorCode.AuthenticationExpired);
-    } else if (t.indexOf("account authentication expired") != -1) {
-      return new NatsError(s, ErrorCode.AccountExpired);
-    } else if (t.indexOf("authentication timeout") !== -1) {
-      return new NatsError(s, ErrorCode.AuthenticationTimeout);
-    } else {
-      return new NatsError(s, ErrorCode.ProtocolError);
     }
+    err = errors.UserAuthenticationExpiredError.parse(s);
+    if (err) {
+      return err;
+    }
+    err = errors.AuthorizationError.parse(s);
+    if (err) {
+      return err;
+    }
+    return new errors.ProtocolError(s);
   }
 
   processMsg(msg: MsgArg, data: Uint8Array) {
@@ -747,44 +687,47 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   }
 
   processError(m: Uint8Array) {
-    const s = decode(m);
+    let s = decode(m);
+    if (s.startsWith("'") && s.endsWith("'")) {
+      s = s.slice(1, s.length - 1);
+    }
     const err = ProtocolHandler.toError(s);
-    const status: Status = { type: Events.Error, data: err.code };
-    if (err.isPermissionError()) {
-      let isMuxPermissionError = false;
-      if (err.permissionContext) {
-        status.permissionContext = err.permissionContext;
+
+    switch (err.constructor) {
+      case errors.PermissionViolationError: {
+        const pe = err as PermissionViolationError;
         const mux = this.subscriptions.getMux();
-        isMuxPermissionError = mux?.subject === err.permissionContext.subject;
-      }
-      this.subscriptions.handleError(err);
-      this.muxSubscriptions.handleError(isMuxPermissionError, err);
-      if (isMuxPermissionError) {
-        // remove the permission - enable it to be recreated
-        this.subscriptions.setMux(null);
+        const isMuxPermission = mux ? pe.subject === mux.subject : false;
+        this.subscriptions.handleError(pe);
+        this.muxSubscriptions.handleError(isMuxPermission, pe);
+        if (isMuxPermission) {
+          // remove the permission - enable it to be recreated
+          this.subscriptions.setMux(null);
+        }
       }
     }
-    this.dispatchStatus(status);
+
+    this.dispatchStatus({ type: Events.Error, error: err, data: err.message });
     this.handleError(err);
   }
 
-  handleError(err: NatsError) {
-    if (err.isAuthError()) {
+  handleError(err: Error) {
+    if (
+      err instanceof errors.UserAuthenticationExpiredError ||
+      err instanceof errors.AuthorizationError
+    ) {
       this.handleAuthError(err);
-    } else if (err.isProtocolError()) {
-      this.lastError = err;
-    } else if (err.isAuthTimeout()) {
-      this.lastError = err;
     }
-    // fallthrough here
-    if (!err.isPermissionError()) {
+
+    if (!(err instanceof errors.PermissionViolationError)) {
       this.lastError = err;
     }
   }
 
-  handleAuthError(err: NatsError) {
+  handleAuthError(err: UserAuthenticationExpiredError | AuthorizationError) {
     if (
-      (this.lastError && err.code === this.lastError.code) &&
+      (this.lastError instanceof errors.UserAuthenticationExpiredError ||
+        this.lastError instanceof errors.AuthorizationError) &&
       this.options.ignoreAuthErrorAbort === false
     ) {
       this.abortReconnect = true;
@@ -839,7 +782,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         this.transport.send(PING_CMD);
       } catch (err) {
         // if we are dying here, this is likely some an authenticator blowing up
-        this._close(err);
+        this._close(err as Error);
       }
     }
     if (updates) {
@@ -904,14 +847,16 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     subject: string,
     payload: Payload = Empty,
     options?: PublishOptions,
-  ) {
+  ): void {
     let data;
     if (payload instanceof Uint8Array) {
       data = payload;
     } else if (typeof payload === "string") {
       data = TE.encode(payload);
     } else {
-      throw NatsError.errorForCode(ErrorCode.BadPayload);
+      throw new TypeError(
+        "payload types can be strings or Uint8Array",
+      );
     }
 
     let len = data.length;
@@ -922,7 +867,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     let hlen = 0;
     if (options.headers) {
       if (this.info && !this.info.headers) {
-        throw new NatsError("headers", ErrorCode.ServerOptionNotAvailable);
+        InvalidArgumentError.format(
+          "headers",
+          "are not available on this server",
+        );
       }
       const hdrs = options.headers as MsgHdrsImpl;
       headers = hdrs.encode();
@@ -931,7 +879,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
 
     if (this.info && len > this.info.max_payload) {
-      throw NatsError.errorForCode(ErrorCode.MaxPayloadExceeded);
+      throw InvalidArgumentError.format("payload", "max_payload size exceeded");
     }
     this.outBytes += len;
     this.outMsgs++;
@@ -982,14 +930,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return s;
   }
 
-  unsubscribe(s: SubscriptionImpl, max?: number) {
+  unsubscribe(s: SubscriptionImpl, max?: number): void {
     this.unsub(s, max);
     if (s.max === undefined || s.received >= s.max) {
       this.subscriptions.cancel(s);
     }
   }
 
-  unsub(s: SubscriptionImpl, max?: number) {
+  unsub(s: SubscriptionImpl, max?: number): void {
     if (!s || this.isClosed()) {
       return;
     }
@@ -1001,7 +949,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     s.max = max;
   }
 
-  resub(s: SubscriptionImpl, subject: string) {
+  resub(s: SubscriptionImpl, subject: string): void {
     if (!s || this.isClosed()) {
       return;
     }
@@ -1023,7 +971,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return p;
   }
 
-  sendSubscriptions() {
+  sendSubscriptions(): void {
     const cmds: string[] = [];
     this.subscriptions.all().forEach((s) => {
       const sub = s as SubscriptionImpl;
@@ -1055,7 +1003,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     });
     this._closed = true;
     await this.transport.close(err);
-    await this.closed.resolve(err);
+    this.raceTimer?.cancel();
+    this.closed.resolve(err);
   }
 
   close(): Promise<void> {
@@ -1066,21 +1015,21 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return this._closed;
   }
 
-  drain(): Promise<void> {
+  async drain(): Promise<void> {
     const subs = this.subscriptions.all();
     const promises: Promise<void>[] = [];
     subs.forEach((sub: Subscription) => {
       promises.push(sub.drain());
     });
-    return Promise.all(promises)
-      .then(async () => {
-        this.noMorePublishing = true;
-        await this.flush();
-        return this.close();
-      })
-      .catch(() => {
-        // cannot happen
-      });
+    try {
+      await Promise.allSettled(promises);
+    } catch {
+      // nothing we can do here
+    } finally {
+      this.noMorePublishing = true;
+      await this.flush();
+    }
+    return this.close();
   }
 
   private flushPending() {

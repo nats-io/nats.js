@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { ConsumerEvents, jetstream } from "../src/mod.ts";
+import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { ConsumerEvents, jetstream } from "jsr:@nats-io/jetstream@3.0.0-18";
 import { setupStreamAndConsumer } from "./util.ts";
 
 // create a connection
@@ -32,7 +32,7 @@ while (true) {
 
   // watch the to see if the consume operation misses heartbeats
   (async () => {
-    for await (const s of await messages.status()) {
+    for await (const s of messages.status()) {
       if (s.type === ConsumerEvents.HeartbeatsMissed) {
         // you can decide how many heartbeats you are willing to miss
         const n = s.data as number;

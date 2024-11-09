@@ -44,6 +44,10 @@ export interface KvEntry {
   string(): string;
 }
 
+export interface KvWatchEntry extends KvEntry {
+  isUpdate: boolean;
+}
+
 /**
  * An interface for encoding and decoding values
  * before they are stored or returned to the client.
@@ -82,10 +86,7 @@ export interface KvLimits {
    * The maximum number of bytes on the KV
    */
   max_bytes: number;
-  /**
-   * @deprecated use max_bytes
-   */
-  maxBucketSize: number;
+
   /**
    * The maximum size of a value on the KV
    */
@@ -117,10 +118,6 @@ export interface KvLimits {
    * List of Stream names to replicate into this KV
    */
   sources?: StreamSource[];
-  /**
-   * @deprecated: use placement
-   */
-  placementCluster: string;
 
   /**
    * deprecated: use storage
@@ -144,12 +141,6 @@ export interface KvStatus extends KvLimits {
    * Number of entries in the KV
    */
   values: number;
-
-  /**
-   * @deprecated
-   * FIXME: remove this on 1.8
-   */
-  bucket_location: string;
 
   /**
    * The StreamInfo backing up the KV
@@ -199,13 +190,6 @@ export interface KvOptions extends KvLimits {
   metadata?: Record<string, string>;
 }
 
-/**
- * @deprecated use purge(k)
- */
-export interface KvRemove {
-  remove(k: string): Promise<void>;
-}
-
 export enum KvWatchInclude {
   /**
    * Include the last value for all the keys
@@ -232,11 +216,6 @@ export type KvWatchOptions = {
    * Notification should only include entry headers
    */
   headers_only?: boolean;
-  /**
-   * A callback that notifies when the watch has yielded all the initial values.
-   * Subsequent notifications are updates since the initial watch was established.
-   */
-  initializedFn?: () => void;
   /**
    * Skips notifying deletes.
    * @default: false
@@ -270,7 +249,9 @@ export interface RoKV {
    * Note you can specify multiple keys if running on server 2.10.x or better.
    * @param opts
    */
-  history(opts?: { key?: string | string[] }): Promise<QueuedIterator<KvEntry>>;
+  history(
+    opts?: { key?: string | string[] },
+  ): Promise<QueuedIterator<KvWatchEntry>>;
 
   /**
    * Returns an iterator that will yield KvEntry updates as they happen.
@@ -278,12 +259,7 @@ export interface RoKV {
    */
   watch(
     opts?: KvWatchOptions,
-  ): Promise<QueuedIterator<KvEntry>>;
-
-  /**
-   * @deprecated - this api is removed.
-   */
-  close(): Promise<void>;
+  ): Promise<QueuedIterator<KvWatchEntry>>;
 
   /**
    * Returns information about the Kv

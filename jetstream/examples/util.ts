@@ -14,8 +14,8 @@
  */
 
 import { createConsumer, fill, initStream } from "../tests/jstest_util.ts";
-import type { NatsConnection } from "jsr:@nats-io/nats-core@3.0.0-17";
-import { nuid } from "jsr:@nats-io/nats-core@3.0.0-17";
+import type { NatsConnection } from "@nats-io/nats-core";
+import { nuid } from "@nats-io/nats-core";
 
 export async function setupStreamAndConsumer(
   nc: NatsConnection,

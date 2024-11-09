@@ -8,6 +8,10 @@ export type {
   ObjectStoreOptions,
   ObjectStorePutOpts,
   ObjectStoreStatus,
+  ObjectWatchInfo,
+  Placement,
 } from "./types.ts";
+
+export { StorageType } from "./types.ts";
 
 export { Objm } from "./objectstore.ts";

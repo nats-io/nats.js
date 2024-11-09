@@ -13,9 +13,9 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect } from "@nats-io/transport-deno";
 import { setupStreamAndConsumer } from "./util.ts";
-import { jetstream } from "../src/mod.ts";
+import { jetstream } from "@nats-io/jetstream";
 
 // create a connection
 const nc = await connect();

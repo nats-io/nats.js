@@ -12,43 +12,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  backoff,
-  deferred,
-  delay,
-  nanos,
-  NatsError,
-  nuid,
-  timeout,
-} from "@nats-io/nats-core/internal";
+
 import type {
-  MsgHdrs,
+  CallbackFn,
+  Delay,
+  MsgImpl,
   QueuedIterator,
   Status,
   Subscription,
   SubscriptionImpl,
   Timeout,
 } from "@nats-io/nats-core/internal";
-import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
-import { isHeartbeatMsg, minValidation } from "./jsutil.ts";
-
-import { toJsMsg } from "./jsmsg.ts";
-import type { JsMsg } from "./jsmsg.ts";
-
-import type { MsgImpl } from "@nats-io/nats-core/internal";
 import {
+  backoff,
   createInbox,
+  delay,
+  errors,
   Events,
+  Feature,
   IdleHeartbeatMonitor,
+  nanos,
+  nuid,
   QueuedIteratorImpl,
+  timeout,
 } from "@nats-io/nats-core/internal";
+import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
-import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
+import type { JsMsg } from "./jsmsg.ts";
+import { toJsMsg } from "./jsmsg.ts";
+
 import type {
   ConsumerConfig,
   ConsumerInfo,
+  OverflowMinPendingAndMinAck,
   PullOptions,
 } from "./jsapi_types.ts";
+import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
 import type {
   ConsumeMessages,
   ConsumeOptions,
@@ -57,39 +56,79 @@ import type {
   ConsumerCallbackFn,
   ConsumerMessages,
   ConsumerStatus,
+  Expires,
   FetchMessages,
   FetchOptions,
+  IdleHeartbeat,
+  MaxBytes,
+  MaxMessages,
   NextOptions,
   OrderedConsumerOptions,
   PullConsumerOptions,
+  ThresholdBytes,
+  ThresholdMessages,
 } from "./types.ts";
+import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
+import { JetStreamStatus } from "./jserrors.ts";
+import { minValidation } from "./jsutil.ts";
 
-import { ConsumerDebugEvents, ConsumerEvents, JsHeaders } from "./types.ts";
 enum PullConsumerType {
   Unset = -1,
   Consume,
   Fetch,
 }
 
+export type OrderedConsumerState = {
+  namePrefix: string;
+  cursor: { stream_seq: number; deliver_seq: number };
+  type: PullConsumerType;
+  startSeq: number;
+  maxInitialReset: number;
+  opts: Partial<OrderedConsumerOptions>;
+  createFails: number;
+  needsReset?: boolean;
+};
+
+export type PullConsumerInternalOptions = {
+  refilling: boolean;
+  ordered?: OrderedConsumerOptions;
+};
+
+type InternalPullOptions =
+  & MaxMessages
+  & MaxBytes
+  & Expires
+  & IdleHeartbeat
+  & ThresholdMessages
+  & OverflowMinPendingAndMinAck
+  & ThresholdBytes;
+
+export function isOverflowOptions(
+  opts: unknown,
+): opts is OverflowMinPendingAndMinAck {
+  const oo = opts as OverflowMinPendingAndMinAck;
+  return oo && typeof oo.group === "string" ||
+    typeof oo.min_pending === "number" ||
+    typeof oo.min_ack_pending === "number";
+}
+
 export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
   consumer: PullConsumerImpl;
-  opts: Record<string, number>;
+  opts: InternalPullOptions;
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
   pending: { msgs: number; bytes: number; requests: number };
-  inbox: string;
-  refilling: boolean;
-  pong!: Promise<void> | null;
+  isConsume: boolean;
   callback: ConsumerCallbackFn | null;
   timeout: Timeout<unknown> | null;
-  cleanupHandler?: (err: void | Error) => void;
   listeners: QueuedIterator<ConsumerStatus>[];
   statusIterator?: QueuedIteratorImpl<Status>;
-  forOrderedConsumer: boolean;
-  resetHandler?: () => void;
   abortOnMissingResource?: boolean;
   bind: boolean;
+  inboxPrefix: string;
+  inbox!: string;
+  cancelables: Delay[];
 
   // callback: ConsumerCallbackFn;
   constructor(
@@ -99,20 +138,41 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   ) {
     super();
     this.consumer = c;
+    this.isConsume = refilling;
+    this.cancelables = [];
+    this.inboxPrefix = createInbox(this.consumer.api.nc.options.inboxPrefix);
+    this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
+
+    if (this.consumer.ordered) {
+      if (isOverflowOptions(opts)) {
+        throw errors.InvalidArgumentError.format([
+          "group",
+          "min_pending",
+          "min_ack_pending",
+        ], "cannot be specified for ordered consumers");
+      }
+      if (this.consumer.orderedConsumerState === undefined) {
+        // initialize the state for the order consumer
+        const ocs = {} as OrderedConsumerState;
+        const iopts = c.opts;
+        ocs.namePrefix = iopts.name_prefix ?? `oc_${nuid.next()}`;
+        ocs.opts = iopts;
+        ocs.cursor = { stream_seq: 1, deliver_seq: 0 };
+        const startSeq = c._info.config.opt_start_seq || 0;
+        ocs.cursor.stream_seq = startSeq > 0 ? startSeq - 1 : 0;
+        ocs.createFails = 0;
+        this.consumer.orderedConsumerState = ocs;
+      }
+    }
 
     const copts = opts as ConsumeOptions;
-
-    this.opts = this.parseOptions(opts, refilling);
+    this.opts = this.parseOptions(opts, this.isConsume);
     this.callback = copts.callback || null;
     this.noIterator = typeof this.callback === "function";
     this.monitor = null;
-    this.pong = null;
     this.pending = { msgs: 0, bytes: 0, requests: 0 };
-    this.refilling = refilling;
     this.timeout = null;
-    this.inbox = createInbox(c.api.nc.options.inboxPrefix);
     this.listeners = [];
-    this.forOrderedConsumer = false;
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
 
@@ -128,26 +188,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       threshold_messages,
     } = this.opts;
 
-    // ordered consumer requires the ability to reset the
-    // source pull consumer, if promise is registered and
-    // close is called, the pull consumer will emit a close
-    // which will close the ordered consumer, by registering
-    // the close with a handler, we can replace it.
-    this.closed().then((err) => {
-      if (this.cleanupHandler) {
-        try {
-          this.cleanupHandler(err);
-        } catch (_err) {
-          // nothing
-        }
-      }
-    });
-
-    const { sub } = this;
-    if (sub) {
-      sub.unsubscribe();
-    }
-
     this.sub = this.consumer.api.nc.subscribe(this.inbox, {
       callback: (err, msg) => {
         if (err) {
@@ -159,22 +199,33 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           return;
         }
         this.monitor?.work();
-        const isProtocol = msg.subject === this.inbox;
+
+        const isProtocol = this.consumer.ordered
+          ? msg.subject.indexOf(this?.inboxPrefix!) === 0
+          : msg.subject === this.inbox;
 
         if (isProtocol) {
-          if (isHeartbeatMsg(msg)) {
+          if (msg.subject !== (this.sub as SubscriptionImpl).subject) {
+            // this is a stale message - was not sent to the current inbox
             return;
           }
-          const code = msg.headers?.code;
-          const description = msg.headers?.description?.toLowerCase() ||
-            "unknown";
-          const { msgsLeft, bytesLeft } = this.parseDiscard(msg.headers);
-          if (msgsLeft > 0 || bytesLeft > 0) {
+          const status = new JetStreamStatus(msg);
+
+          if (status.isIdleHeartbeat()) {
+            this.notify(ConsumerDebugEvents.Heartbeat, status.parseHeartbeat());
+            return;
+          }
+          const code = status.code;
+          const description = status.description;
+
+          const { msgsLeft, bytesLeft } = status.parseDiscard();
+          if ((msgsLeft && msgsLeft > 0) || (bytesLeft && bytesLeft > 0)) {
             this.pending.msgs -= msgsLeft;
             this.pending.bytes -= bytesLeft;
             this.pending.requests--;
             this.notify(ConsumerDebugEvents.Discard, { msgsLeft, bytesLeft });
           } else {
+            // Examine the error codes
             // FIXME: 408 can be a Timeout or bad request,
             //  or it can be sent if a nowait request was
             //  sent when other waiting requests are pending
@@ -184,41 +235,49 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             //  these are real bad values - so this is bad request
             //  fail on this
             // we got a bad request - no progress here
-            if (code === 400) {
-              this.stop(new NatsError(description, `${code}`));
-              return;
-            } else if (code === 409 && description === "consumer deleted") {
-              this.notify(
-                ConsumerEvents.ConsumerDeleted,
-                `${code} ${description}`,
-              );
-              if (!this.refilling || this.abortOnMissingResource) {
-                const error = new NatsError(description, `${code}`);
-                this.stop(error);
+            switch (code) {
+              case 400:
+                this.stop(status.toError());
                 return;
+              case 409: {
+                const err = this.handle409(status);
+                if (err) {
+                  this.stop(err);
+                  return;
+                }
+                // stall, missed heartbeats will resuscitate
+                // proportionally to 2 missed heartbeats
+                break;
               }
-            } else if (
-              code === 409 && description.includes("exceeded maxrequestbatch")
-            ) {
-              this.notify(
-                ConsumerDebugEvents.DebugEvent,
-                `${code} ${description}`,
-              );
-              if (!this.refilling) {
-                const error = new NatsError(description, `${code}`);
-                this.stop(error);
-                return;
-              }
-            } else {
-              this.notify(
-                ConsumerDebugEvents.DebugEvent,
-                `${code} ${description}`,
-              );
+              default:
+                this.notify(
+                  ConsumerDebugEvents.DebugEvent,
+                  { code, description },
+                );
             }
           }
         } else {
-          // push the user message
-          this._push(toJsMsg(msg, this.consumer.api.timeout));
+          // convert to JsMsg
+          const m = toJsMsg(msg, this.consumer.api.timeout);
+          // if we are ordered, check
+          if (this.consumer.ordered) {
+            const cursor = this.consumer.orderedConsumerState!.cursor;
+            const dseq = m.info.deliverySequence;
+            const sseq = m.info.streamSequence;
+            const expected_dseq = cursor.deliver_seq + 1;
+            if (
+              dseq !== expected_dseq
+            ) {
+              // got a message out of order, have to recreate
+              this.reset();
+              return;
+            }
+            // update the state
+            cursor.deliver_seq = dseq;
+            cursor.stream_seq = sseq;
+          }
+          // yield the message
+          this._push(m);
           this.received++;
           if (this.pending.msgs) {
             this.pending.msgs--;
@@ -232,11 +291,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         if (this.pending.msgs === 0 && this.pending.bytes === 0) {
           this.pending.requests = 0;
         }
-        if (this.refilling) {
+        if (this.isConsume) {
           // FIXME: this could result in  1/4 = 0
           if (
-            (max_messages &&
-              this.pending.msgs <= threshold_messages) ||
+            (max_messages && this.pending.msgs <= threshold_messages) ||
             (max_bytes && this.pending.bytes <= threshold_bytes)
           ) {
             const batch = this.pullOptions();
@@ -317,19 +375,114 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.pull(this.pullOptions());
   }
 
-  _push(r: JsMsg) {
+  /**
+   * Handle the notification of 409 error and whether
+   * it should reject the operation by returning an Error or null
+   * @param status
+   */
+  handle409(status: JetStreamStatus): Error | null {
+    const { code, description } = status;
+    if (status.isConsumerDeleted()) {
+      this.notify(ConsumerEvents.ConsumerDeleted, { code, description });
+    } else if (status.isExceededLimit()) {
+      this.notify(ConsumerEvents.ExceededLimit, { code, description });
+    }
+    if (!this.isConsume) {
+      return status.toError();
+    }
+    if (status.isConsumerDeleted() && this.abortOnMissingResource) {
+      return status.toError();
+    }
+    return null;
+  }
+
+  reset() {
+    // stop the monitoring if running
+    this.monitor?.cancel();
+
+    const ocs = this.consumer.orderedConsumerState!;
+    const { name } = this.consumer._info?.config;
+    if (name) {
+      this.notify(ConsumerDebugEvents.Reset, name);
+      this.consumer.api.delete(this.consumer.stream, name)
+        .catch(() => {
+          // ignored
+        });
+    }
+
+    // serial is updated here
+    const config = this.consumer.getConsumerOpts();
+    this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
+    // reset delivery seq
+    ocs.cursor.deliver_seq = 0;
+    // if they do a consumer info, they get the new one.
+    this.consumer.name = config.name!;
+
+    // remap the subscription
+    this.consumer.api.nc._resub(this.sub, this.inbox);
+    // create the consumer
+    this.consumer.api.add(
+      this.consumer.stream,
+      config,
+    ).then((ci) => {
+      ocs.createFails = 0;
+      this.consumer._info = ci;
+      this.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
+      this.monitor?.restart();
+      this.pull(this.pullOptions());
+    }).catch((err) => {
+      ocs.createFails++;
+      if (err.message === "stream not found") {
+        this.notify(
+          ConsumerEvents.StreamNotFound,
+          ocs.createFails,
+        );
+        if (this.abortOnMissingResource) {
+          this.stop(err);
+          return;
+        }
+      }
+      // we have attempted to create 30 times, never succeeded
+      if (
+        ocs.createFails >= 30 &&
+        this.received === 0
+      ) {
+        this.stop(err);
+      }
+      const bo = backoff();
+      const c = delay(
+        bo.backoff(ocs.createFails),
+      );
+      c.then(() => {
+        const idx = this.cancelables.indexOf(c);
+        if (idx !== -1) {
+          this.cancelables = this.cancelables.splice(idx, idx);
+        }
+        if (!this.done) {
+          this.reset();
+        }
+      })
+        .catch((_) => {
+          // canceled
+        });
+      this.cancelables.push(c);
+    });
+  }
+
+  _push(r: JsMsg | CallbackFn) {
     if (!this.callback) {
       super.push(r);
     } else {
-      const fn = typeof r === "function" ? r as () => void : null;
+      const fn = typeof r === "function" ? r as CallbackFn : null;
       try {
         if (!fn) {
-          this.callback(r);
+          const m = r as JsMsg;
+          this.callback(m);
         } else {
           fn();
         }
       } catch (err) {
-        this.stop(err);
+        this.stop(err as Error);
       }
     }
   }
@@ -387,28 +540,26 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         return true;
       } catch (err) {
         // game over
-        if (err.message === "stream not found") {
+        if ((err as Error).message === "stream not found") {
           streamNotFound++;
           this.notify(ConsumerEvents.StreamNotFound, streamNotFound);
-          if (!this.refilling || this.abortOnMissingResource) {
-            this.stop(err);
+          if (!this.isConsume || this.abortOnMissingResource) {
+            this.stop(err as Error);
             return false;
           }
-        } else if (err.message === "consumer not found") {
+        } else if ((err as Error).message === "consumer not found") {
           notFound++;
           this.notify(ConsumerEvents.ConsumerNotFound, notFound);
-          if (this.resetHandler) {
-            try {
-              this.resetHandler();
-            } catch (_) {
-              // ignored
+          if (!this.isConsume || this.abortOnMissingResource) {
+            if (this.consumer.ordered) {
+              const ocs = this.consumer.orderedConsumerState!;
+              ocs.needsReset = true;
             }
-          }
-          if (!this.refilling || this.abortOnMissingResource) {
-            this.stop(err);
+            this.stop(err as Error);
             return false;
           }
-          if (this.forOrderedConsumer) {
+          if (this.consumer.ordered) {
+            this.reset();
             return false;
           }
         } else {
@@ -432,10 +583,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     const nc = this.consumer.api.nc;
     //@ts-ignore: iterator will pull
+    const subj =
+      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer._info.name}`;
     this._push(() => {
       nc.publish(
-        `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer.name}`,
-        this.consumer.api.jc.encode(opts),
+        subj,
+        JSON.stringify(opts),
         { reply: this.inbox },
       );
       this.notify(ConsumerDebugEvents.Next, opts);
@@ -445,28 +598,21 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   pullOptions(): Partial<PullOptions> {
     const batch = this.opts.max_messages - this.pending.msgs;
     const max_bytes = this.opts.max_bytes - this.pending.bytes;
-    const idle_heartbeat = nanos(this.opts.idle_heartbeat);
-    const expires = nanos(this.opts.expires);
-    return { batch, max_bytes, idle_heartbeat, expires };
-  }
+    const idle_heartbeat = nanos(this.opts.idle_heartbeat!);
+    const expires = nanos(this.opts.expires!);
 
-  parseDiscard(
-    headers?: MsgHdrs,
-  ): { msgsLeft: number; bytesLeft: number } {
-    const discard = {
-      msgsLeft: 0,
-      bytesLeft: 0,
-    };
-    const msgsLeft = headers?.get(JsHeaders.PendingMessagesHdr);
-    if (msgsLeft) {
-      discard.msgsLeft = parseInt(msgsLeft);
-    }
-    const bytesLeft = headers?.get(JsHeaders.PendingBytesHdr);
-    if (bytesLeft) {
-      discard.bytesLeft = parseInt(bytesLeft);
-    }
+    const opts = { batch, max_bytes, idle_heartbeat, expires } as PullOptions;
 
-    return discard;
+    if (isOverflowOptions(this.opts)) {
+      opts.group = this.opts.group;
+      if (this.opts.min_pending) {
+        opts.min_pending = this.opts.min_pending;
+      }
+      if (this.opts.min_ack_pending) {
+        opts.min_ack_pending = this.opts.min_ack_pending;
+      }
+    }
+    return opts;
   }
 
   trackTimeout(t: Timeout<unknown>) {
@@ -489,11 +635,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.timeout = null;
   }
 
-  setCleanupHandler(fn?: (err?: void | Error) => void) {
-    this.cleanupHandler = fn;
-  }
-
-  stop(err?: Error) {
+  override stop(err?: Error) {
     if (this.done) {
       return;
     }
@@ -512,14 +654,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   parseOptions(
     opts: PullConsumerOptions,
     refilling = false,
-  ): Record<string, number> {
-    const args = (opts || {}) as Record<string, number>;
+  ): InternalPullOptions {
+    const args = (opts || {}) as InternalPullOptions;
     args.max_messages = args.max_messages || 0;
     args.max_bytes = args.max_bytes || 0;
 
     if (args.max_messages !== 0 && args.max_bytes !== 0) {
-      throw new Error(
-        `only specify one of max_messages or max_bytes`,
+      throw errors.InvalidArgumentError.format(
+        ["max_messages", "max_bytes"],
+        "are mutually exclusive",
       );
     }
 
@@ -538,7 +681,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     args.expires = args.expires || 30_000;
     if (args.expires < 1000) {
-      throw new Error("expires should be at least 1000ms");
+      throw errors.InvalidArgumentError.format(
+        "expires",
+        "must be at least 1000ms",
+      );
     }
 
     // require idle_heartbeat
@@ -555,95 +701,75 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       args.threshold_bytes = args.threshold_bytes || minBytes;
     }
 
+    if (isOverflowOptions(opts)) {
+      const { min, ok } = this.consumer.api.nc.features.get(
+        Feature.JS_PRIORITY_GROUPS,
+      );
+      if (!ok) {
+        throw new Error(`priority_groups require server ${min}`);
+      }
+      validateOverflowPullOptions(opts);
+      if (opts.group) {
+        args.group = opts.group;
+      }
+      if (opts.min_ack_pending) {
+        args.min_ack_pending = opts.min_ack_pending;
+      }
+      if (opts.min_pending) {
+        args.min_pending = opts.min_pending;
+      }
+    }
+
     return args;
   }
 
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
+  status(): AsyncIterable<ConsumerStatus> {
     const iter = new QueuedIteratorImpl<ConsumerStatus>();
     this.listeners.push(iter);
-    return Promise.resolve(iter);
-  }
-}
-
-export class OrderedConsumerMessages extends QueuedIteratorImpl<JsMsg>
-  implements ConsumerMessages {
-  src!: PullConsumerMessagesImpl;
-  listeners: QueuedIterator<ConsumerStatus>[];
-
-  constructor() {
-    super();
-    this.listeners = [];
-  }
-
-  setSource(src: PullConsumerMessagesImpl) {
-    if (this.src) {
-      this.src.resetHandler = undefined;
-      this.src.setCleanupHandler();
-      this.src.stop();
-    }
-    this.src = src;
-    this.src.setCleanupHandler((err) => {
-      this.stop(err || undefined);
-    });
-    (async () => {
-      const status = await this.src.status();
-      for await (const s of status) {
-        this.notify(s.type, s.data);
-      }
-    })().catch(() => {});
-  }
-
-  notify(type: ConsumerEvents | ConsumerDebugEvents, data: unknown) {
-    if (this.listeners.length > 0) {
-      (() => {
-        this.listeners.forEach((l) => {
-          const qi = l as QueuedIteratorImpl<ConsumerStatus>;
-          if (!qi.done) {
-            qi.push({ type, data });
-          }
-        });
-      })();
-    }
-  }
-
-  stop(err?: Error): void {
-    if (this.done) {
-      return;
-    }
-    this.src?.stop(err);
-    super.stop(err);
-    this.listeners.forEach((n) => {
-      n.stop();
-    });
-  }
-
-  close(): Promise<void | Error> {
-    this.stop();
-    return this.iterClosed;
-  }
-
-  closed(): Promise<void | Error> {
-    return this.iterClosed;
-  }
-
-  status(): Promise<AsyncIterable<ConsumerStatus>> {
-    const iter = new QueuedIteratorImpl<ConsumerStatus>();
-    this.listeners.push(iter);
-    return Promise.resolve(iter);
+    return iter;
   }
 }
 
 export class PullConsumerImpl implements Consumer {
   api: ConsumerAPIImpl;
-  _info: ConsumerInfo;
+  _info!: ConsumerInfo;
   stream: string;
-  name: string;
+  name!: string;
+  opts: Partial<OrderedConsumerOptions>;
+  type: PullConsumerType;
+  messages?: PullConsumerMessagesImpl;
+  ordered: boolean;
+  serial: number;
+  orderedConsumerState?: OrderedConsumerState;
 
-  constructor(api: ConsumerAPI, info: ConsumerInfo) {
+  constructor(
+    api: ConsumerAPI,
+    info: ConsumerInfo,
+    opts: Partial<OrderedConsumerOptions> | null = null,
+  ) {
     this.api = api as ConsumerAPIImpl;
     this._info = info;
-    this.stream = info.stream_name;
     this.name = info.name;
+    this.stream = info.stream_name;
+    this.ordered = opts !== null;
+    this.opts = opts || {};
+    this.serial = 1;
+    this.type = PullConsumerType.Unset;
+  }
+
+  debug() {
+    console.log({
+      serial: this.serial,
+      cursor: this.orderedConsumerState?.cursor,
+    });
+  }
+
+  isPullConsumer(): boolean {
+    return true;
+  }
+
+  isPushConsumer(): boolean {
+    return false;
   }
 
   consume(
@@ -652,26 +778,86 @@ export class PullConsumerImpl implements Consumer {
       expires: 30_000,
     } as ConsumeMessages,
   ): Promise<ConsumerMessages> {
-    return Promise.resolve(new PullConsumerMessagesImpl(this, opts, true));
+    if (this.ordered) {
+      if (opts.bind) {
+        return Promise.reject(
+          errors.InvalidArgumentError.format("bind", "is not supported"),
+        );
+      }
+      if (this.type === PullConsumerType.Fetch) {
+        return Promise.reject(
+          new errors.InvalidOperationError(
+            "ordered consumer initialized as fetch",
+          ),
+        );
+      }
+      if (this.type === PullConsumerType.Consume) {
+        return Promise.reject(
+          new errors.InvalidOperationError(
+            "ordered consumer doesn't support concurrent consume",
+          ),
+        );
+      }
+      this.type = PullConsumerType.Consume;
+    }
+    return Promise.resolve(
+      new PullConsumerMessagesImpl(this, opts, true),
+    );
   }
 
-  fetch(
+  async fetch(
     opts: FetchOptions = {
       max_messages: 100,
       expires: 30_000,
     } as FetchMessages,
   ): Promise<ConsumerMessages> {
-    const m = new PullConsumerMessagesImpl(this, opts, false);
+    if (this.ordered) {
+      if (opts.bind) {
+        return Promise.reject(
+          errors.InvalidArgumentError.format("bind", "is not supported"),
+        );
+      }
+      if (this.type === PullConsumerType.Consume) {
+        return Promise.reject(
+          new errors.InvalidOperationError(
+            "ordered consumer already initialized as consume",
+          ),
+        );
+      }
+      if (this.messages?.done === false) {
+        return Promise.reject(
+          new errors.InvalidOperationError(
+            "ordered consumer doesn't support concurrent fetch",
+          ),
+        );
+      }
+      if (this.ordered) {
+        if (this.orderedConsumerState?.cursor?.deliver_seq) {
+          // make the start sequence one than have been seen
+          this._info.config.opt_start_seq! =
+            this.orderedConsumerState?.cursor.stream_seq + 1;
+        }
+        if (this.orderedConsumerState?.needsReset === true) {
+          await this._reset();
+        }
+      }
+
+      this.type = PullConsumerType.Fetch;
+    }
+
+    const m = new PullConsumerMessagesImpl(this, opts);
+    if (this.ordered) {
+      this.messages = m;
+    }
     // FIXME: need some way to pad this correctly
-    const to = Math.round(m.opts.expires * 1.05);
+    const to = Math.round(m.opts.expires! * 1.05);
     const timer = timeout(to);
     m.closed().catch((err) => {
       console.log(err);
     }).finally(() => {
       timer.cancel();
     });
-    timer.catch((err) => {
-      console.log(">>>", err);
+    timer.catch(() => {
       m.close().catch();
     });
     m.trackTimeout(timer);
@@ -679,57 +865,17 @@ export class PullConsumerImpl implements Consumer {
     return Promise.resolve(m);
   }
 
-  next(
+  async next(
     opts: NextOptions = { expires: 30_000 },
   ): Promise<JsMsg | null> {
-    const d = deferred<JsMsg | null>();
     const fopts = opts as FetchMessages;
     fopts.max_messages = 1;
 
-    const iter = new PullConsumerMessagesImpl(this, fopts, false);
-
-    // FIXME: need some way to pad this correctly
-    const to = Math.round(iter.opts.expires * 1.05);
-
-    // watch the messages for heartbeats missed
-    if (to >= 60_000) {
-      (async () => {
-        for await (const s of await iter.status()) {
-          if (
-            s.type === ConsumerEvents.HeartbeatsMissed &&
-            (s.data as number) >= 2
-          ) {
-            d.reject(new Error("consumer missed heartbeats"));
-            break;
-          }
-        }
-      })().catch();
+    const iter = await this.fetch(fopts);
+    for await (const m of iter) {
+      return m;
     }
-
-    (async () => {
-      for await (const m of iter) {
-        d.resolve(m);
-        break;
-      }
-    })().catch(() => {
-      // iterator is going to throw, but we ignore it
-      // as it is handled by the closed promise
-    });
-    const timer = timeout(to);
-    iter.closed().then((err) => {
-      err ? d.reject(err) : d.resolve(null);
-    }).catch((err) => {
-      d.reject(err);
-    }).finally(() => {
-      timer.cancel();
-    });
-    timer.catch((_err) => {
-      d.resolve(null);
-      iter.close().catch();
-    });
-    iter.trackTimeout(timer);
-
-    return d;
+    return null;
   }
 
   delete(): Promise<boolean> {
@@ -737,360 +883,77 @@ export class PullConsumerImpl implements Consumer {
     return this.api.delete(stream_name, name);
   }
 
-  info(cached = false): Promise<ConsumerInfo> {
+  getConsumerOpts(): ConsumerConfig {
+    const ocs = this.orderedConsumerState!;
+    this.serial++;
+    this.name = `${ocs.namePrefix}_${this.serial}`;
+
+    const conf = Object.assign({}, this._info.config, {
+      name: this.name,
+      deliver_policy: DeliverPolicy.StartSequence,
+      opt_start_seq: ocs.cursor.stream_seq + 1,
+      ack_policy: AckPolicy.None,
+      inactive_threshold: nanos(5 * 60 * 1000),
+      num_replicas: 1,
+    });
+
+    delete conf.metadata;
+    return conf;
+  }
+
+  async _reset(): Promise<ConsumerInfo> {
+    if (this.messages === undefined) {
+      throw new Error("not possible to reset");
+    }
+    this.delete().catch(() => {
+      //ignored
+    });
+    const conf = this.getConsumerOpts();
+    const ci = await this.api.add(this.stream, conf);
+    this._info = ci;
+    return ci;
+  }
+
+  async info(cached = false): Promise<ConsumerInfo> {
     if (cached) {
       return Promise.resolve(this._info);
     }
     const { stream_name, name } = this._info;
-    return this.api.info(stream_name, name)
-      .then((ci) => {
-        this._info = ci;
-        return this._info;
-      });
+    this._info = await this.api.info(stream_name, name);
+    return this._info;
   }
 }
 
-export class OrderedPullConsumerImpl implements Consumer {
-  api: ConsumerAPIImpl;
-  consumerOpts: Partial<OrderedConsumerOptions>;
-  consumer!: PullConsumerImpl;
-  opts!: ConsumeOptions | FetchOptions;
-  cursor: { stream_seq: number; deliver_seq: number };
-  stream: string;
-  namePrefix: string;
-  serial: number;
-  currentConsumer: ConsumerInfo | null;
-  userCallback: ConsumerCallbackFn | null;
-  iter: OrderedConsumerMessages | null;
-  type: PullConsumerType;
-  startSeq: number;
-  maxInitialReset: number;
-
-  constructor(
-    api: ConsumerAPI,
-    stream: string,
-    opts: Partial<OrderedConsumerOptions> = {},
-  ) {
-    this.api = api as ConsumerAPIImpl;
-    this.stream = stream;
-    this.cursor = { stream_seq: 1, deliver_seq: 0 };
-    this.namePrefix = nuid.next();
-    if (typeof opts.name_prefix === "string") {
-      // make sure the prefix is valid
-      minValidation("name_prefix", opts.name_prefix);
-      this.namePrefix = opts.name_prefix + this.namePrefix;
-    }
-    this.serial = 0;
-    this.maxInitialReset = 30;
-    this.currentConsumer = null;
-    this.userCallback = null;
-    this.iter = null;
-    this.type = PullConsumerType.Unset;
-    this.consumerOpts = opts;
-
-    // to support a random start sequence we need to update the cursor
-    this.startSeq = this.consumerOpts.opt_start_seq || 0;
-    this.cursor.stream_seq = this.startSeq > 0 ? this.startSeq - 1 : 0;
-  }
-
-  getConsumerOpts(seq: number): ConsumerConfig {
-    // change the serial - invalidating any callback not
-    // matching the serial
-    this.serial++;
-    const name = `${this.namePrefix}_${this.serial}`;
-    seq = seq === 0 ? 1 : seq;
-    const config = {
-      name,
-      deliver_policy: DeliverPolicy.StartSequence,
-      opt_start_seq: seq,
-      ack_policy: AckPolicy.None,
-      inactive_threshold: nanos(5 * 60 * 1000),
-      num_replicas: 1,
-    } as ConsumerConfig;
-
-    if (this.consumerOpts.headers_only === true) {
-      config.headers_only = true;
-    }
-    if (Array.isArray(this.consumerOpts.filterSubjects)) {
-      config.filter_subjects = this.consumerOpts.filterSubjects;
-    }
-    if (typeof this.consumerOpts.filterSubjects === "string") {
-      config.filter_subject = this.consumerOpts.filterSubjects;
-    }
-    if (this.consumerOpts.replay_policy) {
-      config.replay_policy = this.consumerOpts.replay_policy;
-    }
-    // this is the initial request - tweak some options
-    if (seq === this.startSeq + 1) {
-      config.deliver_policy = this.consumerOpts.deliver_policy ||
-        DeliverPolicy.StartSequence;
-      if (
-        this.consumerOpts.deliver_policy === DeliverPolicy.LastPerSubject ||
-        this.consumerOpts.deliver_policy === DeliverPolicy.New ||
-        this.consumerOpts.deliver_policy === DeliverPolicy.Last
-      ) {
-        delete config.opt_start_seq;
-        config.deliver_policy = this.consumerOpts.deliver_policy;
-      }
-      // this requires a filter subject - we only set if they didn't
-      // set anything, and to be pre-2.10 we set it as filter_subject
-      if (config.deliver_policy === DeliverPolicy.LastPerSubject) {
-        if (
-          typeof config.filter_subjects === "undefined" &&
-          typeof config.filter_subject === "undefined"
-        ) {
-          config.filter_subject = ">";
-        }
-      }
-      if (this.consumerOpts.opt_start_time) {
-        delete config.opt_start_seq;
-        config.deliver_policy = DeliverPolicy.StartTime;
-        config.opt_start_time = this.consumerOpts.opt_start_time;
-      }
-      if (this.consumerOpts.inactive_threshold) {
-        config.inactive_threshold = nanos(this.consumerOpts.inactive_threshold);
-      }
-    }
-
-    return config;
-  }
-
-  async resetConsumer(seq = 0): Promise<ConsumerInfo> {
-    const isNew = this.serial === 0;
-    // try to delete the consumer
-    this.consumer?.delete().catch(() => {});
-    seq = seq === 0 ? 1 : seq;
-    // reset the consumer sequence as JetStream will renumber from 1
-    this.cursor.deliver_seq = 0;
-    const config = this.getConsumerOpts(seq);
-    config.max_deliver = 1;
-    config.mem_storage = true;
-    const bo = backoff();
-    let ci;
-    for (let i = 0;; i++) {
-      try {
-        ci = await this.api.add(this.stream, config);
-        this.iter?.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
-        break;
-      } catch (err) {
-        if (err.message === "stream not found") {
-          // we are not going to succeed
-          this.iter?.notify(ConsumerEvents.StreamNotFound, i);
-          // if we are not consume - fail it
-          if (
-            this.type === PullConsumerType.Fetch ||
-            (this.opts as ConsumeOptions).abort_on_missing_resource === true
-          ) {
-            this.iter?.stop(err);
-            return Promise.reject(err);
-          }
-        }
-
-        if (isNew && i >= this.maxInitialReset) {
-          // consumer was never created, so we can fail this
-          throw err;
-        } else {
-          await delay(bo.backoff(i + 1));
-        }
-      }
-    }
-    return ci;
-  }
-
-  internalHandler(serial: number) {
-    // this handler will be noop if the consumer's serial changes
-    return (m: JsMsg): void => {
-      if (this.serial !== serial) {
-        return;
-      }
-      const dseq = m.info.deliverySequence;
-      if (dseq !== this.cursor.deliver_seq + 1) {
-        this.notifyOrderedResetAndReset();
-        return;
-      }
-      this.cursor.deliver_seq = dseq;
-      this.cursor.stream_seq = m.info.streamSequence;
-
-      if (this.userCallback) {
-        this.userCallback(m);
-      } else {
-        this.iter?.push(m);
-      }
-    };
-  }
-
-  async reset(
-    opts: ConsumeOptions | FetchOptions = {
-      max_messages: 100,
-      expires: 30_000,
-    } as ConsumeMessages,
-    info?: Partial<{ fromFetch: boolean; orderedReset: boolean }>,
-  ): Promise<void> {
-    info = info || {};
-    // this is known to be directly related to a pull
-    const fromFetch = info.fromFetch || false;
-    // a sequence order caused the reset
-    const orderedReset = info.orderedReset || false;
-
-    if (this.type === PullConsumerType.Fetch && orderedReset) {
-      // the fetch pull simply needs to end the iterator
-      this.iter?.src.stop();
-      await this.iter?.closed();
-      this.currentConsumer = null;
-      return;
-    }
-
-    if (this.currentConsumer === null || orderedReset) {
-      this.currentConsumer = await this.resetConsumer(
-        this.cursor.stream_seq + 1,
+export function validateOverflowPullOptions(opts: unknown) {
+  if (isOverflowOptions(opts)) {
+    minValidation("group", opts.group);
+    if (opts.group.length > 16) {
+      throw errors.InvalidArgumentError.format(
+        "group",
+        "must be 16 characters or less",
       );
     }
 
-    // if we don't have an iterator, or it is a fetch request
-    // we create the iterator - otherwise this is a reset that is happening
-    // while the OC is active, so simply bind the new OC to current iterator.
-    if (this.iter === null || fromFetch) {
-      this.iter = new OrderedConsumerMessages();
-    }
-    this.consumer = new PullConsumerImpl(this.api, this.currentConsumer);
-
-    const copts = opts as ConsumeOptions;
-    copts.callback = this.internalHandler(this.serial);
-    let msgs: ConsumerMessages | null = null;
-    if (this.type === PullConsumerType.Fetch && fromFetch) {
-      // we only repull if client initiates
-      msgs = await this.consumer.fetch(opts);
-    } else if (this.type === PullConsumerType.Consume) {
-      msgs = await this.consumer.consume(opts);
-    }
-    const msgsImpl = msgs as PullConsumerMessagesImpl;
-    msgsImpl.forOrderedConsumer = true;
-    msgsImpl.resetHandler = () => {
-      this.notifyOrderedResetAndReset();
-    };
-    this.iter.setSource(msgsImpl);
-  }
-
-  notifyOrderedResetAndReset() {
-    this.iter?.notify(ConsumerDebugEvents.Reset, "");
-    this.reset(this.opts, { orderedReset: true });
-  }
-
-  async consume(opts: ConsumeOptions = {
-    max_messages: 100,
-    expires: 30_000,
-  } as ConsumeMessages): Promise<ConsumerMessages> {
-    const copts = opts as ConsumeOptions;
-    if (copts.bind) {
-      return Promise.reject(new Error("bind is not supported"));
-    }
-    if (this.type === PullConsumerType.Fetch) {
-      return Promise.reject(new Error("ordered consumer initialized as fetch"));
-    }
-    if (this.type === PullConsumerType.Consume) {
-      return Promise.reject(
-        new Error("ordered consumer doesn't support concurrent consume"),
-      );
-    }
-    const { callback } = opts;
-    if (callback) {
-      this.userCallback = callback;
-    }
-    this.type = PullConsumerType.Consume;
-    this.opts = opts;
-    await this.reset(opts);
-    return this.iter!;
-  }
-
-  async fetch(
-    opts: FetchOptions = { max_messages: 100, expires: 30_000 },
-  ): Promise<ConsumerMessages> {
-    const copts = opts as ConsumeOptions;
-    if (copts.bind) {
-      return Promise.reject(new Error("bind is not supported"));
-    }
-
-    if (this.type === PullConsumerType.Consume) {
-      return Promise.reject(
-        new Error("ordered consumer already initialized as consume"),
-      );
-    }
-    if (this.iter?.done === false) {
-      return Promise.reject(
-        new Error("ordered consumer doesn't support concurrent fetch"),
+    const { min_pending, min_ack_pending } = opts;
+    if (!min_pending && !min_ack_pending) {
+      throw errors.InvalidArgumentError.format(
+        ["min_pending", "min_ack_pending"],
+        "at least one must be specified",
       );
     }
 
-    //@ts-ignore: allow this for tests - api doesn't use it because
-    // iterator close is the user signal that the pull is done.
-    const { callback } = opts;
-    if (callback) {
-      this.userCallback = callback;
+    if (min_pending && typeof min_pending !== "number") {
+      throw errors.InvalidArgumentError.format(
+        ["min_pending"],
+        "must be a number",
+      );
     }
-    this.type = PullConsumerType.Fetch;
-    this.opts = opts;
-    this.iter = new OrderedConsumerMessages();
-    await this.reset(opts, { fromFetch: true });
-    return this.iter!;
-  }
 
-  async next(
-    opts: NextOptions = { expires: 30_000 },
-  ): Promise<JsMsg | null> {
-    const copts = opts as ConsumeOptions;
-    if (copts.bind) {
-      return Promise.reject(new Error("bind is not supported"));
+    if (min_ack_pending && typeof min_ack_pending !== "number") {
+      throw errors.InvalidArgumentError.format(
+        ["min_ack_pending"],
+        "must be a number",
+      );
     }
-    copts.max_messages = 1;
-
-    const d = deferred<JsMsg | null>();
-    copts.callback = (m) => {
-      // we can clobber the callback, because they are not supported
-      // except on consume, which will fail when we try to fetch
-      this.userCallback = null;
-      d.resolve(m);
-    };
-    const iter = await this.fetch(
-      copts as FetchMessages,
-    ) as OrderedConsumerMessages;
-    iter.iterClosed
-      .then((err) => {
-        if (err) {
-          d.reject(err);
-        }
-        d.resolve(null);
-      })
-      .catch((err) => {
-        d.reject(err);
-      });
-
-    return d;
-  }
-
-  delete(): Promise<boolean> {
-    if (!this.currentConsumer) {
-      return Promise.resolve(false);
-    }
-    return this.api.delete(this.stream, this.currentConsumer.name)
-      .then((tf) => {
-        return Promise.resolve(tf);
-      })
-      .catch((err) => {
-        return Promise.reject(err);
-      })
-      .finally(() => {
-        this.currentConsumer = null;
-      });
-  }
-
-  async info(cached?: boolean): Promise<ConsumerInfo> {
-    if (this.currentConsumer == null) {
-      this.currentConsumer = await this.resetConsumer(this.serial);
-      return Promise.resolve(this.currentConsumer);
-    }
-    if (cached && this.currentConsumer) {
-      return Promise.resolve(this.currentConsumer);
-    }
-    return this.api.info(this.stream, this.currentConsumer.name);
   }
 }

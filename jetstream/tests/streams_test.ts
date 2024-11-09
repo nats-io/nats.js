@@ -13,22 +13,24 @@
  * limitations under the License.
  */
 
-import { connect, notCompatible } from "test_helpers";
+import {
+  cleanup,
+  jetstreamServerConf,
+  notCompatible,
+  setup,
+} from "test_helpers";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
-
-import { JSONCodec } from "@nats-io/nats-core";
 
 import {
   assertEquals,
   assertExists,
   assertRejects,
 } from "https://deno.land/std@0.221.0/assert/mod.ts";
-import { _setup, cleanup, jetstreamServerConf } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("streams - get", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   await assertRejects(
@@ -62,12 +64,12 @@ Deno.test("streams - get", async () => {
 });
 
 Deno.test("streams - consumers", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   // add a stream and a message
   const { stream, subj } = await initStream(nc);
-  await js.publish(subj, JSONCodec().encode({ hello: "world" }));
+  await js.publish(subj, JSON.stringify({ hello: "world" }));
 
   // retrieve the stream
   const s = await js.streams.get(stream);
@@ -76,6 +78,7 @@ Deno.test("streams - consumers", async () => {
 
   // get a message
   const sm = await s.getMessage({ seq: 1 });
+  assertExists(sm);
   let d = sm.json<{ hello: string }>();
   assertEquals(d.hello, "world");
 
@@ -103,7 +106,7 @@ Deno.test("streams - consumers", async () => {
 });
 
 Deno.test("streams - delete message", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
   // add a stream and a message
@@ -120,13 +123,7 @@ Deno.test("streams - delete message", async () => {
   assertExists(sm);
 
   assertEquals(await s.deleteMessage(2, true), true);
-  await assertRejects(
-    async () => {
-      await s.getMessage({ seq: 2 });
-    },
-    Error,
-    "no message found",
-  );
+  assertEquals(await s.getMessage({ seq: 2 }), null);
 
   const si = await s.info(false, { deleted_details: true });
   assertEquals(si.state.deleted, [2]);
@@ -135,7 +132,7 @@ Deno.test("streams - delete message", async () => {
 });
 
 Deno.test("streams - first_seq", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.10.0")) {
     return;
   }
@@ -155,7 +152,7 @@ Deno.test("streams - first_seq", async () => {
 });
 
 Deno.test("streams - first_seq fails if wrong server", async () => {
-  const { ns, nc } = await _setup(connect, jetstreamServerConf({}));
+  const { ns, nc } = await setup(jetstreamServerConf({}));
   const nci = nc as NatsConnectionImpl;
   nci.features.update("2.9.2");
 

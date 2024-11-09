@@ -16,7 +16,6 @@ import {
   deferred,
   Empty,
   headers,
-  JSONCodec,
   nanos,
   nuid,
   parseSemVer,
@@ -28,12 +27,11 @@ import type {
   MsgHdrs,
   Nanos,
   NatsConnection,
-  NatsError,
   Payload,
   PublishOptions,
   QueuedIterator,
   ReviverFn,
-  Sub,
+  Subscription,
 } from "@nats-io/nats-core/internal";
 
 import {
@@ -70,7 +68,7 @@ function validateName(context: string, name = "") {
 }
 
 function validName(name = ""): string {
-  if (name === "") {
+  if (!name) {
     throw Error(`name required`);
   }
   const RE = /^[-\w]+$/g;
@@ -130,7 +128,7 @@ export class ServiceMsgImpl implements ServiceMsg {
   respondError(
     code: number,
     description: string,
-    data?: Uint8Array,
+    data?: Payload,
     opts?: PublishOptions,
   ): boolean {
     opts = opts || {};
@@ -164,7 +162,7 @@ export class ServiceGroupImpl implements ServiceGroup {
     } else if (parent instanceof ServiceGroupImpl) {
       const sg = parent as ServiceGroupImpl;
       this.srv = sg.srv;
-      if (queue === "" && sg.queue !== "") {
+      if (queue === undefined) {
         queue = sg.queue;
       }
       root = sg.subject;
@@ -200,7 +198,10 @@ export class ServiceGroupImpl implements ServiceGroup {
     return this.srv._addEndpoint(ne);
   }
 
-  addGroup(name = "", queue = ""): ServiceGroup {
+  addGroup(name = "", queue?: string): ServiceGroup {
+    if (queue === undefined) {
+      queue = this.queue;
+    }
     return new ServiceGroupImpl(this, name, queue);
   }
 }
@@ -240,7 +241,7 @@ type ServiceSubscription<T = unknown> =
   & NamedEndpoint
   & {
     internal: boolean;
-    sub: Sub<T>;
+    sub: Subscription;
     qi?: QueuedIterator<T>;
     stats: NamedEndpointStatsImpl;
     metadata?: Record<string, string>;
@@ -288,13 +289,18 @@ export class ServiceImpl implements Service {
   ) {
     this.nc = nc;
     this.config = Object.assign({}, config);
-    if (!this.config.queue) {
+    if (this.config.queue === undefined) {
       this.config.queue = "q";
     }
 
+    // don't allow changing metadata
+    config.metadata = Object.freeze(config.metadata || {});
+
     // this will throw if no name
     validateName("name", this.config.name);
-    validateName("queue", this.config.queue);
+    if (this.config.queue) {
+      validateName("queue", this.config.queue);
+    }
 
     // this will throw if not semver
     parseSemVer(this.config.version);
@@ -374,7 +380,7 @@ export class ServiceImpl implements Service {
     sv.queue = queue;
 
     const callback = handler
-      ? (err: NatsError | null, msg: Msg) => {
+      ? (err: Error | null, msg: Msg) => {
         if (err) {
           this.close(err);
           return;
@@ -383,8 +389,8 @@ export class ServiceImpl implements Service {
         try {
           handler(err, new ServiceMsgImpl(msg));
         } catch (err) {
-          sv.stats.countError(err);
-          msg?.respond(Empty, { headers: this.errorToHeader(err) });
+          sv.stats.countError(err as Error);
+          msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
         } finally {
           sv.stats.countLatency(start);
         }
@@ -441,7 +447,7 @@ export class ServiceImpl implements Service {
         try {
           h.stats.data = await this.config.statsHandler(h);
         } catch (err) {
-          h.stats.countError(err);
+          h.stats.countError(err as Error);
         }
       }
       endpoints.push(h.stats.stats(h.qi));
@@ -459,7 +465,7 @@ export class ServiceImpl implements Service {
 
   addInternalHandler(
     verb: ServiceVerb,
-    handler: (err: NatsError | null, msg: Msg) => Promise<void>,
+    handler: (err: Error | null, msg: Msg) => Promise<void>,
   ) {
     const v = `${verb}`.toUpperCase();
     this._doAddInternalHandler(`${v}-all`, verb, handler);
@@ -476,7 +482,7 @@ export class ServiceImpl implements Service {
   _doAddInternalHandler(
     name: string,
     verb: ServiceVerb,
-    handler: (err: NatsError | null, msg: Msg) => Promise<void>,
+    handler: (err: Error | null, msg: Msg) => Promise<void>,
     kind = "",
     id = "",
   ) {
@@ -488,14 +494,13 @@ export class ServiceImpl implements Service {
   }
 
   start(): Promise<Service> {
-    const jc = JSONCodec();
     const statsHandler = (err: Error | null, msg: Msg): Promise<void> => {
       if (err) {
         this.close(err);
         return Promise.reject(err);
       }
       return this.stats().then((s) => {
-        msg?.respond(jc.encode(s));
+        msg?.respond(JSON.stringify(s));
         return Promise.resolve();
       });
     };
@@ -505,11 +510,11 @@ export class ServiceImpl implements Service {
         this.close(err);
         return Promise.reject(err);
       }
-      msg?.respond(jc.encode(this.info()));
+      msg?.respond(JSON.stringify(this.info()));
       return Promise.resolve();
     };
 
-    const ping = jc.encode(this.ping());
+    const ping = JSON.stringify(this.ping());
     const pingHandler = (err: Error | null, msg: Msg): Promise<void> => {
       if (err) {
         this.close(err).then().catch();
@@ -607,6 +612,7 @@ export class ServiceImpl implements Service {
     e: NamedEndpoint,
   ): QueuedIterator<ServiceMsg> {
     const qi = new QueuedIteratorImpl<ServiceMsg>();
+    qi.profile = true;
     qi.noIterator = typeof e.handler === "function";
     if (!qi.noIterator) {
       e.handler = (err, msg): void => {

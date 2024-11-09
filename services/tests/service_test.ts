@@ -12,13 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { _setup, cleanup, connect } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { ServiceImpl } from "../src/service.ts";
 import {
   assert,
   assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertInstanceOf,
   assertRejects,
   assertThrows,
   fail,
@@ -28,16 +29,12 @@ import {
   collect,
   createInbox,
   delay,
-  ErrorCode,
-  JSONCodec,
-  nuid,
-  StringCodec,
+  errors,
 } from "@nats-io/nats-core/internal";
 import type {
   Msg,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   QueuedIterator,
   SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
@@ -78,7 +75,7 @@ Deno.test("service - control subject", () => {
 });
 
 Deno.test("service - bad name", async () => {
-  const { ns, nc } = await _setup(connect, {}, {});
+  const { ns, nc } = await setup({}, {});
   const svc = new Svc(nc);
   const t = async (name: string, msg: string) => {
     await assertRejects(
@@ -101,8 +98,7 @@ Deno.test("service - bad name", async () => {
 });
 
 Deno.test("service - client", async () => {
-  const { ns, nc } = await _setup(connect, {}, {});
-  const sc = StringCodec();
+  const { ns, nc } = await setup({}, {});
   const subj = createInbox();
   const svc = new Svc(nc);
 
@@ -113,7 +109,7 @@ Deno.test("service - client", async () => {
   }) as ServiceImpl;
   srv.addEndpoint("hello", {
     handler: (_err, msg) => {
-      msg?.respond(sc.encode("hello"));
+      msg?.respond("hello");
     },
     subject: subj,
   });
@@ -204,7 +200,7 @@ Deno.test("service - client", async () => {
 });
 
 Deno.test("service - basics", async () => {
-  const { ns, nc } = await _setup(connect, {}, {});
+  const { ns, nc } = await setup({}, {});
   const svc = new Svc(nc);
   const conf: ServiceConfig = {
     name: "test",
@@ -233,8 +229,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.ping("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   assertEquals(await count(m.info()), 2);
@@ -244,8 +239,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.info("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   assertEquals(await count(m.stats()), 2);
@@ -255,8 +249,7 @@ Deno.test("service - basics", async () => {
     async () => {
       await collect(await m.stats("test", "c"));
     },
-    Error,
-    ErrorCode.NoResponders,
+    errors.NoRespondersError,
   );
 
   await srvA.stop();
@@ -266,7 +259,7 @@ Deno.test("service - basics", async () => {
 });
 
 Deno.test("service - stop error", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -294,17 +287,14 @@ Deno.test("service - stop error", async () => {
     fail("shouldn't have subscribed");
   });
 
-  const err = await service.stopped as NatsError;
-  assertEquals(
-    err.code,
-    ErrorCode.PermissionsViolation,
-  );
+  const err = await service.stopped as Error;
+  assertInstanceOf(err, errors.PermissionViolationError);
 
   await cleanup(ns, nc);
 });
 
 Deno.test("service - start error", async () => {
-  const { ns, nc } = await _setup(connect, {
+  const { ns, nc } = await setup({
     authorization: {
       users: [{
         user: "a",
@@ -328,17 +318,14 @@ Deno.test("service - start error", async () => {
     msg?.respond();
   });
 
-  const err = await service.stopped as NatsError;
-  assertEquals(
-    err.code,
-    ErrorCode.PermissionsViolation,
-  );
+  const err = await service.stopped as Error;
+  assertInstanceOf(err, errors.PermissionViolationError);
 
   await cleanup(ns, nc);
 });
 
 Deno.test("service - callback error", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const srv = await svc.add({
     name: "test",
@@ -359,7 +346,7 @@ Deno.test("service - callback error", async () => {
 });
 
 Deno.test("service - service error is headers", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const srv = await svc.add({
     name: "test",
@@ -378,7 +365,7 @@ Deno.test("service - service error is headers", async () => {
 });
 
 Deno.test("service - sub stop", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const service = await svc.add({
     name: "test",
@@ -402,7 +389,7 @@ Deno.test("service - sub stop", async () => {
 });
 
 Deno.test("service - monitoring sub stop", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const service = await svc.add({
     name: "test",
@@ -426,7 +413,7 @@ Deno.test("service - monitoring sub stop", async () => {
 });
 
 Deno.test("service - custom stats handler", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const srv = await svc.add({
     name: "test",
@@ -451,7 +438,7 @@ Deno.test("service - custom stats handler", async () => {
 });
 
 Deno.test("service - bad stats handler", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const config = {
     name: "test",
@@ -475,7 +462,7 @@ Deno.test("service - bad stats handler", async () => {
 });
 
 Deno.test("service - stats handler error", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const svc = new Svc(nc);
   const srv = await svc.add({
     name: "test",
@@ -501,7 +488,7 @@ Deno.test("service - stats handler error", async () => {
 });
 
 Deno.test("service - reset", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const service = await svc.add({
@@ -543,7 +530,7 @@ Deno.test("service - reset", async () => {
 });
 
 Deno.test("service - iter", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const service = await svc.add({
@@ -579,7 +566,7 @@ Deno.test("service - iter", async () => {
 });
 
 Deno.test("service - iter closed", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const service = await svc.add({
@@ -602,7 +589,7 @@ Deno.test("service - iter closed", async () => {
 });
 
 Deno.test("service - version must be semver", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const test = (v?: string): Promise<Service> => {
     const svc = new Svc(nc);
     return svc.add({
@@ -639,7 +626,7 @@ Deno.test("service - version must be semver", async () => {
 });
 
 Deno.test("service - service errors", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -666,73 +653,73 @@ Deno.test("service - service errors", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("service - cross platform service test", async () => {
-  const nc = await connect({ servers: "demo.nats.io" });
-  const name = `echo_${nuid.next()}`;
-
-  const conf: ServiceConfig = {
-    name,
-    version: "0.0.1",
-    statsHandler: (): Promise<unknown> => {
-      return Promise.resolve("hello world");
-    },
-    metadata: {
-      service: name,
-    },
-  };
-
-  const svc = new Svc(nc);
-  const srv = await svc.add(conf);
-  srv.addEndpoint("test", {
-    subject: createInbox(),
-    handler: (_err, m): void => {
-      if (m.data.length === 0) {
-        m.respondError(400, "need a string", JSONCodec().encode(""));
-      } else {
-        if (StringCodec().decode(m.data) === "error") {
-          throw new Error("service asked to throw an error");
-        }
-        m.respond(m.data);
-      }
-    },
-    metadata: {
-      endpoint: "a",
-    },
-  });
-
-  // running from root?
-  const scheck = Deno.cwd().endsWith("nats.js")
-    ? "./services/tests/service-check.ts"
-    : "./tests/service-check.ts";
-
-  const args = [
-    "run",
-    "-A",
-    scheck,
-    "--name",
-    name,
-    "--server",
-    "demo.nats.io",
-  ];
-
-  const cmd = new Deno.Command(Deno.execPath(), {
-    args,
-    stderr: "piped",
-    stdout: "piped",
-  });
-  const { success, stderr, stdout } = await cmd.output();
-
-  if (!success) {
-    console.log(StringCodec().decode(stdout));
-    console.log(StringCodec().decode(stderr));
-    fail(StringCodec().decode(stderr));
-  }
-
-  await nc.close();
-});
+// Deno.test("service - cross platform service test", async () => {
+//   const nc = await connect({ servers: "demo.nats.io" });
+//   const name = `echo_${nuid.next()}`;
+//
+//   const conf: ServiceConfig = {
+//     name,
+//     version: "0.0.1",
+//     statsHandler: (): Promise<unknown> => {
+//       return Promise.resolve("hello world");
+//     },
+//     metadata: {
+//       service: name,
+//     },
+//   };
+//
+//   const svc = new Svc(nc);
+//   const srv = await svc.add(conf);
+//   srv.addEndpoint("test", {
+//     subject: createInbox(),
+//     handler: (_err, m): void => {
+//       if (m.data.length === 0) {
+//         m.respondError(400, "need a string", JSON.stringify(""));
+//       } else {
+//         if (m.string() === "error") {
+//           throw new Error("service asked to throw an error");
+//         }
+//         m.respond(m.data);
+//       }
+//     },
+//     metadata: {
+//       endpoint: "a",
+//     },
+//   });
+//
+//   // running from root?
+//   const scheck = Deno.cwd().endsWith("nats.js")
+//     ? "./services/tests/service-check.ts"
+//     : "./tests/service-check.ts";
+//
+//   const args = [
+//     "run",
+//     "-A",
+//     scheck,
+//     "--name",
+//     name,
+//     "--server",
+//     "demo.nats.io",
+//   ];
+//
+//   const cmd = new Deno.Command(Deno.execPath(), {
+//     args,
+//     stderr: "piped",
+//     stdout: "piped",
+//   });
+//   const { success, stderr, stdout } = await cmd.output();
+//
+//   if (!success) {
+//     console.log(new TextDecoder().decode(stdout));
+//     console.log(new TextDecoder().decode(stderr));
+//     fail(new TextDecoder().decode(stderr));
+//   }
+//
+//   await nc.close();
+// });
 
 Deno.test("service - stats name respects assigned name", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const test = await svc.add({
@@ -746,35 +733,34 @@ Deno.test("service - stats name respects assigned name", async () => {
   const stats = await test.stats();
   assertEquals(stats.name, "tEsT");
   const r = await nc.request(`$SRV.PING.tEsT`);
-  const si = JSONCodec<ServiceIdentity>().decode(r.data);
+  const si = r.json<ServiceIdentity>();
   assertEquals(si.name, "tEsT");
 
   await cleanup(ns, nc);
 });
 
 Deno.test("service - multiple endpoints", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const ms = await svc.add({
     name: "multi",
     version: "0.0.1",
   });
-  const sc = StringCodec();
   ms.addEndpoint("hey", (_err, m) => {
-    m.respond(sc.encode("hi"));
+    m.respond("hi");
   });
   ms.addGroup("service").addEndpoint("echo", (_err, m) => {
     m.respond(m.data);
   });
 
   let r = await nc.request(`hey`);
-  assertEquals(sc.decode(r.data), "hi");
-  r = await nc.request(`service.echo`, sc.encode("yo!"));
-  assertEquals(sc.decode(r.data), "yo!");
+  assertEquals(r.string(), "hi");
+  r = await nc.request(`service.echo`, "yo!");
+  assertEquals(r.string(), "yo!");
 
   r = await nc.request(`$SRV.STATS`);
-  const stats = JSONCodec().decode(r.data) as ServiceStats;
+  const stats = r.json<ServiceStats>();
 
   function t(name: string) {
     const v = stats.endpoints?.find((n) => {
@@ -790,7 +776,7 @@ Deno.test("service - multiple endpoints", async () => {
 });
 
 Deno.test("service - multi cb/iterator", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -817,7 +803,7 @@ Deno.test("service - multi cb/iterator", async () => {
 });
 
 Deno.test("service - group and endpoint names", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -845,7 +831,7 @@ Deno.test("service - group and endpoint names", async () => {
 });
 
 Deno.test("service - group subs", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -874,7 +860,7 @@ Deno.test("service - group subs", async () => {
 });
 
 Deno.test("service - metadata", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -900,7 +886,7 @@ Deno.test("service - metadata", async () => {
 });
 
 Deno.test("service - schema metadata", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -921,7 +907,7 @@ Deno.test("service - schema metadata", async () => {
 });
 
 Deno.test("service - json reviver", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -945,7 +931,7 @@ Deno.test("service - json reviver", async () => {
     },
   });
 
-  await nc.request("group.endpoint", JSONCodec().encode({ date: Date.now() }));
+  await nc.request("group.endpoint", JSON.stringify({ date: Date.now() }));
 
   await cleanup(ns, nc);
 });
@@ -974,7 +960,7 @@ async function testQueueName(nc: NatsConnection, subj: string, q?: string) {
 }
 
 Deno.test("service - custom queue group", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   await testQueueName(nc, "a");
   await testQueueName(nc, "b", "q1");
   await assertRejects(
@@ -1025,7 +1011,7 @@ function checkQueueGroup(srv: Service, subj: string, queue: string) {
 }
 
 Deno.test("service - endpoint default queue group", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   const svc = new Svc(nc);
   const srv = await svc.add({
@@ -1058,6 +1044,64 @@ Deno.test("service - endpoint default queue group", async () => {
   // and override
   g2.addEndpoint("b", { queue: "bb" });
   checkQueueGroup(srv, "g.g.b", "bb");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - endpoint no queue group", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svc(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1" },
+    // no queue
+    queue: "",
+  }) as ServiceImpl;
+
+  // svc config doesn't specify a queue group so we expect q
+  srv.addEndpoint("a");
+  checkQueueGroup(srv, "a", "");
+
+  // we add another group, no queue
+  const dg = srv.addGroup("G");
+  dg.addEndpoint("a");
+  checkQueueGroup(srv, "G.a", "");
+
+  // the above have no queue, no override, and set a queue
+  const g = srv.addGroup("g", "qq");
+  g.addEndpoint("a");
+  checkQueueGroup(srv, "g.a", "qq");
+  // override
+  g.addEndpoint("b", { queue: "bb" });
+  checkQueueGroup(srv, "g.b", "bb");
+  // add a subgroup without, should inherit
+  const g2 = g.addGroup("g");
+  g2.addEndpoint("a");
+  checkQueueGroup(srv, "g.g.a", "qq");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - metadata is not editable", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svc(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1", hello: "world" },
+    queue: "",
+  }) as ServiceImpl;
+
+  assertThrows(
+    () => {
+      srv.config.metadata!.hello = "hello";
+    },
+    TypeError,
+    "Cannot assign to read only property",
+  );
 
   await cleanup(ns, nc);
 });

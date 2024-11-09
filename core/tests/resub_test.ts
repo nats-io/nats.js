@@ -13,8 +13,7 @@
  * limitations under the License.
  */
 
-import { connect } from "./connect.ts";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
 import { createInbox } from "../src/internal_mod.ts";
 import type {
   Msg,
@@ -25,7 +24,7 @@ import { assert, assertEquals, assertExists, fail } from "jsr:@std/assert";
 import type { NatsServer } from "../../test_helpers/launcher.ts";
 
 Deno.test("resub - iter", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const subja = createInbox();
 
@@ -54,7 +53,7 @@ Deno.test("resub - iter", async () => {
 });
 
 Deno.test("resub - callback", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const subja = createInbox();
   const buf: Msg[] = [];
@@ -111,7 +110,7 @@ async function assertEqualSubs(
 }
 
 Deno.test("resub - removes server interest", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
 
   nc.subscribe("a", {
     callback() {

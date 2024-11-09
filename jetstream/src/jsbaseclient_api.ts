@@ -17,21 +17,25 @@ import {
   backoff,
   delay,
   Empty,
-  ErrorCode,
+  errors,
   extend,
-  JSONCodec,
+  RequestError,
 } from "@nats-io/nats-core/internal";
 import type {
-  Codec,
   Msg,
   NatsConnection,
   NatsConnectionImpl,
-  NatsError,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
-import { checkJsErrorCode } from "./jsutil.ts";
 import type { ApiResponse } from "./jsapi_types.ts";
 import type { JetStreamOptions } from "./types.ts";
+import {
+  ConsumerNotFoundError,
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JetStreamNotEnabled,
+  StreamNotFoundError,
+} from "./jserrors.ts";
 
 const defaultPrefix = "$JS.API";
 const defaultTimeout = 5000;
@@ -58,7 +62,6 @@ export class BaseApiClientImpl {
   opts: JetStreamOptions;
   prefix: string;
   timeout: number;
-  jc: Codec<unknown>;
 
   constructor(nc: NatsConnection, opts?: JetStreamOptions) {
     this.nc = nc as NatsConnectionImpl;
@@ -66,7 +69,6 @@ export class BaseApiClientImpl {
     this._parseOpts();
     this.prefix = this.opts.apiPrefix!;
     this.timeout = this.opts.timeout!;
-    this.jc = JSONCodec();
   }
 
   getOptions(): JetStreamOptions {
@@ -76,7 +78,7 @@ export class BaseApiClientImpl {
   _parseOpts() {
     let prefix = this.opts.apiPrefix;
     if (!prefix || prefix.length === 0) {
-      throw new Error("invalid empty prefix");
+      throw errors.InvalidArgumentError.format("prefix", "cannot be empty");
     }
     const c = prefix[prefix.length - 1];
     if (c === ".") {
@@ -95,7 +97,7 @@ export class BaseApiClientImpl {
 
     let a: Uint8Array = Empty;
     if (data) {
-      a = this.jc.encode(data);
+      a = new TextEncoder().encode(JSON.stringify(data));
     }
 
     let { retries } = opts as {
@@ -115,14 +117,18 @@ export class BaseApiClientImpl {
         );
         return this.parseJsResponse(m);
       } catch (err) {
-        const ne = err as NatsError;
+        const re = err instanceof RequestError ? err as RequestError : null;
         if (
-          (ne.code === "503" || ne.code === ErrorCode.Timeout) &&
+          (err instanceof errors.TimeoutError || re?.isNoResponders()) &&
           i + 1 < retries
         ) {
           await delay(bo.backoff(i));
         } else {
-          throw err;
+          throw re?.isNoResponders()
+            ? new JetStreamNotEnabled("jetstream is not enabled", {
+              cause: err,
+            })
+            : err;
         }
       }
     }
@@ -133,7 +139,7 @@ export class BaseApiClientImpl {
     const r = await this._request(`${this.prefix}.STREAM.NAMES`, q);
     const names = r as StreamNames;
     if (!names.streams || names.streams.length !== 1) {
-      throw new Error("no stream matches subject");
+      throw StreamNotFoundError.fromMessage("no stream matches subject");
     }
     return names.streams[0];
   }
@@ -143,16 +149,20 @@ export class BaseApiClientImpl {
   }
 
   parseJsResponse(m: Msg): unknown {
-    const v = this.jc.decode(m.data);
+    const v = JSON.parse(new TextDecoder().decode(m.data));
     const r = v as ApiResponse;
     if (r.error) {
-      const err = checkJsErrorCode(r.error.code, r.error.description);
-      if (err !== null) {
-        err.api_error = r.error;
-        if (r.error.description !== "") {
-          err.message = r.error.description;
+      switch (r.error.err_code) {
+        case JetStreamApiCodes.ConsumerNotFound:
+          throw new ConsumerNotFoundError(r.error);
+        case JetStreamApiCodes.StreamNotFound:
+          throw new StreamNotFoundError(r.error);
+        case JetStreamApiCodes.JetStreamNotEnabledForAccount: {
+          const jserr = new JetStreamApiError(r.error);
+          throw new JetStreamNotEnabled(jserr.message, { cause: jserr });
         }
-        throw err;
+        default:
+          throw new JetStreamApiError(r.error);
       }
     }
     return v;

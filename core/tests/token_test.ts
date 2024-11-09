@@ -12,41 +12,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { fail } from "jsr:@std/assert";
-import { ErrorCode } from "../src/internal_mod.ts";
-import { assertErrorCode, NatsServer } from "test_helpers";
+import { assertRejects } from "jsr:@std/assert";
+import { NatsServer } from "test_helpers";
 import { connect } from "./connect.ts";
+import { errors } from "../src/errors.ts";
 
 const conf = { authorization: { token: "tokenxxxx" } };
 
 Deno.test("token - empty", async () => {
   const ns = await NatsServer.start(conf);
-  try {
-    const nc = await connect(
-      { port: ns.port, reconnect: false },
-    );
-    nc.closed().then((err) => {
-      console.table(err);
-    });
-    await nc.close();
-    fail("should not have connected");
-  } catch (err) {
-    assertErrorCode(err, ErrorCode.AuthorizationViolation);
-  }
+  await assertRejects(() => {
+    return connect({ port: ns.port, reconnect: false, debug: true });
+  }, errors.AuthorizationError);
+
   await ns.stop();
 });
 
 Deno.test("token - bad", async () => {
   const ns = await NatsServer.start(conf);
-  try {
-    const nc = await connect(
-      { port: ns.port, token: "bad" },
+  await assertRejects(() => {
+    return connect(
+      { port: ns.port, token: "bad", reconnect: false },
     );
-    await nc.close();
-    fail("should not have connected");
-  } catch (err) {
-    assertErrorCode(err, ErrorCode.AuthorizationViolation);
-  }
+  }, errors.AuthorizationError);
   await ns.stop();
 });
 

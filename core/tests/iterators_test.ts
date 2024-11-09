@@ -13,21 +13,21 @@
  * limitations under the License.
  */
 import { connect } from "./connect.ts";
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert";
-import { assertErrorCode, Lock, NatsServer } from "test_helpers";
+import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,
   delay,
-  ErrorCode,
   nuid,
   QueuedIteratorImpl,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { _setup, cleanup } from "test_helpers";
+import { cleanup, setup } from "test_helpers";
+import { errors } from "../src/errors.ts";
 
 Deno.test("iterators - unsubscribe breaks and closes", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const done = (async () => {
@@ -45,7 +45,7 @@ Deno.test("iterators - unsubscribe breaks and closes", async () => {
 });
 
 Deno.test("iterators - autounsub breaks and closes", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj, { max: 2 });
   const lock = Lock(2);
@@ -95,7 +95,7 @@ Deno.test("iterators - permission error breaks and closes", async () => {
 });
 
 Deno.test("iterators - unsubscribing closes", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const lock = Lock();
@@ -112,7 +112,7 @@ Deno.test("iterators - unsubscribing closes", async () => {
 });
 
 Deno.test("iterators - connection close closes", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const sub = nc.subscribe(subj);
   const lock = Lock();
@@ -130,33 +130,27 @@ Deno.test("iterators - connection close closes", async () => {
 });
 
 Deno.test("iterators - cb subs fail iterator", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
-  const lock = Lock(2);
-  const sub = nc.subscribe(subj, {
-    callback: (err, msg) => {
-      assert(err === null);
-      assert(msg);
-      lock.unlock();
-    },
-  });
+  const sub = nc.subscribe(subj, { callback: () => {} });
 
-  (async () => {
-    for await (const _m of sub) {
-      lock.unlock();
-    }
-  })().catch((err) => {
-    assertErrorCode(err, ErrorCode.ApiError);
-    lock.unlock();
-  });
+  await assertRejects(
+    async () => {
+      for await (const _ of sub) {
+        // nothing
+      }
+    },
+    errors.InvalidOperationError,
+    "iterator cannot be used when a callback is registered",
+  );
+
   nc.publish(subj);
   await nc.flush();
   await cleanup(ns, nc);
-  await lock;
 });
 
 Deno.test("iterators - cb message counts", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const lock = Lock(3);
   const sub = nc.subscribe(subj, {
@@ -200,7 +194,7 @@ Deno.test("iterators - push on done is noop", async () => {
 });
 
 Deno.test("iterators - break cleans up", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const nci = nc as NatsConnectionImpl;
   const subj = createInbox();
   const sub = nc.subscribe(subj);
@@ -219,7 +213,7 @@ Deno.test("iterators - break cleans up", async () => {
 });
 
 Deno.test("iterators - sync iterator", async () => {
-  const { ns, nc } = await _setup(connect);
+  const { ns, nc } = await setup();
   const subj = nuid.next();
   const sub = nc.subscribe(subj);
   const sync = syncIterator(sub);
@@ -259,7 +253,7 @@ Deno.test("iterators - sync iterator", async () => {
       }
     },
     Error,
-    "unsupported iterator",
+    "iterator cannot be used when a callback is registered",
   );
 
   await cleanup(ns, nc);

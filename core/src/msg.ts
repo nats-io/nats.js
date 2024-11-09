@@ -15,26 +15,14 @@
 import { MsgHdrsImpl } from "./headers.ts";
 import type { MsgArg } from "./parser.ts";
 import { Empty, TD } from "./encoders.ts";
-import type { Codec } from "./codec.ts";
-import { JSONCodec } from "./codec.ts";
 import type {
   Msg,
   MsgHdrs,
+  Payload,
   Publisher,
   RequestInfo,
   ReviverFn,
 } from "./core.ts";
-import { ErrorCode, NatsError } from "./core.ts";
-
-export function isRequestError(msg: Msg): NatsError | null {
-  // NATS core only considers errors 503s on messages that have no payload
-  // everything else simply forwarded as part of the message and is considered
-  // application level information
-  if (msg && msg.data.length === 0 && msg.headers?.code === 503) {
-    return NatsError.errorForCode(ErrorCode.NoResponders);
-  }
-  return null;
-}
 
 export class MsgImpl implements Msg {
   _headers?: MsgHdrs;
@@ -43,7 +31,6 @@ export class MsgImpl implements Msg {
   _reply!: string;
   _subject!: string;
   publisher: Publisher;
-  static jc: Codec<unknown>;
 
   constructor(msg: MsgArg, data: Uint8Array, publisher: Publisher) {
     this._msg = msg;
@@ -90,7 +77,7 @@ export class MsgImpl implements Msg {
 
   // eslint-ignore-next-line @typescript-eslint/no-explicit-any
   respond(
-    data: Uint8Array = Empty,
+    data: Payload = Empty,
     opts?: { headers?: MsgHdrs; reply?: string },
   ): boolean {
     if (this.reply) {
@@ -108,7 +95,7 @@ export class MsgImpl implements Msg {
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
-    return JSONCodec<T>(reviver).decode(this.data);
+    return JSON.parse(this.string(), reviver);
   }
 
   string(): string {

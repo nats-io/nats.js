@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import type { ApiError, Nanos } from "@nats-io/nats-core";
+import type { Nanos } from "@nats-io/nats-core";
 import { nanos } from "@nats-io/nats-core";
 
 export interface ApiPaged {
@@ -29,6 +29,21 @@ export interface ApiPagedRequest {
 export interface ApiResponse {
   type: string;
   error?: ApiError;
+}
+
+export interface ApiError {
+  /**
+   * HTTP like error code in the 300 to 500 range
+   */
+  code: number;
+  /**
+   * A human friendly description of the error
+   */
+  description: string;
+  /**
+   * The NATS error code unique to each kind of error
+   */
+  err_code: number;
 }
 
 /**
@@ -483,6 +498,7 @@ export type DirectMsgRequest =
   | LastForMsgRequest
   | NextMsgRequest;
 
+// FIXME: new options on the server
 export type DirectBatchOptions = {
   batch?: number;
   max_bytes?: number;
@@ -879,7 +895,12 @@ export interface JetStreamApiStats {
 export interface AccountInfoResponse
   extends ApiResponse, JetStreamAccountStats {}
 
-export interface ConsumerConfig extends ConsumerUpdateConfig {
+export type PriorityGroups = {
+  priority_groups?: string[];
+  priority_policy?: PriorityPolicy;
+};
+
+export type ConsumerConfig = ConsumerUpdateConfig & {
   /**
    * The type of acknowledgment required by the Consumer
    */
@@ -890,7 +911,6 @@ export interface ConsumerConfig extends ConsumerUpdateConfig {
   "deliver_policy": DeliverPolicy;
   /**
    * Allows push consumers to form a queue group
-   * @deprecated
    */
   "deliver_group"?: string;
   /**
@@ -937,9 +957,9 @@ export interface ConsumerConfig extends ConsumerUpdateConfig {
    * Specified as an ISO date time string (Date#toISOString()).
    */
   "pause_until"?: string;
-}
+};
 
-export interface ConsumerUpdateConfig {
+export type ConsumerUpdateConfig = PriorityGroups & {
   /**
    * A short description of the purpose of this consume
    */
@@ -974,7 +994,6 @@ export interface ConsumerUpdateConfig {
   "headers_only"?: boolean;
   /**
    * The subject where the push consumer should be sent the messages
-   * @deprecated
    */
   "deliver_subject"?: string;
   /**
@@ -991,8 +1010,8 @@ export interface ConsumerUpdateConfig {
    */
   "inactive_threshold"?: Nanos;
   /**
-   * List of durations in nanoseconds format that represents a retry timescale for
-   * NaK'd messages or those being normally retried
+   * List of durations in nanoseconds that represents a retry timescale for
+   * the redelivery of messages
    */
   "backoff"?: Nanos[];
   /**
@@ -1023,6 +1042,11 @@ export interface ConsumerUpdateConfig {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
+};
+
+export enum PriorityPolicy {
+  None = "none",
+  Overflow = "overflow",
 }
 
 export function defaultConsumer(
@@ -1038,12 +1062,54 @@ export function defaultConsumer(
   }, opts);
 }
 
+export type OverflowMinPending = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_pending for the consumer is greater than this value
+   */
+  min_pending: number;
+};
+
+export type OverflowMinAckPending = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_ack_pending for the consumer is greater than this value
+   */
+  min_ack_pending: number;
+};
+
+export type OverflowMinPendingAndMinAck = {
+  /**
+   * The name of the priority_group
+   */
+  group: string;
+  /**
+   * Only deliver messages when num_pending for the consumer is greater than this value
+   */
+  min_pending: number;
+  /**
+   * Only deliver messages when num_ack_pending for the consumer is greater than this value
+   */
+  min_ack_pending: number;
+};
+
+export type OverflowOptions =
+  | OverflowMinPending
+  | OverflowMinAckPending
+  | OverflowMinPendingAndMinAck;
+
 /**
  * Options for a JetStream pull subscription which define how long
  * the pull request will remain open and limits the amount of data
  * that the server could return.
  */
-export interface PullOptions {
+export type PullOptions = Partial<OverflowMinPendingAndMinAck> & {
   /**
    * Max number of messages to retrieve in a pull.
    */
@@ -1062,8 +1128,12 @@ export interface PullOptions {
    * number of messages in the batch to fit within this setting.
    */
   "max_bytes": number;
+
+  /**
+   * Number of nanos between messages for the server to emit an idle_heartbeat
+   */
   "idle_heartbeat": number;
-}
+};
 
 export interface DeliveryInfo {
   /**

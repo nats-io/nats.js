@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 The NATS Authors
+ * Copyright 2021-2024 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { errors } from "@nats-io/nats-core/internal";
 import type { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import type {
   ApiPaged,
@@ -38,7 +39,7 @@ export class ListerImpl<T> implements Lister<T>, AsyncIterable<T> {
     payload?: unknown,
   ) {
     if (!subject) {
-      throw new Error("subject is required");
+      throw errors.InvalidArgumentError.format("subject", "is required");
     }
     this.subject = subject;
     this.jsm = jsm;
@@ -77,7 +78,7 @@ export class ListerImpl<T> implements Lister<T>, AsyncIterable<T> {
       this.offset += count;
       return this.filter(r);
     } catch (err) {
-      this.err = err;
+      this.err = err as Error;
       throw err;
     }
   }

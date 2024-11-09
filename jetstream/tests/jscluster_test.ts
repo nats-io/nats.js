@@ -1,5 +1,12 @@
 import { jetstream, jetstreamManager } from "../src/jsclient.ts";
-import { connect, flakyTest, NatsServer, notCompatible } from "test_helpers";
+import {
+  cleanup,
+  connect,
+  flakyTest,
+  jetstreamServerConf,
+  NatsServer,
+  notCompatible,
+} from "test_helpers";
 import {
   DiscardPolicy,
   RetentionPolicy,
@@ -47,8 +54,8 @@ Deno.test("jetstream - mirror alternates", async () => {
 });
 
 Deno.test("jsm - stream update properties", async () => {
-  const servers = await NatsServer.jetstreamCluster(3);
-  const nc = await connect({ port: servers[0].port });
+  const ns = await NatsServer.start(jetstreamServerConf({}));
+  const nc = await connect({ port: ns.port });
 
   const jsm = await jetstreamManager(nc, { timeout: 3000 });
 
@@ -58,9 +65,9 @@ Deno.test("jsm - stream update properties", async () => {
     subjects: ["x"],
   });
 
-  let sn = "n";
+  const name = "n";
   await jsm.streams.add({
-    name: sn,
+    name,
     storage: StorageType.File,
     subjects: ["subj"],
     duplicate_window: nanos(30 * 1000),
@@ -71,7 +78,7 @@ Deno.test("jsm - stream update properties", async () => {
     shouldFail = false,
   ): Promise<void> {
     try {
-      const si = await jsm.streams.update(sn, opt);
+      const si = await jsm.streams.update(name, opt);
       for (const v of Object.keys(opt)) {
         const sc = si.config;
         //@ts-ignore: test
@@ -82,7 +89,7 @@ Deno.test("jsm - stream update properties", async () => {
       }
     } catch (err) {
       if (!shouldFail) {
-        fail(err.message);
+        fail((err as Error).message);
       }
     }
   }
@@ -104,6 +111,8 @@ Deno.test("jsm - stream update properties", async () => {
   await updateOption({ duplicate_window: nanos(15 * 1000) });
   await updateOption({ allow_rollup_hdrs: true });
   await updateOption({ allow_rollup_hdrs: false });
+  // stream update allows the replica count to be bumped
+  // this is possibly by design?
   await updateOption({ num_replicas: 3 });
   await updateOption({ num_replicas: 1 });
   await updateOption({ deny_delete: true });
@@ -113,11 +122,9 @@ Deno.test("jsm - stream update properties", async () => {
   await updateOption({ sealed: false }, true);
 
   await jsm.streams.add({ name: "m", mirror: { name: "a" } });
-  sn = "m";
   await updateOption({ mirror: { name: "nn" } }, true);
 
-  await nc.close();
-  await NatsServer.stopAll(servers, true);
+  await cleanup(ns, nc);
 });
 
 Deno.test(

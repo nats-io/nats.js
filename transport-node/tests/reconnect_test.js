@@ -21,7 +21,6 @@ const { NatsServer } = require("./helpers/launcher");
 const {
   createInbox,
   Events,
-  ErrorCode,
   deferred,
   DebugEvents,
 } = require("@nats-io/nats-core/internal");
@@ -81,7 +80,7 @@ describe(
       try {
         await nc.closed();
       } catch (err) {
-        assert.equal(err.code, ErrorCode.ConnectionRefused);
+        assert.equal(err.message, "connection refused");
       }
       assert.equal(disconnects, 1, "disconnects");
       assert.equal(reconnecting, 10, "reconnecting");
@@ -124,7 +123,7 @@ describe(
         nc.protocol.servers.getCurrentServer().lastConnect;
 
       const dt = deferred();
-      const _ = (async () => {
+      (async () => {
         for await (const e of nc.status()) {
           switch (e.type) {
             case DebugEvents.Reconnecting:

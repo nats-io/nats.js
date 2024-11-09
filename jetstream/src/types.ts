@@ -14,26 +14,14 @@
  */
 
 import type {
-  Codec,
-  Msg,
   MsgHdrs,
-  NatsConnectionImpl,
-  NatsError,
+  Nanos,
   Payload,
   QueuedIterator,
-  RequestOptions,
   ReviverFn,
-  Sub,
-  TypedSubscriptionOptions,
 } from "@nats-io/nats-core/internal";
-import { nanos } from "@nats-io/nats-core/internal";
 
-import {
-  AckPolicy,
-  defaultConsumer,
-  DeliverPolicy,
-  ReplayPolicy,
-} from "./jsapi_types.ts";
+import type { DeliverPolicy, ReplayPolicy } from "./jsapi_types.ts";
 
 import type {
   ConsumerConfig,
@@ -43,7 +31,7 @@ import type {
   DirectMsgRequest,
   JetStreamAccountStats,
   MsgRequest,
-  PullOptions,
+  OverflowOptions,
   PurgeOpts,
   PurgeResponse,
   StreamAlternate,
@@ -53,24 +41,6 @@ import type {
   StreamUpdateConfig,
 } from "./jsapi_types.ts";
 import type { JsMsg } from "./jsmsg.ts";
-import { validateDurableName } from "./jsutil.ts";
-
-export interface BaseClient {
-  nc: NatsConnectionImpl;
-  opts: JetStreamOptions;
-  prefix: string;
-  timeout: number;
-  jc: Codec<unknown>;
-
-  getOptions(): JetStreamOptions;
-  findStream(subject: string): Promise<string>;
-  parseJsResponse(m: Msg): unknown;
-  _request(
-    subj: string,
-    data?: unknown,
-    opts?: RequestOptions,
-  ): Promise<unknown>;
-}
 
 export interface JetStreamOptions {
   /**
@@ -168,14 +138,6 @@ export interface JetStreamPublishOptions {
 }
 
 /**
- * A JetStream interface that allows you to request the ConsumerInfo on the backing object.
- */
-export interface ConsumerInfoable {
-  /** The consumer info for the consumer */
-  consumerInfo(): Promise<ConsumerInfo>;
-}
-
-/**
  * An interface that reports via a promise when an object such as a connection
  * or subscription closes.
  */
@@ -186,24 +148,6 @@ export interface Closed {
   closed: Promise<void>;
 }
 
-/**
- * The JetStream Subscription object
- */
-export type JetStreamSubscription =
-  & Sub<JsMsg>
-  & Destroyable
-  & Closed
-  & ConsumerInfoable;
-export type JetStreamSubscriptionOptions = TypedSubscriptionOptions<JsMsg>;
-
-export interface Pullable {
-  /**
-   * Sends a request from the client requesting the server for more messages.
-   * @param opts
-   */
-  pull(opts?: Partial<PullOptions>): void;
-}
-
 export interface Destroyable {
   /**
    * Destroys a resource on the server. Returns a promise that resolves to true
@@ -211,15 +155,6 @@ export interface Destroyable {
    */
   destroy(): Promise<void>;
 }
-
-/**
- * The JetStream pull subscription object.
- */
-export type JetStreamPullSubscription = JetStreamSubscription & Pullable;
-/**
- * The signature a message handler for a JetStream subscription.
- */
-export type JsMsgCallback = (err: NatsError | null, msg: JsMsg | null) => void;
 
 /**
  * An interface for listing. Returns a promise with typed list.
@@ -289,7 +224,7 @@ export interface StreamAPI {
    * @param stream
    * @param query
    */
-  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg>;
+  getMessage(stream: string, query: MsgRequest): Promise<StoredMsg | null>;
 
   /**
    * Find the stream that stores the specified subject.
@@ -403,6 +338,10 @@ export interface JetStreamManager {
 export type Ordered = {
   ordered: true;
 };
+export type PushConsumerOptions =
+  & ConsumeCallback
+  & AbortOnMissingResource;
+
 export type NextOptions = Expires & Bind;
 export type ConsumeBytes =
   & MaxBytes
@@ -412,7 +351,8 @@ export type ConsumeBytes =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 export type ConsumeMessages =
   & Partial<MaxMessages>
   & Partial<ThresholdMessages>
@@ -420,8 +360,11 @@ export type ConsumeMessages =
   & IdleHeartbeat
   & ConsumeCallback
   & AbortOnMissingResource
-  & Bind;
-export type ConsumeOptions = ConsumeBytes | ConsumeMessages;
+  & Bind
+  & Partial<OverflowOptions>;
+export type ConsumeOptions =
+  | ConsumeBytes
+  | ConsumeMessages;
 /**
  * Options for fetching bytes
  */
@@ -430,7 +373,8 @@ export type FetchBytes =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
 /**
  * Options for fetching messages
  */
@@ -438,7 +382,9 @@ export type FetchMessages =
   & Partial<MaxMessages>
   & Expires
   & IdleHeartbeat
-  & Bind;
+  & Bind
+  & Partial<OverflowOptions>;
+
 export type FetchOptions = FetchBytes | FetchMessages;
 export type PullConsumerOptions = FetchOptions | ConsumeOptions;
 export type MaxMessages = {
@@ -483,6 +429,7 @@ export type Expires = {
    */
   expires?: number;
 };
+
 export type Bind = {
   /**
    * If set to true the client will not try to check on its consumer by issuing consumer info
@@ -551,7 +498,7 @@ export enum ConsumerEvents {
    */
   StreamNotFound = "stream_not_found",
 
-  /*
+  /**
    * Notification that the consumer was deleted. This notification
    * means the consumer will not get messages unless it is recreated. The client
    * will continue to attempt to pull messages. Ordered consumer will recreate it.
@@ -563,6 +510,13 @@ export enum ConsumerEvents {
    * the consumer is recreated. The argument is the name of the newly created consumer.
    */
   OrderedConsumerRecreated = "ordered_consumer_recreated",
+
+  /**
+   * This notification is specific to pull consumers and will be notified whenever
+   * the pull request exceeds some limit such as maxwaiting, maxrequestbatch, etc.
+   * The data component has the code (409) and the message from the server.
+   */
+  ExceededLimit = "limit_exceeded",
 }
 
 /**
@@ -593,6 +547,18 @@ export enum ConsumerDebugEvents {
    * read-only. This notification is only useful for debugging. Data is PullOptions.
    */
   Next = "next",
+
+  /**
+   * Notifies that the client received a server-side heartbeat. The payload the data
+   * portion has the format `{natsLastConsumer: number, natsLastStream: number}`;
+   */
+  Heartbeat = "heartbeat",
+
+  /**
+   * Notifies that the client received a server-side flow control message.
+   * The data is null.
+   */
+  FlowControl = "flow_control",
 }
 
 export interface ConsumerStatus {
@@ -600,7 +566,17 @@ export interface ConsumerStatus {
   data: unknown;
 }
 
-export interface ExportedConsumer {
+export interface PushConsumer
+  extends InfoableConsumer, DeleteableConsumer, ConsumerKind {
+  consume(opts?: PushConsumerOptions): Promise<ConsumerMessages>;
+}
+
+export interface ConsumerKind {
+  isPullConsumer(): boolean;
+  isPushConsumer(): boolean;
+}
+
+export interface ExportedConsumer extends ConsumerKind {
   next(
     opts?: NextOptions,
   ): Promise<JsMsg | null>;
@@ -614,10 +590,16 @@ export interface ExportedConsumer {
   ): Promise<ConsumerMessages>;
 }
 
-export interface Consumer extends ExportedConsumer {
+export interface InfoableConsumer {
   info(cached?: boolean): Promise<ConsumerInfo>;
+}
 
+export interface DeleteableConsumer {
   delete(): Promise<boolean>;
+}
+
+export interface Consumer
+  extends ExportedConsumer, InfoableConsumer, DeleteableConsumer {
 }
 
 export interface Close {
@@ -627,7 +609,7 @@ export interface Close {
 }
 
 export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
-  status(): Promise<AsyncIterable<ConsumerStatus>>;
+  status(): AsyncIterable<ConsumerStatus>;
 }
 
 /**
@@ -636,7 +618,7 @@ export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
  */
 export type OrderedConsumerOptions = {
   name_prefix: string;
-  filterSubjects: string[] | string;
+  filter_subjects: string[] | string;
   deliver_policy: DeliverPolicy;
   opt_start_seq: number;
   opt_start_time: string;
@@ -645,13 +627,45 @@ export type OrderedConsumerOptions = {
   headers_only: boolean;
 };
 
+export type OrderedPushConsumerOptions = OrderedConsumerOptions & {
+  deliver_prefix: string;
+};
+
+export function isOrderedPushConsumerOptions(
+  v: unknown,
+): v is OrderedPushConsumerOptions {
+  if (v && typeof v === "object") {
+    return "name_prefix" in v ||
+      "deliver_subject_prefix" in v ||
+      "filter_subjects" in v ||
+      "filter_subject" in v ||
+      "deliver_policy" in v ||
+      "opt_start_seq" in v ||
+      "opt_start_time" in v ||
+      "replay_policy" in v ||
+      "inactive_threshold" in v ||
+      "headers_only" in v ||
+      "deliver_prefix" in v;
+  }
+
+  return false;
+}
+
+export function isPullConsumer(v: PushConsumer | Consumer): v is Consumer {
+  return v.isPullConsumer();
+}
+
+export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
+  return v.isPushConsumer();
+}
+
 /**
  * Interface for interacting with JetStream data
  */
 export interface JetStreamClient {
   /**
    * Publishes a message to a stream. If not stream is configured to store the message, the
-   * request will fail with {@link ErrorCode.NoResponders} error.
+   * request will fail with RequestError error with a nested NoRespondersError.
    *
    * @param subj - the subject for the message
    * @param payload - the message's data
@@ -662,72 +676,6 @@ export interface JetStreamClient {
     payload?: Payload,
     options?: Partial<JetStreamPublishOptions>,
   ): Promise<PubAck>;
-
-  /**
-   * Retrieves a single message from JetStream
-   * @param stream - the name of the stream
-   * @param consumer - the consumer's durable name (if durable) or name if ephemeral
-   * @param expires - the number of milliseconds to wait for a message
-   * @deprecated - use {@link Consumer#fetch()}
-   */
-  pull(stream: string, consumer: string, expires?: number): Promise<JsMsg>;
-
-  /**
-   * Similar to pull, but able to configure the number of messages, etc. via PullOptions.
-   * @param stream - the name of the stream
-   * @param durable - the consumer's durable name (if durable) or name if ephemeral
-   * @param opts
-   * @deprecated - use {@link Consumer#fetch()}
-   */
-  fetch(
-    stream: string,
-    durable: string,
-    opts?: Partial<PullOptions>,
-  ): QueuedIterator<JsMsg>;
-
-  /**
-   * Creates a pull subscription. A pull subscription relies on the client to request more
-   * messages from the server. If the consumer doesn't exist, it will be created matching
-   * the consumer options provided.
-   *
-   * It is recommended that a consumer be created first using JetStreamManager APIs and then
-   * use the bind option to simply attach to the created consumer.
-   *
-   * If the filter subject is not specified in the options, the filter will be set to match
-   * the specified subject.
-   *
-   * It is more efficient than {@link fetch} or {@link pull} because
-   * a single subscription is used between invocations.
-   *
-   * @param subject - a subject used to locate the stream
-   * @param opts
-   * @deprecated - use {@link Consumer#fetch()} or {@link Consumer#consume()}
-   */
-  pullSubscribe(
-    subject: string,
-    opts: ConsumerOptsBuilder | Partial<ConsumerOpts>,
-  ): Promise<JetStreamPullSubscription>;
-
-  /**
-   * Creates a push subscription. The JetStream server feeds messages to this subscription
-   * without the client having to request them. The rate at which messages are provided can
-   * be tuned by the consumer by specifying {@link ConsumerConfig#rate_limit_bps | ConsumerConfig.rate_limit_bps} and/or
-   * {@link ConsumerOpts | maxAckPending}.
-   *
-   * It is recommended that a consumer be created first using JetStreamManager APIs and then
-   * use the bind option to simply attach to the created consumer.
-   *
-   * If the filter subject is not specified in the options, the filter will be set to match
-   * the specified subject.
-   *
-   * @param subject - a subject used to locate the stream
-   * @param opts
-   * @deprecated - use {@link Consumer#fetch()} or {@link Consumer#consume()}
-   */
-  subscribe(
-    subject: string,
-    opts: ConsumerOptsBuilder | Partial<ConsumerOpts>,
-  ): Promise<JetStreamSubscription>;
 
   /**
    * Returns the JS API prefix as processed from the JetStream Options
@@ -759,6 +707,40 @@ export interface Streams {
   get(stream: string): Promise<Stream>;
 }
 
+export function isBoundPushConsumerOptions(
+  v: unknown,
+): v is BoundPushConsumerOptions {
+  if (v && typeof v === "object") {
+    return "deliver_subject" in v ||
+      "deliver_group" in v ||
+      "idle_heartbeat" in v;
+  }
+  return false;
+}
+
+/**
+ * For bound push consumers, the client must provide at least the
+ * deliver_subject. Note that these values must match the ConsumerConfig
+ * exactly
+ */
+export type BoundPushConsumerOptions = ConsumeCallback & {
+  /**
+   * The deliver_subject as specified in the ConsumerConfig
+   */
+  deliver_subject: string;
+  /**
+   * The deliver_group as specified in the ConsumerConfig
+   */
+  deliver_group?: string;
+  /**
+   * The idle_heartbeat in Nanos as specified in the ConsumerConfig.
+   * This value starts a client-side timer to detect missing heartbeats.
+   * If not specified or values don't match, there will be a skew and
+   * the possibility of false heartbeat missed notifications.
+   */
+  idle_heartbeat?: Nanos;
+};
+
 export interface Consumers {
   /**
    * Returns the Consumer configured for the specified stream having the specified name.
@@ -777,297 +759,24 @@ export interface Consumers {
    */
   get(
     stream: string,
-    name?: string | Partial<OrderedConsumerOptions>,
+    name?:
+      | string
+      | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
-}
 
-export interface ConsumerOpts {
-  /**
-   * The consumer configuration
-   */
-  config: Partial<ConsumerConfig>;
-  /**
-   * Enable manual ack. When set to true, the client is responsible to ack messages.
-   */
-  mack: boolean;
-  /**
-   * The name of the stream
-   */
-  stream: string;
-  /**
-   * An optional callback to process messages - note that iterators are the preferred
-   * way of processing messages.
-   */
-  callbackFn?: JsMsgCallback;
-  /**
-   * The consumer name
-   */
-  name?: string;
-  /**
-   * Only applicable to push consumers. When set to true, the consumer will be an ordered
-   * consumer.
-   */
-  ordered: boolean;
-  /**
-   * Standard option for all subscriptions. Defines the maximum number of messages dispatched
-   * by the server before stopping the subscription. For JetStream this may not be accurate as
-   * JetStream can add additional protocol messages that could count towards this limit.
-   */
-  max?: number;
-  /**
-   * Only applicable to push consumers, allows the pull subscriber to horizontally load balance.
-   */
-  queue?: string;
-  /**
-   * If true, the client will only attempt to bind to the specified consumer name/durable on
-   * the specified stream. If the consumer is not found, the subscribe will fail
-   */
-  isBind?: boolean;
-}
+  getPushConsumer(
+    stream: string,
+    name?:
+      | string
+      | Partial<OrderedPushConsumerOptions>,
+  ): Promise<PushConsumer>;
 
-/**
- * A builder API that creates a ConsumerOpt
- */
-export interface ConsumerOptsBuilder {
-  /**
-   * User description of this consumer
-   */
-  description(description: string): ConsumerOptsBuilder;
+  getBoundPushConsumer(opts: BoundPushConsumerOptions): Promise<PushConsumer>;
 
-  /**
-   * DeliverTo sets the subject where a push consumer receives messages
-   * @param subject
-   */
-  deliverTo(subject: string): ConsumerOptsBuilder;
-
-  /**
-   * Sets the durable name, when not set an ephemeral consumer is created
-   * @param name
-   */
-  durable(name: string): ConsumerOptsBuilder;
-
-  /**
-   * The consumer will start at the message with the specified sequence
-   * @param seq
-   */
-  startSequence(seq: number): ConsumerOptsBuilder;
-
-  /**
-   * consumer will start with messages received on the specified time/date
-   * @param time
-   */
-  startTime(time: Date): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will start at first available message on the stream
-   */
-  deliverAll(): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will deliver all the last per messages per subject
-   */
-  deliverLastPerSubject(): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will start at the last message
-   */
-  deliverLast(): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will start with new messages (not yet in the stream)
-   */
-  deliverNew(): ConsumerOptsBuilder;
-
-  /**
-   * Start delivering at the at a past point in time
-   * @param millis
-   */
-  startAtTimeDelta(millis: number): ConsumerOptsBuilder;
-
-  /**
-   * Messages delivered to the consumer will not have a payload. Instead,
-   * they will have the header `Nats-Msg-Size` indicating the number of bytes
-   * in the message as stored by JetStream.
-   */
-  headersOnly(): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will not track ack for messages
-   */
-  ackNone(): ConsumerOptsBuilder;
-
-  /**
-   * Ack'ing a message implicitly acks all messages with a lower sequence
-   */
-  ackAll(): ConsumerOptsBuilder;
-
-  /**
-   * Consumer will ack all messages - not that unless {@link manualAck} is set
-   * the client will auto ack messages after processing via its callback or when
-   * the iterator continues processing.
-   */
-  ackExplicit(): ConsumerOptsBuilder;
-
-  /**
-   * Sets the time a delivered message might remain unacknowledged before a redelivery is attempted
-   * @param millis
-   */
-  ackWait(millis: number): ConsumerOptsBuilder;
-
-  /**
-   * Max number of re-delivery attempts for a particular message
-   * @param max
-   */
-  maxDeliver(max: number): ConsumerOptsBuilder;
-
-  /**
-   * Consumer should filter the messages to those that match the specified filter.
-   * This api can be called multiple times.
-   * @param s
-   */
-  filterSubject(s: string): ConsumerOptsBuilder;
-
-  /**
-   * Replay messages as fast as possible
-   */
-  replayInstantly(): ConsumerOptsBuilder;
-
-  /**
-   * Replay at the rate received
-   */
-  replayOriginal(): ConsumerOptsBuilder;
-
-  /**
-   * Sample a subset of messages expressed as a percentage(0-100)
-   * @param n
-   */
-  sample(n: number): ConsumerOptsBuilder;
-
-  /**
-   * Limit message delivery to the specified rate in bits per second.
-   * @param bps
-   */
-  limit(bps: number): ConsumerOptsBuilder;
-
-  /**
-   * Pull subscriber option only. Limits the maximum outstanding messages scheduled
-   * via batch pulls as pulls are additive.
-   * @param max
-   */
-  maxWaiting(max: number): ConsumerOptsBuilder;
-
-  /**
-   * Max number of outstanding acks before the server stops sending new messages
-   * @param max
-   */
-  maxAckPending(max: number): ConsumerOptsBuilder;
-
-  /**
-   * Push consumer only option - Enables idle heartbeats from the server. If the number of
-   * specified millis is reached and no messages are available on the server, the server will
-   * send a heartbeat (status code 100 message) indicating that the JetStream consumer is alive.
-   * @param millis
-   */
-  idleHeartbeat(millis: number): ConsumerOptsBuilder;
-
-  /**
-   * Push consumer flow control - the server sends a status code 100 and uses the delay on the
-   * response to throttle inbound messages for a client and prevent slow consumer.
-   */
-  flowControl(): ConsumerOptsBuilder;
-
-  /**
-   * Push consumer only option - Sets the name of the queue group - same as queue
-   * @param name
-   */
-  deliverGroup(name: string): ConsumerOptsBuilder;
-
-  /**
-   * Prevents the consumer implementation from auto-acking messages. Message callbacks
-   * and iterators must explicitly ack messages.
-   */
-  manualAck(): ConsumerOptsBuilder;
-
-  /**
-   * Standard NATS subscription option which automatically closes the subscription after the specified
-   * number of messages (actual stream or flow control) are seen by the client.
-   * @param max
-   */
-  maxMessages(max: number): ConsumerOptsBuilder;
-
-  /**
-   * Push consumer only option - Standard NATS queue group option, same as {@link deliverGroup}
-   * @param n
-   */
-  queue(n: string): ConsumerOptsBuilder;
-
-  /**
-   * Use a callback to process messages. If not specified, you process messages by iterating
-   * on the returned subscription object.
-   * @param fn
-   */
-  callback(fn: JsMsgCallback): ConsumerOptsBuilder;
-
-  /**
-   * Push consumer only - creates an ordered consumer - ordered consumers cannot be a pull consumer
-   * nor specify durable, deliverTo, specify an ack policy, maxDeliver, or flow control.
-   */
-  orderedConsumer(): ConsumerOptsBuilder;
-
-  /**
-   * Bind to the specified durable (or consumer name if ephemeral) on the specified stream.
-   * If the consumer doesn't exist, the subscribe will fail. Bind the recommended way
-   * of subscribing to a stream, as it requires the consumer to exist already.
-   * @param stream
-   * @param durable
-   */
-  bind(stream: string, durable: string): ConsumerOptsBuilder;
-
-  /**
-   * Specify the name of the stream, avoiding a lookup where the stream is located by
-   * searching for a subject.
-   * @param stream
-   */
-  bindStream(stream: string): ConsumerOptsBuilder;
-
-  /**
-   * Pull consumer only - Sets the max number of messages that can be pulled in a batch
-   * that can be requested by a client during a pull.
-   * @param n
-   */
-  maxPullBatch(n: number): ConsumerOptsBuilder;
-
-  /**
-   * Pull consumer only - Sets the max amount of time before a pull request expires that
-   * may be requested by a client during a pull.
-   * @param millis
-   */
-  maxPullRequestExpires(millis: number): ConsumerOptsBuilder;
-
-  /**
-   * Pull consumer only - Sets the max amount of time that an ephemeral consumer will be
-   * allowed to live on the server. If the client doesn't perform any requests during the
-   * specified interval the server will discard the consumer.
-   * @param millis
-   */
-  inactiveEphemeralThreshold(millis: number): ConsumerOptsBuilder;
-
-  /**
-   * Force the consumer state to be kept in memory rather than inherit the setting from
-   * the Stream
-   */
-  memory(): ConsumerOptsBuilder;
-
-  /**
-   * When set do not inherit the replica count from the stream but specifically set it to this amount
-   */
-  numReplicas(n: number): ConsumerOptsBuilder;
-
-  /**
-   * The name of the consumer
-   * @param n
-   */
-  consumerName(n: string): ConsumerOptsBuilder;
+  // getOrderedPushConsumer(
+  //   stream: string,
+  //   opts?: Partial<OrderedPushConsumerOptions>,
+  // ): Promise<PushConsumer>;
 }
 
 /**
@@ -1083,7 +792,10 @@ export interface DirectStreamAPI {
    * @param stream
    * @param query
    */
-  getMessage(stream: string, query: DirectMsgRequest): Promise<StoredMsg>;
+  getMessage(
+    stream: string,
+    query: DirectMsgRequest,
+  ): Promise<StoredMsg | null>;
 
   /**
    * Retrieves all last subject messages for the specified subjects
@@ -1197,7 +909,21 @@ export interface Stream {
     name?: string | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
 
-  getMessage(query: MsgRequest): Promise<StoredMsg>;
+  getPushConsumer(
+    stream: string,
+    name?:
+      | string
+      | Partial<OrderedPushConsumerOptions>,
+  ): Promise<PushConsumer>;
+
+  // getPushConsumer(
+  //   name?:
+  //     | string
+  //     | Partial<OrderedPushConsumerOptions>
+  //     | BoundPushConsumerOptions,
+  // ): Promise<PushConsumer>;
+
+  getMessage(query: MsgRequest): Promise<StoredMsg | null>;
 
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
 }
@@ -1269,306 +995,4 @@ export enum RepublishHeaders {
    * The size in bytes of the message's body - Only if {@link Republish#headers_only} is set.
    */
   Size = "Nats-Msg-Size",
-}
-
-export interface JetStreamSubscriptionInfoable {
-  info: JetStreamSubscriptionInfo | null;
-}
-
-export interface JetStreamSubscriptionInfo extends ConsumerOpts {
-  api: BaseClient;
-  last: ConsumerInfo;
-  attached: boolean;
-  deliver: string;
-  bind: boolean;
-  "ordered_consumer_sequence": { "delivery_seq": number; "stream_seq": number };
-  "flow_control": {
-    "heartbeat_count": number;
-    "fc_count": number;
-    "consumer_restarts": number;
-  };
-}
-
-// FIXME: some items here that may need to be addressed
-// 503s?
-// maxRetries()
-// retryBackoff()
-// ackWait(time)
-// replayOriginal()
-// rateLimit(bytesPerSec)
-export class ConsumerOptsBuilderImpl implements ConsumerOptsBuilder {
-  config: Partial<ConsumerConfig>;
-  ordered: boolean;
-  mack: boolean;
-  stream: string;
-  callbackFn?: JsMsgCallback;
-  max?: number;
-  qname?: string;
-  isBind?: boolean;
-  filters?: string[];
-
-  constructor(opts?: Partial<ConsumerConfig>) {
-    this.stream = "";
-    this.mack = false;
-    this.ordered = false;
-    this.config = defaultConsumer("", opts || {});
-  }
-
-  getOpts(): ConsumerOpts {
-    const o = {} as ConsumerOpts;
-    o.config = Object.assign({}, this.config);
-    if (o.config.filter_subject) {
-      this.filterSubject(o.config.filter_subject);
-      o.config.filter_subject = undefined;
-    }
-    if (o.config.filter_subjects) {
-      o.config.filter_subjects?.forEach((v) => {
-        this.filterSubject(v);
-      });
-      o.config.filter_subjects = undefined;
-    }
-
-    o.mack = this.mack;
-    o.stream = this.stream;
-    o.callbackFn = this.callbackFn;
-    o.max = this.max;
-    o.queue = this.qname;
-    o.ordered = this.ordered;
-    o.config.ack_policy = o.ordered ? AckPolicy.None : o.config.ack_policy;
-    o.isBind = o.isBind || false;
-
-    if (this.filters) {
-      switch (this.filters.length) {
-        case 0:
-          break;
-        case 1:
-          o.config.filter_subject = this.filters[0];
-          break;
-        default:
-          o.config.filter_subjects = this.filters;
-      }
-    }
-    return o;
-  }
-
-  description(description: string): ConsumerOptsBuilder {
-    this.config.description = description;
-    return this;
-  }
-
-  deliverTo(subject: string): ConsumerOptsBuilder {
-    this.config.deliver_subject = subject;
-    return this;
-  }
-
-  durable(name: string): ConsumerOptsBuilder {
-    validateDurableName(name);
-    this.config.durable_name = name;
-    return this;
-  }
-
-  startSequence(seq: number): ConsumerOptsBuilder {
-    if (seq <= 0) {
-      throw new Error("sequence must be greater than 0");
-    }
-    this.config.deliver_policy = DeliverPolicy.StartSequence;
-    this.config.opt_start_seq = seq;
-    return this;
-  }
-
-  startTime(time: Date): ConsumerOptsBuilder {
-    this.config.deliver_policy = DeliverPolicy.StartTime;
-    this.config.opt_start_time = time.toISOString();
-    return this;
-  }
-
-  deliverAll(): ConsumerOptsBuilder {
-    this.config.deliver_policy = DeliverPolicy.All;
-    return this;
-  }
-
-  deliverLastPerSubject(): ConsumerOptsBuilder {
-    this.config.deliver_policy = DeliverPolicy.LastPerSubject;
-    return this;
-  }
-
-  deliverLast(): ConsumerOptsBuilder {
-    this.config.deliver_policy = DeliverPolicy.Last;
-    return this;
-  }
-
-  deliverNew(): ConsumerOptsBuilder {
-    this.config.deliver_policy = DeliverPolicy.New;
-    return this;
-  }
-
-  startAtTimeDelta(millis: number): ConsumerOptsBuilder {
-    this.startTime(new Date(Date.now() - millis));
-    return this;
-  }
-
-  headersOnly(): ConsumerOptsBuilder {
-    this.config.headers_only = true;
-    return this;
-  }
-
-  ackNone(): ConsumerOptsBuilder {
-    this.config.ack_policy = AckPolicy.None;
-    return this;
-  }
-
-  ackAll(): ConsumerOptsBuilder {
-    this.config.ack_policy = AckPolicy.All;
-    return this;
-  }
-
-  ackExplicit(): ConsumerOptsBuilder {
-    this.config.ack_policy = AckPolicy.Explicit;
-    return this;
-  }
-
-  ackWait(millis: number): ConsumerOptsBuilder {
-    this.config.ack_wait = nanos(millis);
-    return this;
-  }
-
-  maxDeliver(max: number): ConsumerOptsBuilder {
-    this.config.max_deliver = max;
-    return this;
-  }
-
-  filterSubject(s: string): ConsumerOptsBuilder {
-    this.filters = this.filters || [];
-    this.filters.push(s);
-    return this;
-  }
-
-  replayInstantly(): ConsumerOptsBuilder {
-    this.config.replay_policy = ReplayPolicy.Instant;
-    return this;
-  }
-
-  replayOriginal(): ConsumerOptsBuilder {
-    this.config.replay_policy = ReplayPolicy.Original;
-    return this;
-  }
-
-  sample(n: number): ConsumerOptsBuilder {
-    n = Math.trunc(n);
-    if (n < 0 || n > 100) {
-      throw new Error(`value must be between 0-100`);
-    }
-    this.config.sample_freq = `${n}%`;
-    return this;
-  }
-
-  limit(n: number): ConsumerOptsBuilder {
-    this.config.rate_limit_bps = n;
-    return this;
-  }
-
-  maxWaiting(max: number): ConsumerOptsBuilder {
-    this.config.max_waiting = max;
-    return this;
-  }
-
-  maxAckPending(max: number): ConsumerOptsBuilder {
-    this.config.max_ack_pending = max;
-    return this;
-  }
-
-  idleHeartbeat(millis: number): ConsumerOptsBuilder {
-    this.config.idle_heartbeat = nanos(millis);
-    return this;
-  }
-
-  flowControl(): ConsumerOptsBuilder {
-    this.config.flow_control = true;
-    return this;
-  }
-
-  deliverGroup(name: string): ConsumerOptsBuilder {
-    this.queue(name);
-    return this;
-  }
-
-  manualAck(): ConsumerOptsBuilder {
-    this.mack = true;
-    return this;
-  }
-
-  maxMessages(max: number): ConsumerOptsBuilder {
-    this.max = max;
-    return this;
-  }
-
-  callback(fn: JsMsgCallback): ConsumerOptsBuilder {
-    this.callbackFn = fn;
-    return this;
-  }
-
-  queue(n: string): ConsumerOptsBuilder {
-    this.qname = n;
-    this.config.deliver_group = n;
-    return this;
-  }
-
-  orderedConsumer(): ConsumerOptsBuilder {
-    this.ordered = true;
-    return this;
-  }
-
-  bind(stream: string, durable: string): ConsumerOptsBuilder {
-    this.stream = stream;
-    this.config.durable_name = durable;
-    this.isBind = true;
-    return this;
-  }
-
-  bindStream(stream: string): ConsumerOptsBuilder {
-    this.stream = stream;
-    return this;
-  }
-
-  inactiveEphemeralThreshold(millis: number): ConsumerOptsBuilder {
-    this.config.inactive_threshold = nanos(millis);
-    return this;
-  }
-
-  maxPullBatch(n: number): ConsumerOptsBuilder {
-    this.config.max_batch = n;
-    return this;
-  }
-
-  maxPullRequestExpires(millis: number): ConsumerOptsBuilder {
-    this.config.max_expires = nanos(millis);
-    return this;
-  }
-
-  memory(): ConsumerOptsBuilder {
-    this.config.mem_storage = true;
-    return this;
-  }
-
-  numReplicas(n: number): ConsumerOptsBuilder {
-    this.config.num_replicas = n;
-    return this;
-  }
-
-  consumerName(n: string): ConsumerOptsBuilder {
-    this.config.name = n;
-    return this;
-  }
-}
-
-export function consumerOpts(
-  opts?: Partial<ConsumerConfig>,
-): ConsumerOptsBuilder {
-  return new ConsumerOptsBuilderImpl(opts);
-}
-
-export function isConsumerOptsBuilder(
-  o: ConsumerOptsBuilder | Partial<ConsumerOpts>,
-): o is ConsumerOptsBuilderImpl {
-  return typeof (o as ConsumerOptsBuilderImpl).getOpts === "function";
 }

@@ -12,15 +12,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export { checkJsError, isFlowControlMsg, isHeartbeatMsg } from "./jsutil.ts";
 
 export {
   AdvisoryKind,
   ConsumerDebugEvents,
   ConsumerEvents,
-  consumerOpts,
   DirectMsgHeaders,
-  isConsumerOptsBuilder,
+  isBoundPushConsumerOptions,
+  isOrderedPushConsumerOptions,
+  isPullConsumer,
+  isPushConsumer,
   JsHeaders,
   RepublishHeaders,
 } from "./types.ts";
@@ -36,6 +37,7 @@ export type {
   AbortOnMissingResource,
   Advisory,
   Bind,
+  BoundPushConsumerOptions,
   Closed,
   ConsumeBytes,
   ConsumeCallback,
@@ -44,12 +46,11 @@ export type {
   Consumer,
   ConsumerAPI,
   ConsumerCallbackFn,
-  ConsumerInfoable,
+  ConsumerKind,
   ConsumerMessages,
-  ConsumerOpts,
-  ConsumerOptsBuilder,
   Consumers,
   ConsumerStatus,
+  DeleteableConsumer,
   Destroyable,
   DirectStreamAPI,
   Expires,
@@ -57,24 +58,22 @@ export type {
   FetchMessages,
   FetchOptions,
   IdleHeartbeat,
+  InfoableConsumer,
   JetStreamClient,
   JetStreamManager,
   JetStreamManagerOptions,
   JetStreamOptions,
   JetStreamPublishOptions,
-  JetStreamPullSubscription,
-  JetStreamSubscription,
-  JetStreamSubscriptionInfoable,
-  JetStreamSubscriptionOptions,
-  JsMsgCallback,
   Lister,
   ListerFieldFilter,
   MaxBytes,
   MaxMessages,
   NextOptions,
   OrderedConsumerOptions,
+  OrderedPushConsumerOptions,
   PubAck,
-  Pullable,
+  PushConsumer,
+  PushConsumerOptions,
   StoredMsg,
   Stream,
   StreamAPI,
@@ -86,6 +85,7 @@ export type {
 export type { StreamNames } from "./jsbaseclient_api.ts";
 export type {
   AccountLimits,
+  ApiError,
   ApiPagedRequest,
   ClusterInfo,
   ConsumerConfig,
@@ -138,3 +138,11 @@ export {
 export type { DeliveryInfo, StreamInfoRequestOptions } from "./jsapi_types.ts";
 
 export { ListerImpl } from "./jslister.ts";
+
+export {
+  isMessageNotFound,
+  JetStreamApiCodes,
+  JetStreamApiError,
+  JetStreamError,
+  jserrors,
+} from "./jserrors.ts";
