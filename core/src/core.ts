@@ -30,6 +30,8 @@ export enum Events {
   LDM = "ldm",
   /** Client received an async error from the server */
   Error = "error",
+  /** Slow Consumer - a buffered subscription (iterator) that is accumulating messages beyond a specify threshold */
+  SlowConsumer = "slow_consumer",
 }
 
 /**
@@ -74,6 +76,15 @@ export interface SubOpts<T> {
    * @param msg
    */
   callback?: MsgCallback<T>;
+
+  /**
+   * Number of pending messages in a subscription to exceed prior to considering
+   * a subscription a Slow Consumer. By default, slow consumer is on a subscription
+   * is not accounted for.
+   *
+   * This is an experimental option.
+   */
+  slow?: number;
 }
 
 export interface DnsResolveFn {
