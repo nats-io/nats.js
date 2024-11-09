@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { connect, Empty } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import { jetstream, jetstreamManager } from "jsr:@nats-io/jetstream@3.0.0-18";
+import { connect, Empty } from "@nats-io/transport-deno";
+import { jetstream, jetstreamManager } from "@nats-io/jetstream";
 import type { PubAck } from "../src/mod.ts";
 
 const nc = await connect();
