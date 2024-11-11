@@ -90,6 +90,13 @@ these modules for cross-runtime consumption.
   The RequestError in turn will contain the `cause` such as `NoRespondersError`.
   This also means that in TypeScript, the callback signature has been relaxed to
   just `(Error, Msg)=>void`. For more information see the JsDocs.
+- Previous versions of the client provided the enums `Events` and `DebugEvents`
+  for the `type` values in the notification received via
+  `status(): AsyncIterable<Status>` iterator. Starting with this release,
+  reported status provide their own types which means that they provide richer
+  data and are easier to use from different modules, since you can provide the
+  string name of the type. For more information see
+  [Lifecycle and Informational and Events](core/README.md#lifecycle-and-informational-events)
 
 ## Changes in JetStream
 

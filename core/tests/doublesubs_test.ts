@@ -14,13 +14,7 @@
  */
 import { NatsServer } from "../../test_helpers/launcher.ts";
 
-import {
-  deferred,
-  Empty,
-  Events,
-  extend,
-  headers,
-} from "../src/internal_mod.ts";
+import { deferred, Empty, extend, headers } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
 import { assertArrayIncludes, assertEquals } from "jsr:@std/assert";
 import { connect } from "./connect.ts";
@@ -58,10 +52,10 @@ async function runDoubleSubsTest(tls: boolean) {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type) {
-        case Events.Disconnect:
+        case "disconnect":
           disconnected.resolve();
           break;
-        case Events.Reconnect:
+        case "reconnect":
           reconnected.resolve();
           break;
       }

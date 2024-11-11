@@ -764,39 +764,42 @@ connection it becomes impossible to make new subscriptions or send new requests.
 After the last subscription is drained it also becomes impossible to publish a
 message. These restrictions do not exist when just draining a subscription.
 
-### Lifecycle/Informational Events
+### Lifecycle and Informational Events
 
-Clients can get notification on various event types:
+Clients can get notification on various event types by calling
+`status(): AsyncIterable<Status>` on the connection, the currently included
+status `type`s include:
 
-- `Events.DISCONNECT`
-- `Events.RECONNECT`
-- `Events.UPDATE`
-- `Events.LDM`
-- `Events.ERROR`
-
-The first two fire when a client disconnects and reconnects respectively. The
-payload will be the server where the event took place.
-
-The `UPDATE` event notifies whenever the client receives a cluster configuration
-update. The `ServersChanged` interface provides two arrays: `added` and
-`deleted` listing the servers that were added or removed.
-
-The `LDM` event notifies that the current server has signaled that it is running
-in _Lame Duck Mode_ and will evict clients. Depending on the server
-configuration policy, the client may want to initiate an ordered shutdown, and
-initiate a new connection to a different server in the cluster.
-
-The `ERROR` event notifies you of async errors that couldn't be routed in a more
-precise way to your client. For example, permission errors for a subscription or
-request, will properly be reported by the subscription or request. However,
-permission errors on publish will be reported via the status mechanism.
+- `disconnect` - the client disconnected from the specified `server`
+- `reconnect` - the client reconnected to the specified `server`
+- `reconnecting` - the client is in its reconnect loop
+- `update` - the cluster configuration has been updated, if servers were added
+  the `added` list will specify them, if servers were deleted servers the
+  `deleted` list will specify them.
+- `ldm` - the server has started its lame duck mode and will evict clients
+- `error` - an async error (such as a permission violation) was received, the
+  error is specified in the `error` property. Note that permission errors for
+  subscriptions are also notified to the subscription.
+- `ping` - the server has not received a response for client pings, the number
+  of outstanding pings are notified in the `pendingPings` property. Note that
+  this should onlyl be `1` under normal operations.
+- `staleConnection` - the connection is stale (client will reconnect)
+- `forceReconnect` - the client has been instructed to reconnect because of
+  user-code (`reconnect()`)
 
 ```javascript
 const nc = await connect(opts);
 (async () => {
   console.info(`connected ${nc.getServer()}`);
   for await (const s of nc.status()) {
-    console.info(`${s.type}: ${s.data}`);
+    switch (s.type) {
+      case "disconnect":
+      case "reconnect":
+        console.log(s);
+        break;
+      default:
+        // ignored
+    }
   }
 })().then();
 

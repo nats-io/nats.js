@@ -43,7 +43,6 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
-import { DebugEvents, Events } from "./core.ts";
 
 import {
   DEFAULT_MAX_PING_OUT,
@@ -463,15 +462,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   }
 
   public disconnect(): void {
-    this.dispatchStatus({ type: DebugEvents.StaleConnection, data: "" });
+    this.dispatchStatus({ type: "staleConnection" });
     this.transport.disconnect();
   }
 
   public reconnect(): Promise<void> {
     if (this.connected) {
       this.dispatchStatus({
-        type: DebugEvents.ClientInitiatedReconnect,
-        data: "",
+        type: "forceReconnect",
       });
       this.transport.disconnect();
     }
@@ -481,8 +479,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   async disconnected(err?: Error): Promise<void> {
     this.dispatchStatus(
       {
-        type: Events.Disconnect,
-        data: this.servers.getCurrentServer().toString(),
+        type: "disconnect",
+        server: this.servers.getCurrentServer().toString(),
       },
     );
     if (this.options.reconnect) {
@@ -490,8 +488,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         .then(() => {
           this.dispatchStatus(
             {
-              type: Events.Reconnect,
-              data: this.servers.getCurrentServer().toString(),
+              type: "reconnect",
+              server: this.servers.getCurrentServer().toString(),
             },
           );
           // if we are here we reconnected, but we have an authentication
@@ -562,7 +560,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       try {
         lastErr = null;
         this.dispatchStatus(
-          { type: DebugEvents.Reconnecting, data: a.toString() },
+          { type: "reconnecting" },
         );
         await this.dial(a);
         // if here we connected
@@ -707,7 +705,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       }
     }
 
-    this.dispatchStatus({ type: Events.Error, error: err, data: err.message });
+    this.dispatchStatus({ type: "error", error: err });
     this.handleError(err);
   }
 
@@ -786,14 +784,16 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       }
     }
     if (updates) {
-      this.dispatchStatus({ type: Events.Update, data: updates });
+      const { added, deleted } = updates;
+
+      this.dispatchStatus({ type: "update", added, deleted });
     }
     const ldm = info.ldm !== undefined ? info.ldm : false;
     if (ldm) {
       this.dispatchStatus(
         {
-          type: Events.LDM,
-          data: this.servers.getCurrentServer().toString(),
+          type: "ldm",
+          server: this.servers.getCurrentServer().toString(),
         },
       );
     }

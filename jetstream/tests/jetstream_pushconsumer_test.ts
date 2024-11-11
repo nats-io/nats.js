@@ -25,11 +25,9 @@ import {
 import { initStream } from "./jstest_util.ts";
 import {
   createInbox,
-  DebugEvents,
   deferred,
   delay,
   Empty,
-  Events,
   InvalidArgumentError,
   nanos,
   nuid,
@@ -857,7 +855,7 @@ Deno.test("jetstream - push on stopped server doesn't close client", async () =>
     let reconnects = 0;
     for await (const s of nc.status()) {
       switch (s.type) {
-        case DebugEvents.Reconnecting:
+        case "reconnecting":
           reconnects++;
           if (reconnects === 2) {
             ns.restart().then((s) => {
@@ -865,7 +863,7 @@ Deno.test("jetstream - push on stopped server doesn't close client", async () =>
             });
           }
           break;
-        case Events.Reconnect:
+        case "reconnect":
           setTimeout(() => {
             reconnected.resolve();
           }, 1000);
@@ -997,7 +995,7 @@ Deno.test("jetstream - ordered push consumer honors inbox prefix", async () => {
 
 Deno.test("jetstream - push consumer doesn't support priority groups", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.12.0")) {
+  if (await notCompatible(ns, nc, "2.11.0")) {
     return;
   }
   const jsm = await jetstreamManager(nc);

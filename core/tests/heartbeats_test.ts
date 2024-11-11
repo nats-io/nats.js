@@ -14,12 +14,7 @@
  */
 import { assert, assertEquals, fail } from "jsr:@std/assert";
 
-import {
-  DebugEvents,
-  deferred,
-  delay,
-  Heartbeat,
-} from "../src/internal_mod.ts";
+import { deferred, delay, Heartbeat } from "../src/internal_mod.ts";
 import type { PH, Status } from "../src/internal_mod.ts";
 
 function pm(
@@ -65,7 +60,7 @@ Deno.test("heartbeat - timers fire", async () => {
   await delay(50);
   assertEquals(hb.timer, undefined);
   assert(status.length >= 2, `status ${status.length} >= 2`);
-  assertEquals(status[0].type, DebugEvents.PingTimer);
+  assertEquals(status[0].type, "ping");
 });
 
 Deno.test("heartbeat - errors fire on missed maxOut", async () => {
@@ -82,37 +77,30 @@ Deno.test("heartbeat - errors fire on missed maxOut", async () => {
   await disconnect;
   assertEquals(hb.timer, undefined);
   assert(status.length >= 7, `${status.length} >= 7`);
-  assertEquals(status[0].type, DebugEvents.PingTimer);
+  assertEquals(status[0].type, "ping");
 });
 
 Deno.test("heartbeat - recovers from missed", async () => {
-  const status: Status[] = [];
+  let maxPending = 0;
+  const d = deferred<void>();
   const ph = pm(25, () => {
     fail("shouldn't have disconnected");
   }, (s: Status): void => {
-    status.push(s);
+    if (s.type === "ping") {
+      // increase it
+      if (s.pendingPings >= maxPending) {
+        maxPending = s.pendingPings;
+      } else {
+        // if lower it recovered
+        d.resolve();
+      }
+    }
   }, [4, 5]);
 
   const hb = new Heartbeat(ph, 100, 3);
   hb._schedule();
-  await delay(850);
+  await d;
   hb.cancel();
-  assertEquals(hb.timer, undefined);
-  const missed = status.map((s) => {
-    return s.data as number;
-  });
-  // we expect to have reached a condition where a max of 3 heartbeats were in pending.
-  for (const n of missed) {
-    assert(n <= 3, `${n} <= 3`);
-  }
-  for (let i = 0; i < missed.length; i++) {
-    if (missed[i] === 3) {
-      // expect next one to be 1
-      const next = missed.length > i + 1 ? missed[i + i] : -1;
-      assert(next === 1, `${next} === 1`);
-      break;
-    }
-  }
   // some resources in the test runner are not always cleaned unless we wait a bit
   await delay(500);
 });

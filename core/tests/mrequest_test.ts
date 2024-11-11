@@ -288,10 +288,12 @@ Deno.test("mreq - pub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
-        if (s.error.subject === "q" && s.error.operation === "publish") {
-          d.resolve();
-        }
+      if (
+        s.type === "error" &&
+        s.error instanceof errors.PermissionViolationError &&
+        s.error.operation === "publish" && s.error.subject === "q"
+      ) {
+        d.resolve();
       }
     }
   })().then();
@@ -335,13 +337,13 @@ Deno.test("mreq - sub permission error", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
-        if (
-          s.error.operation === "subscription" &&
-          s.error.subject.startsWith("_INBOX.")
-        ) {
-          d.resolve();
-        }
+      if (
+        s.type === "error" &&
+        s.error instanceof errors.PermissionViolationError &&
+        s.error.operation === "subscription" &&
+        s.error.subject.startsWith("_INBOX.")
+      ) {
+        d.resolve();
       }
     }
   })().then();
@@ -397,8 +399,9 @@ Deno.test("mreq - lost sub permission", async () => {
   const d = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
+      if (s.type === "error") {
         if (
+          s.error instanceof errors.PermissionViolationError &&
           s.error.operation === "subscription" &&
           s.error.subject.startsWith("_INBOX.")
         ) {

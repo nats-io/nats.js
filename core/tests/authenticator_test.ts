@@ -20,7 +20,6 @@ import {
   deadline,
   deferred,
   delay,
-  Events,
   jwtAuthenticator,
   nkeyAuthenticator,
   nkeys,
@@ -49,10 +48,13 @@ function disconnectReconnect(nc: NatsConnection): Promise<void> {
   const reconnect = deferred();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === Events.Disconnect) {
-        disconnect.resolve();
-      } else if (s.type === Events.Reconnect) {
-        reconnect.resolve();
+      switch (s.type) {
+        case "disconnect":
+          disconnect.resolve();
+          break;
+        case "reconnect":
+          reconnect.resolve();
+          break;
       }
     }
   })().then();

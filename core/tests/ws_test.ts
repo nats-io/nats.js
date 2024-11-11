@@ -22,9 +22,7 @@ import {
 
 import {
   createInbox,
-  DebugEvents,
   errors,
-  Events,
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
@@ -91,7 +89,7 @@ Deno.test(
     const done = (async () => {
       for await (const s of status) {
         switch (s.type) {
-          case Events.Reconnect:
+          case "reconnect":
             return;
           default:
         }
@@ -130,14 +128,14 @@ Deno.test(
     (async () => {
       for await (const e of nc.status()) {
         switch (e.type) {
-          case Events.Disconnect:
+          case "disconnect":
             disconnects++;
             break;
-          case Events.Reconnect:
+          case "reconnect":
             reconnect = true;
             nc.close();
             break;
-          case DebugEvents.Reconnecting:
+          case "reconnecting":
             reconnects++;
             break;
         }

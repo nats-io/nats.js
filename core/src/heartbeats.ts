@@ -16,7 +16,6 @@
 import type { Deferred } from "./util.ts";
 import { deferred } from "./util.ts";
 import type { Status } from "./core.ts";
-import { DebugEvents } from "./core.ts";
 
 export interface PH {
   flush(p?: Deferred<void>): Promise<void>;
@@ -63,7 +62,7 @@ export class Heartbeat {
     // @ts-ignore: node is not a number - we treat this opaquely
     this.timer = setTimeout(() => {
       this.ph.dispatchStatus(
-        { type: DebugEvents.PingTimer, data: `${this.pendings.length + 1}` },
+        { type: "ping", pendingPings: this.pendings.length + 1 },
       );
       if (this.pendings.length === this.maxOut) {
         this.cancel(true);

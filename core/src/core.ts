@@ -16,33 +16,59 @@
 import { nuid } from "./nuid.ts";
 import { InvalidArgumentError } from "./errors.ts";
 
-/**
- * Events reported by the {@link NatsConnection#status} iterator.
- */
-export enum Events {
-  /** Client disconnected */
-  Disconnect = "disconnect",
-  /** Client reconnected */
-  Reconnect = "reconnect",
-  /** Client received a cluster update */
-  Update = "update",
-  /** Client received a signal telling it that the server is transitioning to Lame Duck Mode */
-  LDM = "ldm",
-  /** Client received an async error from the server */
-  Error = "error",
-}
+export type DisconnectStatus = {
+  type: "disconnect";
+  server: string;
+};
 
-/**
- * Other events that can be reported by the {@link NatsConnection#status} iterator.
- * These can usually be safely ignored, as higher-order functionality of the client
- * will handle them.
- */
-export enum DebugEvents {
-  Reconnecting = "reconnecting",
-  PingTimer = "pingTimer",
-  StaleConnection = "staleConnection",
-  ClientInitiatedReconnect = "client initiated reconnect",
-}
+export type ReconnectStatus = {
+  type: "reconnect";
+  server: string;
+};
+
+export type ReconnectingStatus = {
+  type: "reconnecting";
+};
+
+export type ClusterUpdateStatus = {
+  type: "update";
+  added?: string[];
+  deleted?: string[];
+};
+
+export type LDMStatus = {
+  type: "ldm";
+  server: string;
+};
+
+export type ServerErrorStatus = {
+  type: "error";
+  error: Error;
+};
+
+export type ClientPingStatus = {
+  type: "ping";
+  pendingPings: number;
+};
+
+export type StaleConnectionStatus = {
+  type: "staleConnection";
+};
+
+export type ForceReconnectStatus = {
+  type: "forceReconnect";
+};
+
+export type Status =
+  | DisconnectStatus
+  | ReconnectStatus
+  | ReconnectingStatus
+  | ClusterUpdateStatus
+  | LDMStatus
+  | ServerErrorStatus
+  | ClientPingStatus
+  | StaleConnectionStatus
+  | ForceReconnectStatus;
 
 export type MsgCallback<T> = (err: Error | null, msg: T) => void;
 
@@ -78,13 +104,6 @@ export interface SubOpts<T> {
 
 export interface DnsResolveFn {
   (h: string): Promise<string[]>;
-}
-
-export interface Status {
-  type: Events | DebugEvents;
-  data: string | ServersChanged | number;
-  error?: Error;
-  permissionContext?: { operation: string; subject: string };
 }
 
 /**

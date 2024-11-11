@@ -115,14 +115,7 @@ export type {
   TokenAuth,
   UserPass,
 } from "./core.ts";
-export {
-  createInbox,
-  DebugEvents,
-  Events,
-  Match,
-  RequestStrategy,
-  syncIterator,
-} from "./core.ts";
+export { createInbox, Match, RequestStrategy, syncIterator } from "./core.ts";
 export { SubscriptionImpl, Subscriptions } from "./protocol.ts";
 
 export type {
