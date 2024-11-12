@@ -40,7 +40,6 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   deferred,
   Empty,
-  Events,
   jwtAuthenticator,
   nkeyAuthenticator,
   nkeys,
@@ -148,7 +147,12 @@ Deno.test("auth - sub no permissions keeps connection", async () => {
   });
 
   const v = await Promise.all([errStatus, cbErr, sub.closed]);
-  assertEquals(v[0].data, `Permissions Violation for Subscription to "bar"`);
+  assertEquals(v[0].type, "error");
+  const ev = v[0] as ErrorEvent;
+  assertEquals(
+    ev.error.message,
+    `Permissions Violation for Subscription to "bar"`,
+  );
   assertEquals(
     v[1]?.message,
     `Permissions Violation for Subscription to "bar"`,
@@ -190,8 +194,10 @@ Deno.test("auth - sub iterator no permissions keeps connection", async () => {
   await nc.flush();
 
   const v = await Promise.all([errStatus, iterErr, sub.closed]);
+  assertEquals(v[0].type, "error");
+  const ev = v[0] as ErrorEvent;
   assertEquals(
-    v[0].data,
+    ev.error.message,
     `Permissions Violation for Subscription to "bar"`,
   );
   assertEquals(
@@ -225,7 +231,9 @@ Deno.test("auth - pub permissions keep connection", async () => {
   nc.publish("bar");
 
   const v = await errStatus;
-  assertEquals(v.data, `Permissions Violation for Publish to "bar"`);
+  assertEquals(v.type, "error");
+  const ev = v as ErrorEvent;
+  assertEquals(ev.error.message, `Permissions Violation for Publish to "bar"`);
   assertEquals(nc.isClosed(), false);
 
   await cleanup(ns, nc);
@@ -258,7 +266,9 @@ Deno.test("auth - req permissions keep connection", async () => {
   );
 
   const v = await errStatus;
-  assertEquals(v.data, `Permissions Violation for Publish to "bar"`);
+  assertEquals(v.type, "error");
+  const ev = v as ErrorEvent;
+  assertEquals(ev.error.message, `Permissions Violation for Publish to "bar"`);
   assertEquals(nc.isClosed(), false);
 
   await cleanup(ns, nc);
@@ -550,7 +560,10 @@ Deno.test("auth - expiration is notified", async () => {
   let authErrors = 0;
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.UserAuthenticationExpiredError) {
+      if (
+        s.type === "error" &&
+        s.error instanceof errors.UserAuthenticationExpiredError
+      ) {
         authErrors++;
       }
     }
@@ -608,13 +621,13 @@ Deno.test("auth - expiration is notified and recovered", async () => {
   (async () => {
     for await (const s of nc.status()) {
       switch (s.type) {
-        case Events.Reconnect:
+        case "reconnect":
           reconnects++;
           if (reconnects === 4) {
             d.resolve();
           }
           break;
-        case Events.Error:
+        case "error":
           if (s.error instanceof errors.UserAuthenticationExpiredError) {
             authErrors++;
           }
@@ -651,7 +664,7 @@ Deno.test("auth - bad auth is notified", async () => {
   (async () => {
     for await (const s of nc.status()) {
       if (
-        s.type === Events.Error && s.error instanceof errors.AuthorizationError
+        s.type === "error" && s.error instanceof errors.AuthorizationError
       ) {
         badAuths++;
       }
@@ -707,7 +720,9 @@ Deno.test("auth - perm request error", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
+      if (
+        s.type === "error" && s.error instanceof errors.PermissionViolationError
+      ) {
         if (s.error.operation === "publish" && s.error.subject === "q") {
           status.resolve(s);
         }
@@ -763,7 +778,9 @@ Deno.test("auth - perm request error no mux", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
+      if (
+        s.type === "error" && s.error instanceof errors.PermissionViolationError
+      ) {
         if (s.error.operation === "publish" && s.error.subject === "q") {
           status.resolve(s);
         }
@@ -822,7 +839,9 @@ Deno.test("auth - perm request error deliver to sub", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
+      if (
+        s.type === "error" && s.error instanceof errors.PermissionViolationError
+      ) {
         if (s.error.subject === "q" && s.error.operation === "publish") {
           status.resolve();
         }
@@ -905,7 +924,9 @@ Deno.test("auth - perm sub iterator error", async () => {
   const status = deferred<Status>();
   (async () => {
     for await (const s of nc.status()) {
-      if (s.error instanceof errors.PermissionViolationError) {
+      if (
+        s.type === "error" && s.error instanceof errors.PermissionViolationError
+      ) {
         if (s.error.subject === "q" && s.error.operation === "publish") {
           status.resolve(s);
         }
@@ -983,7 +1004,9 @@ Deno.test("auth - ignore auth error abort", async () => {
     let count = 0;
     (async () => {
       for await (const s of nc.status()) {
-        if (s.error instanceof errors.AuthorizationError) {
+        if (
+          s.type === "error" && s.error instanceof errors.AuthorizationError
+        ) {
           count++;
         }
       }
@@ -1218,8 +1241,8 @@ Deno.test("auth - account expired", async () => {
   (async () => {
     for await (const s of nc.status()) {
       if (
-        s.error instanceof errors.AuthorizationError &&
-        s.data === "Account Authentication Expired"
+        s.type === "error" &&
+        s.error.message.includes("account authentication expired")
       ) {
         d.resolve();
         break;

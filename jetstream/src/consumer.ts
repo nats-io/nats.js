@@ -28,7 +28,6 @@ import {
   createInbox,
   delay,
   errors,
-  Events,
   Feature,
   IdleHeartbeatMonitor,
   nanos,
@@ -346,12 +345,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.statusIterator = status as QueuedIteratorImpl<Status>;
       for await (const s of status) {
         switch (s.type) {
-          case Events.Disconnect:
+          case "disconnect":
             // don't spam hb errors if we are disconnected
             // @ts-ignore: optional chaining
             this.monitor?.cancel();
             break;
-          case Events.Reconnect:
+          case "reconnect":
             // do some sanity checks and reset
             // if that works resume the monitor
             this.resetPending()

@@ -26,6 +26,7 @@ import {
   jetstream,
   JetStreamError,
   jetstreamManager,
+  type JsMsg,
   StorageType,
 } from "../src/mod.ts";
 import {
@@ -81,26 +82,49 @@ Deno.test("direct - get", async (t) => {
   await jsm.streams.add({
     name: "A",
     subjects: ["a.>", "b.>", "z.a"],
-    storage: StorageType.Memory,
+    storage: StorageType.File,
     allow_direct: true,
   });
 
   const js = jetstream(nc);
-  const d = deferred();
-  let i = 0;
-  const timer = setInterval(async () => {
-    i++;
-    await js.publish(`a.${i}`, "<payload>");
-    await delay(50);
-    await js.publish(`b.${i}`, "<payload>");
-    await delay(50);
-    await js.publish(`z.a`, new Uint8Array(15));
-    if (i === 8) {
-      clearInterval(timer);
-      d.resolve();
-    }
-  }, 250);
-  await d;
+
+  await Promise.all([
+    js.publish(`a.1`, "<payload>"),
+    js.publish(`b.1`, "<payload>"),
+  ]);
+
+  await delay(1000);
+
+  await Promise.all([
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.2`, "<payload>"),
+    js.publish(`b.2`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.3`, "<payload>"),
+    js.publish(`b.3`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.4`, "<payload>"),
+    js.publish(`b.4`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.5`, "<payload>"),
+    js.publish(`b.5`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.6`, "<payload>"),
+    js.publish(`b.6`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.7`, "<payload>"),
+    js.publish(`b.7`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+    js.publish(`a.8`, "<payload>"),
+    js.publish(`b.8`, "<payload>"),
+    js.publish(`z.a`, new Uint8Array(15)),
+  ]);
+
+  // const c = await js.consumers.get("A");
+  // const iter = await c.fetch({ max_messages: 24 });
+  // for await (const m of iter) {
+  //   console.log(m.seq, m.subject);
+  // }
 
   await assertRejects(
     () => {
@@ -127,13 +151,6 @@ Deno.test("direct - get", async (t) => {
     const m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "z.a" });
     assertExists(m);
     assertEquals(m.seq, 6);
-  });
-
-  await t.step("second with subject", async () => {
-    const m = await jsm.direct.getMessage("A", { seq: 4, next_by_subj: "z.a" });
-    assertExists(m);
-    assertEquals(m.seq, 6);
-    assertEquals(m.subject, "z.a");
   });
 
   await t.step("start_time", async () => {

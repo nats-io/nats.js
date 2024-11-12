@@ -18,10 +18,8 @@ import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,
   DataBuffer,
-  DebugEvents,
   deferred,
   delay,
-  Events,
   tokenAuthenticator,
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
@@ -67,10 +65,10 @@ Deno.test("reconnect - events", async () => {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type) {
-        case Events.Disconnect:
+        case "disconnect":
           disconnects++;
           break;
-        case DebugEvents.Reconnecting:
+        case "reconnecting":
           reconnecting++;
           break;
       }
@@ -94,10 +92,10 @@ Deno.test("reconnect - reconnect not emitted if suppressed", async () => {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type) {
-        case Events.Disconnect:
+        case "disconnect":
           disconnects++;
           break;
-        case DebugEvents.Reconnecting:
+        case "reconnecting":
           fail("shouldn't have emitted reconnecting");
           break;
       }
@@ -121,7 +119,7 @@ Deno.test("reconnect - reconnecting after proper delay", async () => {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type as string) {
-        case DebugEvents.Reconnecting: {
+        case "reconnecting": {
           const last = nc.protocol.servers.getCurrentServer().lastConnect;
           dt.resolve(last - first);
           break;
@@ -150,14 +148,14 @@ Deno.test("reconnect - indefinite reconnects", async () => {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type) {
-        case Events.Disconnect:
+        case "disconnect":
           disconnects++;
           break;
-        case Events.Reconnect:
+        case "reconnect":
           reconnect = true;
           nc.close().then().catch();
           break;
-        case DebugEvents.Reconnecting:
+        case "reconnecting":
           reconnects++;
           break;
       }
@@ -223,13 +221,13 @@ Deno.test("reconnect - internal disconnect forces reconnect", async () => {
   (async () => {
     for await (const e of nc.status()) {
       switch (e.type) {
-        case DebugEvents.StaleConnection:
+        case "staleConnection":
           stale = true;
           break;
-        case Events.Disconnect:
+        case "disconnect":
           disconnect = true;
           break;
-        case Events.Reconnect:
+        case "reconnect":
           lock.unlock();
           break;
       }
@@ -286,7 +284,7 @@ Deno.test("reconnect - close stops reconnects", async () => {
   (async () => {
     let c = 0;
     for await (const s of nc.status()) {
-      if (s.type === DebugEvents.Reconnecting) {
+      if (s.type === "reconnecting") {
         c++;
         if (c === 5) {
           reconnects.resolve();
@@ -386,7 +384,7 @@ Deno.test("reconnect - stale connections don't close", async () => {
   let stales = 0;
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === DebugEvents.StaleConnection) {
+      if (s.type === "staleConnection") {
         stales++;
         if (stales === 3) {
           await nc.close();
@@ -415,7 +413,7 @@ Deno.test("reconnect - protocol errors don't close client", async () => {
   let reconnects = 0;
   (async () => {
     for await (const s of nc.status()) {
-      if (s.type === Events.Reconnect) {
+      if (s.type === "reconnect") {
         reconnects++;
         if (reconnects < 3) {
           setTimeout(() => {

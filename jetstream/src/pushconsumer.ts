@@ -33,7 +33,6 @@ import {
   createInbox,
   delay,
   errors,
-  Events,
   IdleHeartbeatMonitor,
   millis,
   nanos,
@@ -260,10 +259,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           .status() as QueuedIteratorImpl<Status>;
         for await (const s of this.statusIterator) {
           switch (s.type) {
-            case Events.Disconnect:
+            case "disconnect":
               this.monitor?.cancel();
               break;
-            case Events.Reconnect:
+            case "reconnect":
               this.monitor?.restart();
               break;
             default:
