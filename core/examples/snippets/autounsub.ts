@@ -14,8 +14,8 @@
  */
 
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import type { Subscription } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
+import type { Subscription } from "@nats-io/transport-deno";
 
 // create a connection
 const nc = await connect({ servers: "demo.nats.io:4222" });
