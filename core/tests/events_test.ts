@@ -18,6 +18,8 @@ import { assertEquals } from "jsr:@std/assert";
 import { delay } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
 import { setup } from "test_helpers";
+import { cleanup } from "../../test_helpers/mod.ts";
+import { deferred } from "https://deno.land/x/nats@v1.10.2/nats-base-client/mod.ts";
 
 Deno.test("events - close on close", async () => {
   const { ns, nc } = await setup();
@@ -147,4 +149,25 @@ Deno.test("events - ignore server updates", async () => {
   assertEquals(nc.protocol.servers.length(), 1);
   await nc.close();
   await NatsServer.stopAll(cluster, true);
+});
+
+Deno.test("events - clean up", async () => {
+  const { ns, nc } = await setup();
+  const finished = deferred();
+
+  const done = (async () => {
+    for await (const _ of nc.status()) {
+      // nothing
+    }
+    // let's make sure the iter broke...
+    finished.resolve();
+  })();
+  await nc.reconnect();
+  await nc.close();
+
+  await finished;
+  await done;
+  await nc.closed();
+
+  await cleanup(ns, nc);
 });

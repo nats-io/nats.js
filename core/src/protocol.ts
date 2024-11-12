@@ -15,7 +15,7 @@
 import { decode, Empty, encode, TE } from "./encoders.ts";
 import type { Transport } from "./transport.ts";
 import { CR_LF, CRLF, getResolveFn, newTransport } from "./transport.ts";
-import type { Deferred, Timeout } from "./util.ts";
+import type { Deferred, Delay, Timeout } from "./util.ts";
 import { deferred, delay, extend, timeout } from "./util.ts";
 import { DataBuffer } from "./databuffer.ts";
 import type { ServerImpl } from "./servers.ts";
@@ -397,6 +397,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   server!: ServerImpl;
   features: Features;
   connectPromise: Promise<void> | null;
+  dialDelay: Delay | null;
   raceTimer?: Timeout<void>;
 
   constructor(options: ConnectionOptions, publisher: Publisher) {
@@ -423,6 +424,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.pendingLimit = options.pendingLimit || this.pendingLimit;
     this.features = new Features({ major: 0, minor: 0, micro: 0 });
     this.connectPromise = null;
+    this.dialDelay = null;
 
     const servers = typeof options.servers === "string"
       ? [options.servers]
@@ -460,12 +462,6 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.listeners.forEach((q) => {
       q.push(status);
     });
-  }
-
-  status(): AsyncIterable<Status> {
-    const iter = new QueuedIteratorImpl<Status>();
-    this.listeners.push(iter);
-    return iter;
   }
 
   private prepare(): Deferred<void> {
@@ -541,10 +537,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
           }
         })
         .catch((err) => {
-          this._close(err);
+          this.close(err).catch();
         });
     } else {
-      await this._close(err);
+      await this.close(err).catch();
     }
   }
 
@@ -671,7 +667,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         }
       } else {
         maxWait = Math.min(maxWait, srv.lastConnect + wait - now);
-        await delay(maxWait);
+        this.dialDelay = delay(maxWait);
+        await this.dialDelay;
       }
     }
   }
@@ -819,7 +816,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         this.transport.send(PING_CMD);
       } catch (err) {
         // if we are dying here, this is likely some an authenticator blowing up
-        this._close(err as Error);
+        this.close(err as Error).catch();
       }
     }
     if (updates) {
@@ -1025,7 +1022,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
   }
 
-  private async _close(err?: Error): Promise<void> {
+  async close(err?: Error): Promise<void> {
     if (this._closed) {
       return;
     }
@@ -1037,17 +1034,22 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
     this.muxSubscriptions.close();
     this.subscriptions.close();
-    this.listeners.forEach((l) => {
-      l.stop();
-    });
+    const proms = [];
+    for (let i = 0; i < this.listeners.length; i++) {
+      const qi = this.listeners[i];
+      if (qi) {
+        qi.stop();
+        proms.push(qi.iterClosed);
+      }
+    }
+    if (proms.length) {
+      await Promise.all(proms);
+    }
     this._closed = true;
     await this.transport.close(err);
     this.raceTimer?.cancel();
+    this.dialDelay?.cancel();
     this.closed.resolve(err);
-  }
-
-  close(): Promise<void> {
-    return this._close();
   }
 
   isClosed(): boolean {
