@@ -59,6 +59,12 @@ export type ForceReconnectStatus = {
   type: "forceReconnect";
 };
 
+export type SlowConsumerStatus = {
+  type: "slowConsumer";
+  sub: Subscription;
+  pending: number;
+};
+
 export type Status =
   | DisconnectStatus
   | ReconnectStatus
@@ -68,6 +74,7 @@ export type Status =
   | ServerErrorStatus
   | ClientPingStatus
   | StaleConnectionStatus
+  | SlowConsumerStatus
   | ForceReconnectStatus;
 
 export type MsgCallback<T> = (err: Error | null, msg: T) => void;

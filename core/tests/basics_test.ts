@@ -28,7 +28,6 @@ import {
   deferred,
   delay,
   Empty,
-  Events,
   Feature,
   headers,
   isIP,
@@ -1547,7 +1546,7 @@ Deno.test("basics - slow", async () => {
   (async () => {
     for await (const m of nc.status()) {
       //@ts-ignore: test
-      if (m.type === Events.SlowConsumer) {
+      if (m.type === "slowConsumer") {
         console.log(m);
         slow++;
       }
