@@ -54,6 +54,7 @@ export {
   checkUnsupportedOption,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   defaultOptions,
+  hasWsProtocol,
   parseOptions,
 } from "./options.ts";
 export { RequestOne } from "./request.ts";

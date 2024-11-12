@@ -100,6 +100,15 @@ export interface SubOpts<T> {
    * @param msg
    */
   callback?: MsgCallback<T>;
+
+  /**
+   * Number of pending messages in a subscription to exceed prior to considering
+   * a subscription a Slow Consumer. By default, slow consumer is on a subscription
+   * is not accounted for.
+   *
+   * This is an experimental option.
+   */
+  slow?: number;
 }
 
 export interface DnsResolveFn {

@@ -21,11 +21,21 @@ import type {
 } from "@nats-io/nats-core/internal";
 
 import {
+  errors,
+  hasWsProtocol,
   NatsConnectionImpl,
   setTransportFactory,
 } from "@nats-io/nats-core/internal";
 
 export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
+  if (hasWsProtocol(opts)) {
+    return Promise.reject(
+      errors.InvalidArgumentError.format(
+        `servers`,
+        `deno client doesn't support websockets, use the 'wsconnect' function instead`,
+      ),
+    );
+  }
   setTransportFactory({
     factory: (): Transport => {
       return new DenoTransport();

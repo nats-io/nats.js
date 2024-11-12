@@ -22,7 +22,17 @@ import {
   TransportFactory,
 } from "./nats-base-client";
 
+import { errors, hasWsProtocol } from "./nats-base-client";
+
 export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
+  if (hasWsProtocol(opts)) {
+    return Promise.reject(
+      errors.InvalidArgumentError.format(
+        `servers`,
+        `node client doesn't support websockets, use the 'wsconnect' function instead`,
+      ),
+    );
+  }
   setTransportFactory({
     factory: (): Transport => {
       return new NodeTransport();

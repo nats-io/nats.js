@@ -13,8 +13,7 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import { errors } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect, errors } from "@nats-io/transport-deno";
 
 const nc = await connect(
   {

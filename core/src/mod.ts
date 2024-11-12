@@ -29,6 +29,7 @@ export {
   DrainingConnectionError,
   Empty,
   errors,
+  hasWsProtocol,
   headers,
   InvalidArgumentError,
   InvalidOperationError,
