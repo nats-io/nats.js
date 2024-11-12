@@ -31,6 +31,7 @@ export {
   Empty,
   errors,
   Events,
+  hasWsProtocol,
   headers,
   InvalidArgumentError,
   InvalidOperationError,
