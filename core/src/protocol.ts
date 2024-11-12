@@ -105,6 +105,31 @@ export class Connect {
   }
 }
 
+class SlowNotifier {
+  slow: number;
+  cb: (pending: number) => void;
+  notified: boolean;
+
+  constructor(slow: number, cb: (pending: number) => void) {
+    this.slow = slow;
+    this.cb = cb;
+    this.notified = false;
+  }
+
+  maybeNotify(pending: number): void {
+    // if we are below the threshold reset the ability to notify
+    if (pending <= this.slow) {
+      this.notified = false;
+    } else {
+      if (!this.notified) {
+        // crossed the threshold, notify and silence.
+        this.cb(pending);
+        this.notified = true;
+      }
+    }
+  }
+}
+
 export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
   implements Subscription {
   sid!: number;
@@ -119,6 +144,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
   cleanupFn?: (sub: Subscription, info?: unknown) => void;
   closed: Deferred<void>;
   requestSubject?: string;
+  slow?: SlowNotifier;
 
   constructor(
     protocol: ProtocolHandler,
@@ -160,9 +186,22 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     }
   }
 
+  setSlowNotificationFn(slow: number, fn?: (pending: number) => void): void {
+    this.slow = undefined;
+    if (fn) {
+      if (this.noIterator) {
+        throw new Error("callbacks don't support slow notifications");
+      }
+      this.slow = new SlowNotifier(slow, fn);
+    }
+  }
+
   callback(err: Error | null, msg: Msg) {
     this.cancelTimeout();
     err ? this.stop(err) : this.push(msg);
+    if (!err && this.slow) {
+      this.slow.maybeNotify(this.getPending());
+    }
   }
 
   close(): void {

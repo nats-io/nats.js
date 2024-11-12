@@ -28,6 +28,7 @@ import {
   deferred,
   delay,
   Empty,
+  Events,
   Feature,
   headers,
   isIP,
@@ -1535,6 +1536,72 @@ Deno.test("basics - stats", async () => {
   h.set("hello", "very long value that we want to add here");
   nc.publish("hello", "hello", { headers: h });
   await check("headers");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - slow", async () => {
+  const { ns, nc } = await setup();
+
+  let slow = 0;
+  (async () => {
+    for await (const m of nc.status()) {
+      //@ts-ignore: test
+      if (m.type === Events.SlowConsumer) {
+        console.log(m);
+        slow++;
+      }
+    }
+  })().catch();
+  const sub = nc.subscribe("test", { slow: 10 });
+  const s = syncIterator(sub);
+
+  // we go over, should have a notification
+  for (let i = 0; i < 11; i++) {
+    nc.publish("test", "");
+  }
+
+  await delay(100);
+  assertEquals(sub.getPending(), 11);
+  assertEquals(slow, 1);
+  slow = 0;
+
+  // send one more, no more notifications until we drop below 10
+  nc.publish("test", "");
+  await delay(100); // 12
+  assertEquals(sub.getPending(), 12);
+  assertEquals(slow, 0);
+
+  await s.next(); // 12
+  await s.next(); // 11
+  await s.next(); // 10
+
+  nc.publish("test", ""); // 11
+  await delay(100);
+  assertEquals(sub.getPending(), 11);
+  assertEquals(slow, 0);
+
+  // now this will notify
+  await s.next(); // 11
+  await s.next(); // 10
+  await delay(100);
+  assertEquals(sub.getPending(), 9);
+
+  await s.next(); // 9
+  nc.publish("test", "");
+  await delay(100);
+  assertEquals(sub.getPending(), 9);
+  assertEquals(slow, 0);
+
+  nc.publish("test", ""); // 10
+  await delay(100);
+  assertEquals(sub.getPending(), 10);
+  assertEquals(slow, 0);
+
+  nc.publish("test", ""); // 11
+  await delay(100);
+  assertEquals(sub.getPending(), 11);
+  assertEquals(slow, 1);
 
   await cleanup(ns, nc);
 });
