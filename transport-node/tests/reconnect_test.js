@@ -20,9 +20,7 @@ const {
 const { NatsServer } = require("./helpers/launcher");
 const {
   createInbox,
-  Events,
   deferred,
-  DebugEvents,
 } = require("@nats-io/nats-core/internal");
 const { Lock } = require("./helpers/lock");
 
@@ -97,10 +95,10 @@ describe(
       (async () => {
         for await (const e of nc.status()) {
           switch (e.type) {
-            case Events.Disconnect:
+            case "disconnect":
               disconnects++;
               break;
-            case DebugEvents.Reconnecting:
+            case "reconnecting":
               t.fail("shouldn't have emitted reconnecting");
               break;
           }
@@ -126,7 +124,7 @@ describe(
       (async () => {
         for await (const e of nc.status()) {
           switch (e.type) {
-            case DebugEvents.Reconnecting:
+            case "reconnecting":
               dt.resolve(Date.now() - serverLastConnect);
               break;
           }
@@ -153,14 +151,14 @@ describe(
       (async () => {
         for await (const e of nc.status()) {
           switch (e.type) {
-            case Events.Disconnect:
+            case "disconnect":
               disconnects++;
               break;
-            case Events.Reconnect:
+            case "reconnect":
               reconnect = true;
               nc.close();
               break;
-            case DebugEvents.Reconnecting:
+            case "reconnecting":
               reconnects++;
               break;
           }
@@ -227,13 +225,13 @@ describe(
       (async () => {
         for await (const e of nc.status()) {
           switch (e.type) {
-            case DebugEvents.StaleConnection:
+            case "staleConnection":
               stale = true;
               break;
-            case Events.Disconnect:
+            case "disconnect":
               disconnect = true;
               break;
-            case Events.Reconnect:
+            case "reconnect":
               lock.unlock();
               break;
           }
