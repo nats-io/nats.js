@@ -788,7 +788,7 @@ export interface ConnectionOptions {
   debug?: boolean;
   /**
    * Sets the maximum count of ping commands that can be awaiting a response
-   * before rasing a stale connection status {@link DebugEvents#StaleConnection }
+   * before raising a stale connection status {@link StaleConnectionStatus }
    * notification {@link NatsConnection#status} and initiating a reconnect.
    *
    * @see pingInterval
