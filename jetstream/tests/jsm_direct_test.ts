@@ -26,7 +26,6 @@ import {
   jetstream,
   JetStreamError,
   jetstreamManager,
-  type JsMsg,
   StorageType,
 } from "../src/mod.ts";
 import {
