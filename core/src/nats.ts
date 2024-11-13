@@ -41,7 +41,7 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
-import { createInbox, Events, RequestStrategy } from "./core.ts";
+import { createInbox, RequestStrategy } from "./core.ts";
 import { errors, InvalidArgumentError, TimeoutError } from "./errors.ts";
 
 export class NatsConnectionImpl implements NatsConnection {
@@ -130,11 +130,11 @@ export class NatsConnectionImpl implements NatsConnection {
     const sub = new SubscriptionImpl(this.protocol, subject, opts);
 
     if (typeof opts.callback !== "function" && typeof opts.slow === "number") {
-      const subj = sub.getSubject();
       sub.setSlowNotificationFn(opts.slow, (pending: number) => {
         this.protocol.dispatchStatus({
-          type: Events.SlowConsumer,
-          data: `subscription (${sub.sid}) ${subj} is slow: msgs ${pending}`,
+          type: "slowConsumer",
+          sub,
+          pending,
         });
       });
     }

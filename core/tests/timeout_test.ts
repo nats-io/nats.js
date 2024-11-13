@@ -17,27 +17,27 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "jsr:@std/assert";
-import { connect } from "./connect.ts";
 import { createInbox, Empty, errors } from "../src/internal_mod.ts";
+import { cleanup, setup } from "../../test_helpers/mod.ts";
 
 Deno.test("timeout - request noMux stack is useful", async () => {
-  const nc = await connect({ servers: "demo.nats.io" });
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const err = await assertRejects(() => {
     return nc.request(subj, Empty, { noMux: true, timeout: 250 });
   }, errors.RequestError);
   assertInstanceOf(err.cause, errors.NoRespondersError);
   assertStringIncludes((err as Error).stack || "", "timeout_test");
-  await nc.close();
+  await cleanup(ns, nc);
 });
 
 Deno.test("timeout - request stack is useful", async () => {
-  const nc = await connect({ servers: "demo.nats.io" });
+  const { ns, nc } = await setup();
   const subj = createInbox();
   const err = await assertRejects(() => {
     return nc.request(subj, Empty, { timeout: 250 });
   }, errors.RequestError);
   assertInstanceOf(err.cause, errors.NoRespondersError);
   assertStringIncludes((err as Error).stack || "", "timeout_test");
-  await nc.close();
+  await cleanup(ns, nc);
 });
