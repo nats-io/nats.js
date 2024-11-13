@@ -15,7 +15,6 @@
 const { describe, it } = require("node:test");
 const {
   connect,
-  Events,
 } = require(
   "../index",
 );
@@ -58,7 +57,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     const iter = nc.status();
     (async () => {
       for await (const e of iter) {
-        if (e.type === Events.Reconnect) {
+        if (e.type === "reconnect") {
           lock.unlock();
         }
       }

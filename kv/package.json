@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/kv",
-  "version": "3.0.0-19",
+  "version": "3.0.0-21",
   "files": [
     "lib/",
     "LICENSE",
@@ -34,8 +34,8 @@
   },
   "description": "kv library - this library implements all the base functionality for NATS KV javascript clients",
   "dependencies": {
-    "@nats-io/jetstream": "3.0.0-25",
-    "@nats-io/nats-core": "3.0.0-38"
+    "@nats-io/jetstream": "3.0.0-27",
+    "@nats-io/nats-core": "3.0.0-40"
   },
   "devDependencies": {
     "@types/node": "^22.7.6",
