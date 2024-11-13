@@ -28,7 +28,6 @@ import { RequestMany, RequestOne } from "./request.ts";
 import type {
   ConnectionOptions,
   Context,
-  Dispatcher,
   Msg,
   NatsConnection,
   Payload,
@@ -49,12 +48,10 @@ export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
   protocol!: ProtocolHandler;
   draining: boolean;
-  listeners: Dispatcher<Status>[];
 
   private constructor(opts: ConnectionOptions) {
     this.draining = false;
     this.options = parseOptions(opts);
-    this.listeners = [];
   }
 
   public static connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
@@ -63,13 +60,6 @@ export class NatsConnectionImpl implements NatsConnection {
       ProtocolHandler.connect(nc.options, nc)
         .then((ph: ProtocolHandler) => {
           nc.protocol = ph;
-          (async function () {
-            for await (const s of ph.status()) {
-              nc.listeners.forEach((l) => {
-                l.push(s);
-              });
-            }
-          })();
           resolve(nc);
         })
         .catch((err: Error) => {
@@ -482,10 +472,12 @@ export class NatsConnectionImpl implements NatsConnection {
   status(): AsyncIterable<Status> {
     const iter = new QueuedIteratorImpl<Status>();
     iter.iterClosed.then(() => {
-      const idx = this.listeners.indexOf(iter);
-      this.listeners.splice(idx, 1);
+      const idx = this.protocol.listeners.indexOf(iter);
+      if (idx > -1) {
+        this.protocol.listeners.splice(idx, 1);
+      }
     });
-    this.listeners.push(iter);
+    this.protocol.listeners.push(iter);
     return iter;
   }
 

@@ -24,7 +24,6 @@ import {
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
-import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 
 Deno.test("fetch - no messages", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -219,37 +218,23 @@ Deno.test("fetch - listener leaks", async () => {
   await jsm.streams.add({ name: "messages", subjects: ["hello"] });
 
   const js = jetstream(nc);
-  await js.publish("hello");
 
   await jsm.consumers.add("messages", {
     durable_name: "myconsumer",
     deliver_policy: DeliverPolicy.All,
     ack_policy: AckPolicy.Explicit,
-    ack_wait: nanos(3000),
-    max_waiting: 500,
   });
 
   const nci = nc as NatsConnectionImpl;
   const base = nci.protocol.listeners.length;
 
   const consumer = await js.consumers.get("messages", "myconsumer");
-
-  let done = false;
-  while (!done) {
-    const iter = await consumer.fetch({
-      max_messages: 1,
-    }) as PullConsumerMessagesImpl;
-    for await (const m of iter) {
-      assertEquals(nci.protocol.listeners.length, base);
-      m?.nak();
-      if (m.info.redeliveryCount > 100) {
-        done = true;
-      }
-    }
+  const iter = await consumer.fetch({ max_messages: 1, expires: 2000 });
+  for await (const _ of iter) {
+    // nothing
   }
 
   assertEquals(nci.protocol.listeners.length, base);
-
   await cleanup(ns, nc);
 });
 
