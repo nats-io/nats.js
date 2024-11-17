@@ -87,7 +87,7 @@ that matches the runtime you want to use:
 - [Deno Transport](transport-deno/README.md) which implements a TCP transport
   for [Deno](https://deno.land)
 - [Node Transport](transport-node/README.md) which implements a TCP transport
-  for [Node](https://nodejs.org).
+  for [Node](https://nodejs.org) and [Bun](https://bun.sh).
 - For browser [W3C Websocket] runtimes, the websocket client is now part of the
   [Core](core/README.md), as some runtimes such as Deno and Node v22 support it
   natively.
