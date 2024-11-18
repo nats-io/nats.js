@@ -97,6 +97,8 @@ these modules for cross-runtime consumption.
   data and are easier to use from different modules, since you can provide the
   string name of the type. For more information see
   [Lifecycle and Informational and Events](core/README.md#lifecycle-and-informational-events)
+- Subscription#closed now resolves to void or an Error (it doesn't throw). The
+  error is the reason why the subscription closed.
 
 ## Changes in JetStream
 

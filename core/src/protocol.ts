@@ -141,7 +141,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
   timer?: Timeout<void>;
   info?: unknown;
   cleanupFn?: (sub: Subscription, info?: unknown) => void;
-  closed: Deferred<void>;
+  closed: Deferred<void | Error>;
   requestSubject?: string;
   slow?: SlowNotifier;
 
@@ -156,7 +156,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     this.subject = subject;
     this.draining = false;
     this.noIterator = typeof opts.callback === "function";
-    this.closed = deferred();
+    this.closed = deferred<void | Error>();
 
     const asyncTraces = !(protocol.options?.noAsyncTraces || false);
 
@@ -178,8 +178,8 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     if (!this.noIterator) {
       // cleanup - they used break or return from the iterator
       // make sure we clean up, if they didn't call unsub
-      this.iterClosed.then(() => {
-        this.closed.resolve();
+      this.iterClosed.then((err: void | Error) => {
+        this.closed.resolve(err);
         this.unsubscribe();
       });
     }
@@ -203,7 +203,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     }
   }
 
-  close(): void {
+  close(err?: Error): void {
     if (!this.isClosed()) {
       this.cancelTimeout();
       const fn = () => {
@@ -215,7 +215,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
             // ignoring
           }
         }
-        this.closed.resolve();
+        this.closed.resolve(err);
       };
 
       if (this.noIterator) {
@@ -350,7 +350,7 @@ export class Subscriptions {
     }
     if (sub) {
       sub.callback(err, {} as Msg);
-      sub.close();
+      sub.close(err);
       this.subs.delete(sub.sid);
       return sub !== this.mux;
     }

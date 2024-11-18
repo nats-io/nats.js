@@ -945,6 +945,9 @@ Deno.test("auth - perm sub iterator error", async () => {
     `Permissions Violation for Subscription to "q"`,
   );
 
+  const err = await sub.closed;
+  assertEquals(err instanceof errors.PermissionViolationError, true);
+
   await cleanup(ns, nc);
 });
 
@@ -967,7 +970,7 @@ Deno.test("auth - perm error is not in lastError", async () => {
   assertEquals(nci.protocol.lastError, undefined);
 
   const d = deferred<Error | null>();
-  nc.subscribe("q", {
+  const sub = nc.subscribe("q", {
     callback: (err) => {
       d.resolve(err);
     },
@@ -977,6 +980,9 @@ Deno.test("auth - perm error is not in lastError", async () => {
   assert(err !== null);
   assert(err instanceof errors.PermissionViolationError);
   assert(nci.protocol.lastError === undefined);
+
+  const err2 = await sub.closed;
+  assert(err2 instanceof errors.PermissionViolationError);
 
   await cleanup(ns, nc);
 });
