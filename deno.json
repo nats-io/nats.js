@@ -70,5 +70,6 @@
     "./kv",
     "./obj",
     "./services"
-  ]
+  ],
+  "nodeModulesDir": "auto"
 }
