@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/transport-deno",
-  "version": "3.0.0-15",
+  "version": "3.0.0-16",
   "exports": {
     ".": "./src/mod.ts"
   },
@@ -20,7 +20,7 @@
   },
   "imports": {
     "@std/io": "jsr:@std/io@0.225.0",
-    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-41",
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-42",
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@~2.0.0-2",
     "@nats-io/nuid": "jsr:@nats-io/nuid@~2.0.1-2"
   }
