@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { cli } from "https://deno.land/x/cobra@v0.0.9/mod.ts";
+import { cli } from "jsr:@aricart/cobra@0.0.13";
 import * as esbuild from "npm:esbuild@0.20.2";
 // Import the Wasm build on platforms where running subprocesses is not
 // permitted, such as Deno Deploy, or when running without `--allow-run`.

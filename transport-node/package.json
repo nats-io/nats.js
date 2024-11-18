@@ -54,8 +54,8 @@
     "node": ">= 18.0.0"
   },
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-40",
-    "@nats-io/nkeys": "1.2.0-7",
+    "@nats-io/nats-core": "3.0.0-41",
+    "@nats-io/nkeys": "2.0.0-2",
     "@nats-io/nuid": "2.0.1-2"
   },
   "devDependencies": {
@@ -64,8 +64,8 @@
     "nats-jwt": "^0.0.9",
     "shx": "^0.3.3",
     "typescript": "5.6.3",
-    "@nats-io/jetstream": "3.0.0-27",
-    "@nats-io/kv": "3.0.0-21",
-    "@nats-io/obj": "3.0.0-22"
+    "@nats-io/jetstream": "3.0.0-28",
+    "@nats-io/kv": "3.0.0-22",
+    "@nats-io/obj": "3.0.0-23"
   }
 }
