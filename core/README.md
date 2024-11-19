@@ -13,8 +13,8 @@ the entry point into the NATS JavaScript ecosystem.
 
 You can use this module as a runtime agnostic dependency and implement
 functionality that uses a NATS client connection without binding your code to a
-particular JavaScript runtime. For example, the @nats-io/jetstream library
-depends on @nats-io/nats-core to implement all of its JetStream protocol.
+particular runtime. For example, the @nats-io/jetstream library depends on
+@nats-io/nats-core to implement all of its JetStream protocol.
 
 ## WebSocket Support
 
@@ -22,6 +22,11 @@ The _core_ module also offers a for W3C Websocket transport (aka browser, Deno,
 and Node v22) via the exported `wsconnect` function. This function is
 semantically equivalent to the traditional `connect`, but returns a
 `NatsConnection` that is backed by a W3C WebSocket.
+
+Note that wsconnect assumes `wss://` connections. If you provide a port, it
+likewise resolve to `wss://localhost:443`. If you specify a `ws://` URL, the
+client assumes port 80, which is likely not the port. Check your server
+configuration as the port for WebSocket protocol is NOT 4222.
 
 # Installation
 
@@ -55,7 +60,7 @@ The JSR registry hosts the ESM-only
 [@nats-io/nats-core](https://jsr.io/@nats-io/nats-core) version of the library.
 
 ```bash
-deno add @nats-io/nats-core
+deno add jsr:@nats-io/nats-core
 ```
 
 ```bash
@@ -107,7 +112,7 @@ is working.
 
 ```typescript
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
 
 const servers = [
   {},
@@ -179,7 +184,7 @@ the server.
 
 ```typescript
 // import the connect function from a transport
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
 
 // to create a connection to a nats-server:
 const nc = await connect({ servers: "demo.nats.io:4222" });
@@ -241,8 +246,8 @@ All subscriptions are independent. If two different subscriptions match a
 subject, both will get to process the message:
 
 ```typescript
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import type { Subscription } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
+import type { Subscription } from "@nats-io/transport-deno";
 const nc = await connect({ servers: "demo.nats.io:4222" });
 
 // subscriptions can have wildcard subjects
@@ -418,11 +423,8 @@ independent unit. Note that non-queue subscriptions are also independent of
 subscriptions in a queue group.
 
 ```typescript
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
-import type {
-  NatsConnection,
-  Subscription,
-} from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
+import type { NatsConnection, Subscription } from "@nats-io/transport-deno";
 
 async function createService(
   name: string,
@@ -541,12 +543,12 @@ If you send a request for which there's no interest, the request will be
 immediately rejected:
 
 ```typescript
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-7";
+import { connect } from "@nats-io/transport-deno";
 import {
   NoRespondersError,
   RequestError,
   TimeoutError,
-} from "jsr:@nats-io/transport-deno@3.0.0-7";
+} from "@nats-io/transport-deno";
 
 const nc = await connect({
   servers: `demo.nats.io`,
@@ -595,7 +597,7 @@ Setting the `user`/`pass` or `token` options, simply initializes an
 ```typescript
 // if the connection requires authentication, provide `user` and `pass` or
 // `token` options in the NatsConnectionOptions
-import { connect } from "jsr:@nats-io/transport-deno@3.0.0-5";
+import { connect } from "@nats-io/transport-deno";
 
 const nc1 = await connect({
   servers: "127.0.0.1:4222",

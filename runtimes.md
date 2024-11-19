@@ -2,19 +2,22 @@
 
 The NATS client for JavaScript supports many standard runtimes out of the box:
 
-- Node.js
+- Node.js/Bun
 - Deno
 - Browser
 
 The runtime is distributed in two different registries:
 
 - npmjs.com - these are npm bundles that target Node.js and compatible runtimes
-- jsr.io - these are esm versions
+  (Bun)
+- jsr.io - these are esm versions (typically targetting Deno or browser)
 
 Note that the names of the bundles are the same in the two registries
-`@nats-io/<module>`. The reason for this is that code that is properly will look
-the same and be compatible across the runtimes provided no additional user-added
-dependencies prevent this.
+`@nats-io/<module>`. The reason for this is that code that is properly written
+will look the same and be compatible across the runtimes provided no additional
+user-added dependencies prevent this. The module manifest
+(package.json/deno.json) will provide the right mapping to the registry, your
+code simply references the correct library regardless of registry.
 
 Let's make a project for your favorite runtime, Note that this example is
 intended to create a simple development environment, not to explain NATS
@@ -86,6 +89,14 @@ await d;
 await nc.drain();
 ```
 
+If you want to use a WebSocket connection, replace `await connect()` as follows:
+
+```typescript
+import { wsconnect } from "@nats-io/transport-node";
+// import { wsconnect } from "@nats-io/transport-deno";
+const nc = await wsconnect({ servers: "demo.nats.io:8443" });
+```
+
 Save it to `index.ts`
 
 ## To run:
@@ -116,13 +127,14 @@ connected
 ...
 ```
 
-Congratulations. You have a working project. Now go explore the documentation.
+Congratulations. You have a working NATS project. Now go explore the
+documentation.
 
-## Web Frameworks
+## Running in the Browser
 
-Out of the box, the `@nats-io/nats-core` module provides a W3C WebSocket
-transport, that you can use directly from Node.js, Bun, Deno and most
-importantly in a Browser.
+As discussed above, out of the box, the `@nats-io/nats-core` module provides a
+W3C WebSocket transport, that you can use directly from Node.js, Bun, Deno and
+most importantly in a Browser via the `wsconnect()` function.
 
 The setup is similar as you have seen above, with the exception that you have to
 import and configure your Web frameworks libraries, which is beyond the scope of

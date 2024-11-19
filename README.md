@@ -6,9 +6,9 @@
 
 > [!IMPORTANT]
 >
-> This project reorganizes the NATS Base Client library (part of nats.deno),
-> into multiple modules, and on-boards the supported transports (Deno, Node/Bun,
-> and WebSocket).
+> This project reorganizes the NATS Base Client library (originally part of
+> nats.deno), into multiple modules, and on-boards the supported transports
+> (Deno, Node/Bun, and WebSocket).
 >
 > While there have been some important refactorings and minor API changes to
 > address the split into multiple modules, the code is stable and you are
@@ -76,6 +76,9 @@ the runtime provided so long as the runtime has the minimum support required by
 the library.
 
 # Getting Started
+
+For a quick overview of the libraries and how to install them, see
+[runtimes.md](runtimes.md).
 
 If you are migrating from the legacy nats.deno or nats.js or nats.ws clients
 don't despair. Changes are well documented and should be easy to locate and
