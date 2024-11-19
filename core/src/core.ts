@@ -579,8 +579,13 @@ export function syncIterator<T>(src: AsyncIterable<T>): SyncIterator<T> {
  * Basic interface to a Subscription type
  */
 export interface Subscription extends AsyncIterable<Msg> {
-  /** A promise that resolves when the subscription closes */
-  closed: Promise<void>;
+  /**
+   * A promise that resolves when the subscription closes. If the promise
+   * resolves to an error, the subscription was closed because of an error
+   * typically a permissions error. Note that this promise doesn't reject, but
+   * rather resolves to void (no error) or an Error
+   */
+  closed: Promise<void | Error>;
 
   /**
    * Stop the subscription from receiving messages. You can optionally
