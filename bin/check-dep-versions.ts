@@ -300,6 +300,15 @@ for (const dir of dirs) {
         dmm.update(moduleName, v);
         await dmm.store(d);
       }
+
+      const onuid = dmm.has("@nats-io/nuid");
+      if (onuid) {
+        nuid = nuid.max(onuid);
+      }
+      const onkeys = dmm.has("@nats-io/nkeys");
+      if (onkeys) {
+        nkeys = nkeys.max(onkeys);
+      }
     }
     const nmm = await NodeModule.load(d);
     if (nmm) {
@@ -334,12 +343,32 @@ for (const d of dirs) {
       dmm.update("@nats-io/nuid", nuid);
       await dmm.store(d);
     }
+    if (dmm.has("@nats-io/nkeys")) {
+      dmm.update("@nats-io/nkeys", nkeys);
+      await dmm.store(d);
+    }
   }
   const nmm = await NodeModule.load(d);
   if (nmm) {
+    if (nmm.has("@nats-io/nuid")) {
+      nmm.update("@nats-io/nuid", nuid);
+      await nmm.store(d);
+    }
     if (nmm.has("@nats-io/nkeys")) {
       nmm.update("@nats-io/nkeys", nkeys);
       await nmm.store(d);
+    }
+  }
+
+  const map = await ImportMap.load(d);
+  if (map) {
+    if (map.has("@nats-io/nuid")) {
+      map.update("@nats-io/nuid", nuid);
+      await map.store(d);
+    }
+    if (map.has("@nats-io/nkeys")) {
+      map.update("@nats-io/nkeys", nkeys);
+      await map.store(d);
     }
   }
 }
