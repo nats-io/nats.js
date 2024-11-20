@@ -32,7 +32,6 @@ import {
   headers,
   isIP,
   nuid,
-  RequestStrategy,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type {
@@ -1036,7 +1035,7 @@ Deno.test("basics - request many count", async () => {
   const lock = Lock(5, 2000);
 
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Count,
+    strategy: "count",
     maxWait: 2000,
     maxMessages: 5,
   });
@@ -1067,7 +1066,7 @@ Deno.test("basics - request many jitter", async () => {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.JitterTimer,
+    strategy: "stall",
     maxWait: 5000,
   });
   for await (const mer of iter) {
@@ -1099,7 +1098,7 @@ Deno.test("basics - request many sentinel", async () => {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.SentinelMsg,
+    strategy: "sentinel",
     maxWait: 2000,
   });
   for await (const mer of iter) {
@@ -1130,7 +1129,7 @@ Deno.test("basics - request many sentinel - partial response", async () => {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.SentinelMsg,
+    strategy: "sentinel",
     maxWait: 2000,
   });
   for await (const mer of iter) {
@@ -1159,7 +1158,7 @@ Deno.test("basics - request many wait for timer - no respone", async () => {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Timer,
+    strategy: "timer",
     maxWait: 2000,
   });
   for await (const mer of iter) {
@@ -1189,7 +1188,7 @@ Deno.test("basics - request many waits for timer late response", async () => {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Timer,
+    strategy: "timer",
     maxWait: 2000,
   });
   for await (const mer of iter) {

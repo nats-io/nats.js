@@ -22,7 +22,6 @@ import type {
   RequestManyOptions,
   RequestOptions,
 } from "./core.ts";
-import { RequestStrategy } from "./core.ts";
 import { errors, RequestError, TimeoutError } from "./errors.ts";
 
 export class BaseRequest {
@@ -105,22 +104,22 @@ export class RequestMany extends BaseRequest implements Request {
       this.cancel(err as Error);
     } else {
       this.callback(null, msg);
-      if (this.opts.strategy === RequestStrategy.Count) {
+      if (this.opts.strategy === "count") {
         this.max--;
         if (this.max === 0) {
           this.cancel();
         }
       }
 
-      if (this.opts.strategy === RequestStrategy.JitterTimer) {
+      if (this.opts.strategy === "stall") {
         clearTimeout(this.timer);
         // @ts-ignore: node is not a number
         this.timer = setTimeout(() => {
           this.cancel();
-        }, this.opts.jitter || 300);
+        }, this.opts.stall || 300);
       }
 
-      if (this.opts.strategy === RequestStrategy.SentinelMsg) {
+      if (this.opts.strategy === "sentinel") {
         if (msg && msg.data.length === 0) {
           this.cancel();
         }

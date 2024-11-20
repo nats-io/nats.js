@@ -12,11 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  Empty,
-  QueuedIteratorImpl,
-  RequestStrategy,
-} from "@nats-io/nats-core/internal";
+import { Empty, QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 
 import type {
   NatsConnection,
@@ -41,7 +37,7 @@ export class ServiceClientImpl implements ServiceClient {
   constructor(
     nc: NatsConnection,
     opts: RequestManyOptions = {
-      strategy: RequestStrategy.JitterTimer,
+      strategy: "stall",
       maxWait: 2000,
     },
     prefix?: string,

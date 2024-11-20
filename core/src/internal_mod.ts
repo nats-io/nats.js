@@ -109,6 +109,7 @@ export type {
   Request,
   RequestManyOptions,
   RequestOptions,
+  RequestStrategy,
   ReviverFn,
   Server,
   ServerErrorStatus,
@@ -126,7 +127,7 @@ export type {
   TokenAuth,
   UserPass,
 } from "./core.ts";
-export { createInbox, Match, RequestStrategy, syncIterator } from "./core.ts";
+export { createInbox, Match, syncIterator } from "./core.ts";
 export { SubscriptionImpl, Subscriptions } from "./protocol.ts";
 
 export type {

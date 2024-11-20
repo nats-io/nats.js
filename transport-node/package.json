@@ -54,7 +54,7 @@
     "node": ">= 18.0.0"
   },
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-42",
+    "@nats-io/nats-core": "3.0.0-43",
     "@nats-io/nkeys": "2.0.0-2",
     "@nats-io/nuid": "2.0.1-2"
   },
