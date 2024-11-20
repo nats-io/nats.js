@@ -34,7 +34,7 @@
   },
   "description": "services library - this library implements all the base functionality for NATS services for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-43"
+    "@nats-io/nats-core": "3.0.0-44"
   },
   "devDependencies": {
     "@types/node": "^22.7.6",

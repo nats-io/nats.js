@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-43",
+  "version": "3.0.0-44",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
