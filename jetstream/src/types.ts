@@ -24,6 +24,7 @@ import type {
 import type {
   DeliverPolicy,
   DirectLastFor,
+  PullOptions,
   ReplayPolicy,
 } from "./jsapi_types.ts";
 
@@ -471,104 +472,227 @@ export type ConsumeCallback = {
 };
 
 /**
- * ConsumerEvents are informational notifications emitted by ConsumerMessages
+ * ConsumerNotifications are informational notifications emitted by ConsumerMessages
  * that may be of interest to a client.
  */
-export enum ConsumerEvents {
-  /**
-   * Notification that heartbeats were missed. This notification is informational.
-   * The `data` portion of the status, is a number indicating the number of missed heartbeats.
-   * Note that when a client disconnects, heartbeat tracking is paused while
-   * the client is disconnected.
-   */
-  HeartbeatsMissed = "heartbeats_missed",
-  /**
-   * Notification that the consumer was not found. Consumers that were accessible at
-   * least once, will be retried for more messages regardless of the not being found
-   * or timeouts etc. This notification includes a count of consecutive attempts to
-   * find the consumer. Note that if you get this notification possibly your code should
-   * attempt to recreate the consumer. Note that this notification is only informational
-   * for ordered consumers, as the consumer will be created in those cases automatically.
-   */
-  ConsumerNotFound = "consumer_not_found",
-
-  /**
-   * Notification that the stream was not found. Consumers were accessible at least once,
-   * will be retried for more messages regardless of the not being found
-   * or timeouts etc. This notification includes a count of consecutive attempts to
-   * find the consumer. Note that if you get this notification possibly your code should
-   * attempt to recreate the consumer. Note that this notification is only informational
-   * for ordered consumers, as the consumer will be created in those cases automatically.
-   */
-  StreamNotFound = "stream_not_found",
-
-  /**
-   * Notification that the consumer was deleted. This notification
-   * means the consumer will not get messages unless it is recreated. The client
-   * will continue to attempt to pull messages. Ordered consumer will recreate it.
-   */
-  ConsumerDeleted = "consumer_deleted",
-
-  /**
-   * This notification is specific of ordered consumers and will be notified whenever
-   * the consumer is recreated. The argument is the name of the newly created consumer.
-   */
-  OrderedConsumerRecreated = "ordered_consumer_recreated",
-
-  /**
-   * This notification is specific to pull consumers and will be notified whenever
-   * the pull request exceeds some limit such as maxwaiting, maxrequestbatch, etc.
-   * The data component has the code (409) and the message from the server.
-   */
-  ExceededLimit = "limit_exceeded",
-}
+export type ConsumerNotification =
+  | HeartbeatsMissed
+  | ConsumerNotFound
+  | StreamNotFound
+  | ConsumerDeleted
+  | OrderedConsumerRecreated
+  | ExceededLimits
+  | Debug
+  | Discard
+  | Reset
+  | Next
+  | Heartbeat
+  | FlowControl;
 
 /**
- * These events represent informational notifications emitted by ConsumerMessages
- * that can be safely ignored by clients.
+ * Notification that heartbeats were missed. This notification is informational.
+ * The `data` portion of the status, is a number indicating the number of missed heartbeats.
+ * Note that when a client disconnects, heartbeat tracking is paused while
+ * the client is disconnected.
  */
-export enum ConsumerDebugEvents {
-  /**
-   * DebugEvents are effectively statuses returned by the server that were ignored
-   * by the client. The `data` portion of the
-   * status is just a string indicating the code/message of the status.
-   */
-  DebugEvent = "debug",
-  /**
-   * Requests for messages can be terminated by the server, these notifications
-   * provide information on the number of messages and/or bytes that couldn't
-   * be satisfied by the consumer request. The `data` portion of the status will
-   * have the format of `{msgsLeft: number, bytesLeft: number}`.
-   */
-  Discard = "discard",
-  /**
-   * Notifies that the current consumer will be reset
-   */
-  Reset = "reset",
-  /**
-   * Notifies whenever there's a request for additional messages from the server.
-   * This notification telegraphs the request options, which should be treated as
-   * read-only. This notification is only useful for debugging. Data is PullOptions.
-   */
-  Next = "next",
-
-  /**
-   * Notifies that the client received a server-side heartbeat. The payload the data
-   * portion has the format `{natsLastConsumer: number, natsLastStream: number}`;
-   */
-  Heartbeat = "heartbeat",
-
-  /**
-   * Notifies that the client received a server-side flow control message.
-   * The data is null.
-   */
-  FlowControl = "flow_control",
-}
-
-export interface ConsumerStatus {
-  type: ConsumerEvents | ConsumerDebugEvents;
-  data: unknown;
-}
+export type HeartbeatsMissed = {
+  type: "heartbeats_missed";
+  count: number;
+};
+/**
+ * Notification that the consumer was not found. Consumers that were accessible at
+ * least once, will be retried for more messages regardless of the not being found
+ * or timeouts etc. This notification includes a count of consecutive attempts to
+ * find the consumer. Note that if you get this notification possibly your code should
+ * attempt to recreate the consumer. Note that this notification is only informational
+ * for ordered consumers, as the consumer will be created in those cases automatically.
+ */
+export type ConsumerNotFound = {
+  type: "consumer_not_found";
+  name: string;
+  count: number;
+};
+/**
+ * Notification that the stream was not found. Consumers were accessible at least once,
+ * will be retried for more messages regardless of the not being found
+ * or timeouts etc. This notification includes a count of consecutive attempts to
+ * find the consumer. Note that if you get this notification possibly your code should
+ * attempt to recreate the consumer. Note that this notification is only informational
+ * for ordered consumers, as the consumer will be created in those cases automatically.
+ */
+export type StreamNotFound = {
+  type: "stream_not_found";
+  name: string;
+  consumerCreateFails?: number;
+};
+/**
+ * Notification that the consumer was deleted. This notification
+ * means the consumer will not get messages unless it is recreated. The client
+ * will continue to attempt to pull messages. Ordered consumer will recreate it.
+ */
+export type ConsumerDeleted = {
+  type: "consumer_deleted";
+  code: number;
+  description: string;
+};
+/**
+ * This notification is specific of ordered consumers and will be notified whenever
+ * the consumer is recreated. The argument is the name of the newly created consumer.
+ */
+export type OrderedConsumerRecreated = {
+  type: "ordered_consumer_recreated";
+  name: string;
+};
+/**
+ * This notification is specific to pull consumers and will be notified whenever
+ * the pull request exceeds some limit such as maxwaiting, maxrequestbatch, etc.
+ * The data component has the code (409) and the message from the server.
+ */
+export type ExceededLimits = {
+  type: "exceeded_limits";
+  code: number;
+  description: string;
+};
+/**
+ * DebugEvents are effectively statuses returned by the server that were ignored
+ * by the client. The `code` and `description` indicate the server specified code and description.
+ */
+export type Debug = {
+  type: "debug";
+  code: number;
+  description: string;
+};
+/**
+ * Requests for messages can be terminated by the server, these notifications
+ * provide information on the number of messages and/or bytes that couldn't
+ * be satisfied by the consumer request.
+ */
+export type Discard = {
+  type: "discard";
+  messagesLeft: number;
+  bytesLeft: number;
+};
+/**
+ * Notifies that the current consumer will be reset
+ */
+export type Reset = {
+  type: "reset";
+  name: string;
+};
+/**
+ * Notifies whenever there's a request for additional messages from the server.
+ * This notification telegraphs the request options, which should be treated as
+ * read-only. This notification is only useful for debugging. Data is PullOptions.
+ */
+export type Next = {
+  type: "next";
+  options: PullOptions;
+};
+/**
+ * Notifies that the client received a server-side heartbeat. The payload the data
+ * portion has the format `{natsLastConsumer: number, natsLastStream: number}`;
+ */
+export type Heartbeat = {
+  type: "heartbeat";
+  lastConsumerSequence: number;
+  lastStreamSequence: number;
+};
+/**
+ * Notifies that the client received a server-side flow control message.
+ * The data is null.
+ */
+export type FlowControl = {
+  type: "flow_control";
+};
+//
+// /**
+//  * ConsumerEvents are informational notifications emitted by ConsumerMessages
+//  * that may be of interest to a client.
+//  */
+// export enum ConsumerEvents {
+//   /**
+//    * Notification that heartbeats were missed. This notification is informational.
+//    * The `data` portion of the status, is a number indicating the number of missed heartbeats.
+//    * Note that when a client disconnects, heartbeat tracking is paused while
+//    * the client is disconnected.
+//    */
+//   HeartbeatsMissed = "heartbeats_missed",
+//   /**
+//    * Notification that the consumer was not found. Consumers that were accessible at
+//    * least once, will be retried for more messages regardless of the not being found
+//    * or timeouts etc. This notification includes a count of consecutive attempts to
+//    * find the consumer. Note that if you get this notification possibly your code should
+//    * attempt to recreate the consumer. Note that this notification is only informational
+//    * for ordered consumers, as the consumer will be created in those cases automatically.
+//    */
+//   ConsumerNotFound = "consumer_not_found",
+//
+//   /**
+//    * Notification that the stream was not found. Consumers were accessible at least once,
+//    * will be retried for more messages regardless of the not being found
+//    * or timeouts etc. This notification includes a count of consecutive attempts to
+//    * find the consumer. Note that if you get this notification possibly your code should
+//    * attempt to recreate the consumer. Note that this notification is only informational
+//    * for ordered consumers, as the consumer will be created in those cases automatically.
+//    */
+//   StreamNotFound = "stream_not_found",
+//
+//   /**
+//    * Notification that the consumer was deleted. This notification
+//    * means the consumer will not get messages unless it is recreated. The client
+//    * will continue to attempt to pull messages. Ordered consumer will recreate it.
+//    */
+//   ConsumerDeleted = "consumer_deleted",
+//
+//   /**
+//    * This notification is specific of ordered consumers and will be notified whenever
+//    * the consumer is recreated. The argument is the name of the newly created consumer.
+//    */
+//   OrderedConsumerRecreated = "ordered_consumer_recreated",
+//
+//   /**
+//    * This notification is specific to pull consumers and will be notified whenever
+//    * the pull request exceeds some limit such as maxwaiting, maxrequestbatch, etc.
+//    * The data component has the code (409) and the message from the server.
+//    */
+//   ExceededLimit = "limit_exceeded",
+// }
+//
+// /**
+//  * These events represent informational notifications emitted by ConsumerMessages
+//  * that can be safely ignored by clients.
+//  */
+// export enum ConsumerDebugEvents {
+//   /**
+//    * Requests for messages can be terminated by the server, these notifications
+//    * provide information on the number of messages and/or bytes that couldn't
+//    * be satisfied by the consumer request. The `data` portion of the status will
+//    * have the format of `{msgsLeft: number, bytesLeft: number}`.
+//    */
+//   Discard = "discard",
+//   /**
+//    * Notifies that the current consumer will be reset
+//    */
+//   Reset = "reset",
+//   /**
+//    * Notifies whenever there's a request for additional messages from the server.
+//    * This notification telegraphs the request options, which should be treated as
+//    * read-only. This notification is only useful for debugging. Data is PullOptions.
+//    */
+//   Next = "next",
+//
+//   /**
+//    * Notifies that the client received a server-side heartbeat. The payload the data
+//    * portion has the format `{natsLastConsumer: number, natsLastStream: number}`;
+//    */
+//   Heartbeat = "heartbeat",
+//
+//   /**
+//    * Notifies that the client received a server-side flow control message.
+//    * The data is null.
+//    */
+//   FlowControl = "flow_control",
+// }
 
 export interface PushConsumer
   extends InfoableConsumer, DeleteableConsumer, ConsumerKind {
@@ -613,7 +737,7 @@ export interface Close {
 }
 
 export interface ConsumerMessages extends QueuedIterator<JsMsg>, Close {
-  status(): AsyncIterable<ConsumerStatus>;
+  status(): AsyncIterable<ConsumerNotification>;
 }
 
 /**

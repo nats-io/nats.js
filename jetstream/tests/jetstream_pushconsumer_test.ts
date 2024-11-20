@@ -34,7 +34,6 @@ import {
   syncIterator,
 } from "@nats-io/nats-core";
 import type { BoundPushConsumerOptions, PubAck } from "../src/types.ts";
-import { ConsumerDebugEvents, ConsumerEvents } from "../src/types.ts";
 import {
   assert,
   assertEquals,
@@ -476,14 +475,9 @@ Deno.test("jetstream - idle heartbeats", async () => {
   const status = messages.status();
 
   for await (const s of status) {
-    if (s.type === ConsumerDebugEvents.Heartbeat) {
-      const d = s.data as {
-        natsLastConsumer: string;
-        natsLastStream: string;
-      };
-
-      assertEquals(d.natsLastConsumer, "1");
-      assertEquals(d.natsLastStream, "1");
+    if (s.type === "heartbeat") {
+      assertEquals(s.lastConsumerSequence, 1);
+      assertEquals(s.lastStreamSequence, 1);
       messages.stop();
     }
   }
@@ -530,7 +524,7 @@ Deno.test("jetstream - flow control", async () => {
   const iter = await c.consume({ callback: () => {} });
   const status = iter.status();
   for await (const s of status) {
-    if (s.type === ConsumerDebugEvents.FlowControl) {
+    if (s.type === "flow_control") {
       iter.stop();
     }
   }
@@ -700,9 +694,9 @@ Deno.test("jetstream - bind", async () => {
   let hb = 0;
 
   for await (const s of messages.status()) {
-    if (s.type === ConsumerDebugEvents.FlowControl) {
+    if (s.type === "flow_control") {
       fc++;
-    } else if (s.type === ConsumerDebugEvents.Heartbeat) {
+    } else if (s.type === "heartbeat") {
       hb++;
     }
   }
@@ -834,7 +828,7 @@ Deno.test("jetstream - idleheartbeats notifications don't cancel", async () => {
   const msgs = await c.consume({ callback: () => {} });
   let missed = 0;
   for await (const s of msgs.status()) {
-    if (s.type === ConsumerEvents.HeartbeatsMissed) {
+    if (s.type === "heartbeats_missed") {
       missed++;
       if (missed > 3) {
         await msgs.close();

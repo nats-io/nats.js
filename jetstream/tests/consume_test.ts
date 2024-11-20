@@ -34,13 +34,12 @@ import {
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 import {
   AckPolicy,
-  ConsumerEvents,
-  type ConsumerStatus,
   DeliverPolicy,
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
+import type { ConsumerNotification, HeartbeatsMissed } from "../src/types.ts";
 
 Deno.test("consumers - consume", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -117,7 +116,7 @@ Deno.test("consume - heartbeats", async () => {
   // make heartbeats trigger
   (nc as NatsConnectionImpl)._resub(iter.sub, "foo");
 
-  const d = deferred<ConsumerStatus>();
+  const d = deferred<ConsumerNotification>();
   await (async () => {
     const status = iter.status();
     for await (const s of status) {
@@ -134,8 +133,8 @@ Deno.test("consume - heartbeats", async () => {
   })();
 
   const cs = await d;
-  assertEquals(cs.type, ConsumerEvents.HeartbeatsMissed);
-  assertEquals(cs.data, 2);
+  assertEquals(cs.type, "heartbeats_missed");
+  assertEquals((cs as HeartbeatsMissed).count, 2);
 
   await cleanup(ns, nc);
 });
@@ -161,10 +160,10 @@ Deno.test("consume - deleted consumer", async () => {
   (async () => {
     const status = iter.status();
     for await (const s of status) {
-      if (s.type === ConsumerEvents.ConsumerDeleted) {
+      if (s.type === "consumer_deleted") {
         deleted.resolve();
       }
-      if (s.type === ConsumerEvents.ConsumerNotFound) {
+      if (s.type === "consumer_not_found") {
         notFound++;
         if (notFound > 1) {
           done.resolve();
@@ -407,13 +406,13 @@ Deno.test("consume - consumer bind", async () => {
   (async () => {
     for await (const s of iter.status()) {
       switch (s.type) {
-        case ConsumerEvents.HeartbeatsMissed:
+        case "heartbeats_missed":
           hbm++;
           if (hbm > 5) {
             iter.stop();
           }
           break;
-        case ConsumerEvents.ConsumerNotFound:
+        case "consumer_not_found":
           cnf++;
           break;
       }
@@ -458,7 +457,7 @@ Deno.test("consume - timer is based on idle_hb", async () => {
   let hbm = false;
   (async () => {
     for await (const s of iter.status()) {
-      if (s.type === ConsumerEvents.HeartbeatsMissed) {
+      if (s.type === "heartbeats_missed") {
         hbm = true;
       }
     }

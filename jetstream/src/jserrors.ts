@@ -14,7 +14,7 @@
  */
 
 import type { Msg } from "@nats-io/nats-core";
-import { JsHeaders } from "./types.ts";
+import { type Heartbeat, JsHeaders } from "./types.ts";
 import type { ApiError } from "./jsapi_types.ts";
 
 export class JetStreamNotEnabled extends Error {
@@ -89,14 +89,15 @@ export class JetStreamStatus {
   }
 
   parseHeartbeat():
-    | { natsLastConsumer: number; natsLastStream: number }
+    | Heartbeat
     | null {
     if (this.isIdleHeartbeat()) {
       return {
-        natsLastConsumer: parseInt(
+        type: "heartbeat",
+        lastConsumerSequence: parseInt(
           this.msg.headers?.get("Nats-Last-Consumer") || "0",
         ),
-        natsLastStream: parseInt(
+        lastStreamSequence: parseInt(
           this.msg.headers?.get("Nats-Last-Stream") || "0",
         ),
       };

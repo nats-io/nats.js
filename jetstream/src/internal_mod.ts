@@ -15,8 +15,6 @@
 
 export {
   AdvisoryKind,
-  ConsumerDebugEvents,
-  ConsumerEvents,
   DirectMsgHeaders,
   isBoundPushConsumerOptions,
   isOrderedPushConsumerOptions,
@@ -48,8 +46,8 @@ export type {
   ConsumerCallbackFn,
   ConsumerKind,
   ConsumerMessages,
+  ConsumerNotification,
   Consumers,
-  ConsumerStatus,
   DeleteableConsumer,
   Destroyable,
   DirectStreamAPI,

@@ -45,7 +45,6 @@ import type {
   PullOptions,
 } from "./jsapi_types.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
-import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
 
 import type {
   ConsumeMessages,
@@ -54,7 +53,7 @@ import type {
   ConsumerAPI,
   ConsumerCallbackFn,
   ConsumerMessages,
-  ConsumerStatus,
+  ConsumerNotification,
   Expires,
   FetchMessages,
   FetchOptions,
@@ -119,7 +118,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   pending: { msgs: number; bytes: number; requests: number };
   isConsume: boolean;
   callback: ConsumerCallbackFn | null;
-  listeners: QueuedIterator<ConsumerStatus>[];
+  listeners: QueuedIterator<ConsumerNotification>[];
   statusIterator?: QueuedIteratorImpl<Status>;
   abortOnMissingResource?: boolean;
   bind: boolean;
@@ -207,8 +206,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           }
           const status = new JetStreamStatus(msg);
 
-          if (status.isIdleHeartbeat()) {
-            this.notify(ConsumerDebugEvents.Heartbeat, status.parseHeartbeat());
+          const hb = status.parseHeartbeat();
+          if (hb) {
+            this.notify(hb);
             return;
           }
           const code = status.code;
@@ -219,7 +219,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             this.pending.msgs -= msgsLeft;
             this.pending.bytes -= bytesLeft;
             this.pending.requests--;
-            this.notify(ConsumerDebugEvents.Discard, { msgsLeft, bytesLeft });
+            this.notify({
+              type: "discard",
+              messagesLeft: msgsLeft,
+              bytesLeft: bytesLeft,
+            });
           } else {
             // Examine the error codes
             // FIXME: 408 can be a Timeout or bad request,
@@ -247,8 +251,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
               }
               default:
                 this.notify(
-                  ConsumerDebugEvents.DebugEvent,
-                  { code, description },
+                  { type: "debug", code, description },
                 );
             }
           }
@@ -319,11 +322,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     if (idle_heartbeat) {
       this.monitor = new IdleHeartbeatMonitor(
         idle_heartbeat,
-        (data): boolean => {
+        (count): boolean => {
           // for the pull consumer - missing heartbeats may be corrected
           // on the next pull etc - the only assumption here is we should
           // reset and check if the consumer was deleted from under us
-          this.notify(ConsumerEvents.HeartbeatsMissed, data);
+          this.notify({ type: "heartbeats_missed", count });
           if (!this.isConsume && !this.consumer.ordered) {
             // if we are not a consume, give up - this was masked by an
             // external timer on fetch - the hb is a more reliable timeout
@@ -390,9 +393,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   handle409(status: JetStreamStatus): Error | null {
     const { code, description } = status;
     if (status.isConsumerDeleted()) {
-      this.notify(ConsumerEvents.ConsumerDeleted, { code, description });
+      this.notify({ type: "consumer_deleted", code, description });
     } else if (status.isExceededLimit()) {
-      this.notify(ConsumerEvents.ExceededLimit, { code, description });
+      this.notify({ type: "exceeded_limits", code, description });
     }
     if (!this.isConsume) {
       return status.toError();
@@ -410,7 +413,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     const ocs = this.consumer.orderedConsumerState!;
     const { name } = this.consumer._info?.config;
     if (name) {
-      this.notify(ConsumerDebugEvents.Reset, name);
+      this.notify({ type: "reset", name });
       this.consumer.api.delete(this.consumer.stream, name)
         .catch(() => {
           // ignored
@@ -434,16 +437,17 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     ).then((ci) => {
       ocs.createFails = 0;
       this.consumer._info = ci;
-      this.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
+      this.notify({ type: "ordered_consumer_recreated", name: ci.name });
       this.monitor?.restart();
       this.pull(this.pullOptions());
     }).catch((err) => {
       ocs.createFails++;
       if (err.message === "stream not found") {
-        this.notify(
-          ConsumerEvents.StreamNotFound,
-          ocs.createFails,
-        );
+        this.notify({
+          type: "stream_not_found",
+          consumerCreateFails: ocs.createFails,
+          name: this.consumer.stream,
+        });
         if (this.abortOnMissingResource) {
           this.stop(err);
           return;
@@ -494,13 +498,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
   }
 
-  notify(type: ConsumerEvents | ConsumerDebugEvents, data: unknown) {
+  notify(n: ConsumerNotification) {
     if (this.listeners.length > 0) {
       (() => {
         this.listeners.forEach((l) => {
-          const qi = l as QueuedIteratorImpl<ConsumerStatus>;
+          const qi = l as QueuedIteratorImpl<ConsumerNotification>;
           if (!qi.done) {
-            qi.push({ type, data });
+            qi.push(n);
           }
         });
       })();
@@ -549,14 +553,18 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         // game over
         if ((err as Error).message === "stream not found") {
           streamNotFound++;
-          this.notify(ConsumerEvents.StreamNotFound, streamNotFound);
+          this.notify({ type: "stream_not_found", name: this.consumer.stream });
           if (!this.isConsume || this.abortOnMissingResource) {
             this.stop(err as Error);
             return false;
           }
         } else if ((err as Error).message === "consumer not found") {
           notFound++;
-          this.notify(ConsumerEvents.ConsumerNotFound, notFound);
+          this.notify({
+            type: "consumer_not_found",
+            name: this.consumer.name,
+            count: notFound,
+          });
           if (!this.isConsume || this.abortOnMissingResource) {
             if (this.consumer.ordered) {
               const ocs = this.consumer.orderedConsumerState!;
@@ -598,7 +606,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         JSON.stringify(opts),
         { reply: this.inbox },
       );
-      this.notify(ConsumerDebugEvents.Next, opts);
+      this.notify({ type: "next", options: opts as PullOptions });
     });
   }
 
@@ -646,8 +654,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     //@ts-ignore: fn
     this._push(() => {
       super.stop(err);
-      this.listeners.forEach((n) => {
-        n.stop();
+      this.listeners.forEach((iter) => {
+        iter.stop();
       });
     });
   }
@@ -728,8 +736,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return args;
   }
 
-  status(): AsyncIterable<ConsumerStatus> {
-    const iter = new QueuedIteratorImpl<ConsumerStatus>();
+  status(): AsyncIterable<ConsumerNotification> {
+    const iter = new QueuedIteratorImpl<ConsumerNotification>();
     this.listeners.push(iter);
     return iter;
   }

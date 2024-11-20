@@ -21,12 +21,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "jsr:@std/assert";
-import {
-  ConsumerEvents,
-  DeliverPolicy,
-  jetstream,
-  jetstreamManager,
-} from "../src/mod.ts";
+import { DeliverPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import {
   cleanup,
@@ -884,7 +879,7 @@ Deno.test("ordered consumers - fetch reset", async () => {
   function countResets(iter: ConsumerMessages): Promise<void> {
     return (async () => {
       for await (const s of iter.status()) {
-        if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
+        if (s.type === "ordered_consumer_recreated") {
           recreates++;
         }
       }
@@ -933,7 +928,7 @@ Deno.test("ordered consumers - consume reset", async () => {
   function countRecreates(iter: ConsumerMessages): Promise<void> {
     return (async () => {
       for await (const s of iter.status()) {
-        if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
+        if (s.type === "ordered_consumer_recreated") {
           recreates++;
         }
       }
@@ -1106,7 +1101,7 @@ Deno.test(
     function countRecreates(iter: ConsumerMessages): Promise<void> {
       return (async () => {
         for await (const s of iter.status()) {
-          if (s.type === ConsumerEvents.OrderedConsumerRecreated) {
+          if (s.type === "ordered_consumer_recreated") {
             recreates++;
           }
         }
