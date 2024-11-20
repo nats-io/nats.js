@@ -21,7 +21,6 @@ import type {
   Status,
   Subscription,
   SubscriptionImpl,
-  Timeout,
 } from "@nats-io/nats-core/internal";
 import {
   backoff,
@@ -33,7 +32,6 @@ import {
   nanos,
   nuid,
   QueuedIteratorImpl,
-  timeout,
 } from "@nats-io/nats-core/internal";
 import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
@@ -47,6 +45,8 @@ import type {
   PullOptions,
 } from "./jsapi_types.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
+import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
+
 import type {
   ConsumeMessages,
   ConsumeOptions,
@@ -67,8 +67,7 @@ import type {
   ThresholdBytes,
   ThresholdMessages,
 } from "./types.ts";
-import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
-import { JetStreamStatus } from "./jserrors.ts";
+import { JetStreamError, JetStreamStatus } from "./jserrors.ts";
 import { minValidation } from "./jsutil.ts";
 
 enum PullConsumerType {
@@ -120,7 +119,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   pending: { msgs: number; bytes: number; requests: number };
   isConsume: boolean;
   callback: ConsumerCallbackFn | null;
-  timeout: Timeout<unknown> | null;
   listeners: QueuedIterator<ConsumerStatus>[];
   statusIterator?: QueuedIteratorImpl<Status>;
   abortOnMissingResource?: boolean;
@@ -170,7 +168,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.noIterator = typeof this.callback === "function";
     this.monitor = null;
     this.pending = { msgs: 0, bytes: 0, requests: 0 };
-    this.timeout = null;
     this.listeners = [];
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
@@ -327,6 +324,17 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           // on the next pull etc - the only assumption here is we should
           // reset and check if the consumer was deleted from under us
           this.notify(ConsumerEvents.HeartbeatsMissed, data);
+          if (!this.isConsume && !this.consumer.ordered) {
+            // if we are not a consume, give up - this was masked by an
+            // external timer on fetch - the hb is a more reliable timeout
+            // since it requires 2 to be missed - this creates an edge case
+            // that would timeout the client longer than they would expect: we
+            // could be waiting for one more message, nothing happens, and
+            // now we have to wait for 2 missed hbs, which would be 1m (max), so
+            // there wouldn't be a fail fast.
+            this.stop(new JetStreamError("heartbeats missed"));
+            return true;
+          }
           this.resetPending()
             .then(() => {
             })
@@ -614,10 +622,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return opts;
   }
 
-  trackTimeout(t: Timeout<unknown>) {
-    this.timeout = t;
-  }
-
   close(): Promise<void | Error> {
     this.stop();
     return this.iterClosed;
@@ -630,8 +634,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   clearTimers() {
     this.monitor?.cancel();
     this.monitor = null;
-    this.timeout?.cancel();
-    this.timeout = null;
   }
 
   override stop(err?: Error) {
@@ -686,11 +688,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       );
     }
 
-    // require idle_heartbeat
+    // require idle_heartbeat - clamp between 500-30_000
     args.idle_heartbeat = args.idle_heartbeat || args.expires / 2;
     args.idle_heartbeat = args.idle_heartbeat > 30_000
       ? 30_000
       : args.idle_heartbeat;
+
+    if (args.idle_heartbeat < 500) {
+      args.idle_heartbeat = 500;
+    }
 
     if (refilling) {
       const minMsgs = Math.round(args.max_messages * .75) || 1;
@@ -848,18 +854,6 @@ export class PullConsumerImpl implements Consumer {
     if (this.ordered) {
       this.messages = m;
     }
-    // FIXME: need some way to pad this correctly
-    const to = Math.round(m.opts.expires! * 1.05);
-    const timer = timeout(to);
-    m.closed().catch((err) => {
-      console.log(err);
-    }).finally(() => {
-      timer.cancel();
-    });
-    timer.catch(() => {
-      m.close().catch();
-    });
-    m.trackTimeout(timer);
 
     return Promise.resolve(m);
   }
@@ -871,8 +865,12 @@ export class PullConsumerImpl implements Consumer {
     fopts.max_messages = 1;
 
     const iter = await this.fetch(fopts);
-    for await (const m of iter) {
-      return m;
+    try {
+      for await (const m of iter) {
+        return m;
+      }
+    } catch (err) {
+      return Promise.reject(err);
     }
     return null;
   }

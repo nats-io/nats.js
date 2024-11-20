@@ -70,7 +70,7 @@ Deno.test("jetstream - cross account pull", async () => {
 
   // create a durable config
   await admjsm.consumers.add(stream, {
-    ack_policy: AckPolicy.Explicit,
+    ack_policy: AckPolicy.None,
     durable_name: "me",
   });
 
@@ -90,7 +90,8 @@ Deno.test("jetstream - cross account pull", async () => {
   msg = await c.next();
   assertExists(msg);
   assertEquals(msg.seq, 2);
-  msg = await c.next({ expires: 1000 });
+
+  msg = await c.next({ expires: 5000 });
   assertEquals(msg, null);
 
   await cleanup(ns, admin, nc);

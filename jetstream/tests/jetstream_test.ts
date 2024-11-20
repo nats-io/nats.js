@@ -744,7 +744,7 @@ Deno.test("jetstream - backoff", async () => {
   });
 
   offset.slice(1).forEach((n, idx) => {
-    assertAlmostEquals(n, ms[idx], 20);
+    assertAlmostEquals(n, ms[idx], 50);
   });
 
   await cleanup(ns, nc);

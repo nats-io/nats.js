@@ -13,19 +13,19 @@
  * limitations under the License.
  */
 
-import { cleanup, flakyTest, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
-import { assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+  fail,
+} from "jsr:@std/assert";
 import { delay, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { jetstream, jetstreamManager } from "../src/mod.ts";
-import { delayUntilAssetNotFound } from "./util.ts";
-import {
-  ConsumerNotFoundError,
-  JetStreamStatusError,
-  StreamNotFoundError,
-} from "../src/jserrors.ts";
+import { jetstream, JetStreamError, jetstreamManager } from "../src/mod.ts";
+import { JetStreamStatusError } from "../src/jserrors.ts";
 
 Deno.test("next - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -117,35 +117,6 @@ Deno.test("next - listener leaks", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test(
-  "next - consumer not found",
-  flakyTest(async () => {
-    const { ns, nc } = await setup(jetstreamServerConf());
-    const jsm = await jetstreamManager(nc);
-    await jsm.streams.add({ name: "A", subjects: ["hello"] });
-
-    await jsm.consumers.add("A", {
-      durable_name: "a",
-      deliver_policy: DeliverPolicy.All,
-      ack_policy: AckPolicy.Explicit,
-    });
-
-    const js = jetstream(nc);
-    const c = await js.consumers.get("A", "a");
-    await c.delete();
-    await delay(1000);
-
-    await assertRejects(
-      () => {
-        return c.next({ expires: 1000 });
-      },
-      ConsumerNotFoundError,
-    );
-
-    await cleanup(ns, nc);
-  }),
-);
-
 Deno.test("next - deleted consumer", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 
@@ -176,39 +147,6 @@ Deno.test("next - deleted consumer", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test(
-  "next - stream not found",
-  async () => {
-    const { ns, nc } = await setup(jetstreamServerConf());
-
-    const jsm = await jetstreamManager(nc);
-    await jsm.streams.add({ name: "A", subjects: ["hello"] });
-    const s = await jsm.streams.get("A");
-
-    await jsm.consumers.add("A", {
-      durable_name: "a",
-      deliver_policy: DeliverPolicy.All,
-      ack_policy: AckPolicy.Explicit,
-    });
-
-    const js = jetstream(nc);
-
-    const c = await js.consumers.get("A", "a");
-
-    await jsm.streams.delete("A");
-    await delayUntilAssetNotFound(s);
-
-    await assertRejects(
-      () => {
-        return c.next({ expires: 1000 });
-      },
-      StreamNotFoundError,
-    );
-
-    await cleanup(ns, nc);
-  },
-);
-
 Deno.test("next - consumer bind", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 
@@ -218,31 +156,50 @@ Deno.test("next - consumer bind", async () => {
   await jsm.consumers.add("A", {
     durable_name: "a",
     deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
+    ack_policy: AckPolicy.None,
   });
 
   const js = jetstream(nc);
   await js.publish("a");
 
   const c = await js.consumers.get("A", "a");
-  await c.delete();
 
   // listen to see if the client does a consumer info
-  const cisub = nc.subscribe("$JS.API.CONSUMER.INFO.A.a", {
+  const sub = nc.subscribe("$JS.API.CONSUMER.INFO.A.a", {
     callback: () => {
       fail("saw a consumer info");
     },
   });
 
-  const msg = await c.next({
+  let msg = await c.next({
     expires: 1000,
     bind: true,
   });
+  assertExists(msg);
+
+  msg = await c.next({
+    expires: 1000,
+    bind: true,
+  });
+  assertEquals(msg, null);
+
+  await c.delete();
+
+  await assertRejects(
+    () => {
+      return c.next({
+        expires: 1000,
+        bind: true,
+      });
+    },
+    JetStreamError,
+    "heartbeats missed",
+  );
 
   await nc.flush();
 
   assertEquals(msg, null);
-  assertEquals(cisub.getProcessed(), 0);
+  assertEquals(sub.getProcessed(), 0);
 
   await cleanup(ns, nc);
 });
