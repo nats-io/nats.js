@@ -14,13 +14,7 @@
  */
 
 import { nanos } from "@nats-io/nats-core";
-import {
-  AckPolicy,
-  ConsumerDebugEvents,
-  ConsumerEvents,
-  jetstream,
-  jetstreamManager,
-} from "../src/mod.ts";
+import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
 import { assert, assertRejects, fail } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
@@ -67,9 +61,8 @@ Deno.test("409 - max expires", async () => {
   let count = 0;
   (async () => {
     for await (const s of iter.status()) {
-      if (s.type === ConsumerEvents.ExceededLimit) {
-        const data = s.data as { code: number; description: string };
-        if (data.description.includes("exceeded maxrequestexpires")) {
+      if (s.type === "exceeded_limits") {
+        if (s.description.includes("exceeded maxrequestexpires")) {
           count++;
           if (count === 2) {
             iter.close();
@@ -100,9 +93,8 @@ Deno.test("409 - max message size", async () => {
   const msgs = await c.fetch({ max_bytes: 10 });
   (async () => {
     for await (const s of msgs.status()) {
-      if (s.type === ConsumerDebugEvents.Discard) {
-        const data = s.data as { bytesLeft: number };
-        if (data.bytesLeft === 10) {
+      if (s.type === "discard") {
+        if (s.bytesLeft === 10) {
           msgs.stop();
         }
       }
@@ -120,10 +112,9 @@ Deno.test("409 - max message size", async () => {
   });
   let count = 0;
   for await (const s of iter.status()) {
-    if (s.type === ConsumerDebugEvents.Discard) {
-      const data = s.data as { bytesLeft: number };
+    if (s.type === "discard") {
       count++;
-      if (data.bytesLeft === 10) {
+      if (s.bytesLeft === 10) {
         if (count >= 2) {
           iter.close();
         }
@@ -169,9 +160,8 @@ Deno.test("409 - max batch", async () => {
     callback: () => {},
   });
   for await (const s of iter.status()) {
-    if (s.type === ConsumerEvents.ExceededLimit) {
-      const data = s.data as { code: number; description: string };
-      if (data.description.includes("exceeded maxrequestbatch")) {
+    if (s.type === "exceeded_limits") {
+      if (s.description.includes("exceeded maxrequestbatch")) {
         count++;
         if (count >= 2) {
           iter.stop();
@@ -227,9 +217,8 @@ Deno.test("409 - max waiting", async () => {
 
   const iter = await c.consume({ expires: 1_000, callback: () => {} });
   for await (const s of iter.status()) {
-    if (s.type === ConsumerEvents.ExceededLimit) {
-      const data = s.data as { code: number; description: string };
-      if (data.description.includes("exceeded maxwaiting")) {
+    if (s.type === "exceeded_limits") {
+      if (s.description.includes("exceeded maxwaiting")) {
         count++;
         if (count >= 2) {
           iter.stop();

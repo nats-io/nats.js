@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-24",
+  "version": "3.0.0-26",
   "files": [
     "lib/",
     "LICENSE",
@@ -35,7 +35,7 @@
   "description": "obj library - this library implements all the base functionality for NATS objectstore for javascript clients",
   "dependencies": {
     "@nats-io/jetstream": "3.0.0-29",
-    "@nats-io/nats-core": "3.0.0-43"
+    "@nats-io/nats-core": "3.0.0-42"
   },
   "devDependencies": {
     "@types/node": "^22.7.6",

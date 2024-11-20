@@ -17,13 +17,12 @@ import { toJsMsg } from "./jsmsg.ts";
 import type { JsMsg } from "./jsmsg.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
 import type { ConsumerConfig, ConsumerInfo } from "./jsapi_types.ts";
-import { ConsumerDebugEvents, ConsumerEvents } from "./types.ts";
+import type { ConsumerNotification } from "./types.ts";
 
 import type {
   ConsumerAPI,
   ConsumerCallbackFn,
   ConsumerMessages,
-  ConsumerStatus,
   PushConsumer,
   PushConsumerOptions,
 } from "./types.ts";
@@ -54,7 +53,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   consumer: PushConsumerImpl;
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
-  listeners: QueuedIterator<ConsumerStatus>[];
+  listeners: QueuedIterator<ConsumerNotification>[];
   abortOnMissingResource: boolean;
   callback: ConsumerCallbackFn | null;
   ordered: boolean;
@@ -123,11 +122,15 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     ).then((ci) => {
       this.createFails = 0;
       this.consumer._info = ci;
-      this.notify(ConsumerEvents.OrderedConsumerRecreated, ci.name);
+      this.notify({ type: "ordered_consumer_recreated", name: ci.name });
     }).catch((err) => {
       this.createFails++;
       if (err.message === "stream not found") {
-        this.notify(ConsumerEvents.StreamNotFound, this.createFails);
+        this.notify({
+          type: "stream_not_found",
+          name: this.consumer.stream,
+          consumerCreateFails: this.createFails,
+        });
         if (this.abortOnMissingResource) {
           this.stop(err);
           return;
@@ -226,8 +229,8 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       }
     }
   }
-  status(): AsyncIterable<ConsumerStatus> {
-    const iter = new QueuedIteratorImpl<ConsumerStatus>();
+  status(): AsyncIterable<ConsumerNotification> {
+    const iter = new QueuedIteratorImpl<ConsumerNotification>();
     this.listeners.push(iter);
     return iter;
   }
@@ -247,8 +250,8 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       const ms = millis(hbNanos);
       this.monitor = new IdleHeartbeatMonitor(
         ms,
-        (data): boolean => {
-          this.notify(ConsumerEvents.HeartbeatsMissed, data);
+        (count): boolean => {
+          this.notify({ type: "heartbeats_missed", count });
           return false;
         },
         { maxOut: 2 },
@@ -296,17 +299,22 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           if (status.isFlowControlRequest()) {
             this._push(() => {
               msg.respond();
-              this.notify(ConsumerDebugEvents.FlowControl, null);
+              this.notify({ type: "flow_control" });
             });
             return;
           }
 
           if (status.isIdleHeartbeat()) {
-            const natsLastConsumer = msg.headers?.get("Nats-Last-Consumer");
-            const natsLastStream = msg.headers?.get("Nats-Last-Stream");
-            this.notify(ConsumerDebugEvents.Heartbeat, {
-              natsLastConsumer,
-              natsLastStream,
+            const lastConsumerSequence = parseInt(
+              msg.headers?.get("Nats-Last-Consumer") || "0",
+            );
+            const lastStreamSequence = parseInt(
+              msg.headers?.get("Nats-Last-Stream") ?? "0",
+            );
+            this.notify({
+              type: "heartbeat",
+              lastStreamSequence,
+              lastConsumerSequence,
             });
             return;
           }
@@ -315,10 +323,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const description = status.description;
 
           if (status.isConsumerDeleted()) {
-            this.notify(
-              ConsumerEvents.ConsumerDeleted,
-              `${code} ${description}`,
-            );
+            this.notify({ type: "consumer_deleted", code, description });
           }
           if (this.abortOnMissingResource) {
             this._push(() => {
@@ -354,13 +359,13 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     });
   }
 
-  notify(type: ConsumerEvents | ConsumerDebugEvents, data: unknown) {
+  notify(n: ConsumerNotification) {
     if (this.listeners.length > 0) {
       (() => {
         this.listeners.forEach((l) => {
-          const qi = l as QueuedIteratorImpl<ConsumerStatus>;
+          const qi = l as QueuedIteratorImpl<ConsumerNotification>;
           if (!qi.done) {
-            qi.push({ type, data });
+            qi.push(n);
           }
         });
       })();

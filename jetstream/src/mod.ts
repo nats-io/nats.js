@@ -17,8 +17,6 @@ export { jetstream, jetstreamManager } from "./internal_mod.ts";
 export {
   AckPolicy,
   AdvisoryKind,
-  ConsumerDebugEvents,
-  ConsumerEvents,
   DeliverPolicy,
   DirectMsgHeaders,
   DiscardPolicy,
@@ -56,8 +54,8 @@ export type {
   ConsumerInfo,
   ConsumerKind,
   ConsumerMessages,
+  ConsumerNotification,
   Consumers,
-  ConsumerStatus,
   ConsumerUpdateConfig,
   DeleteableConsumer,
   DeliveryInfo,
