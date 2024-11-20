@@ -66,8 +66,8 @@ export function jetstreamExportServerConf(
         jetstream: "enabled",
         users: [{ user: "js", password: "js" }],
         exports: [
-          { service: "$JS.API.>" },
-          { service: "$JS.ACK.>" },
+          { service: "$JS.API.>", response_type: "stream" },
+          { service: "$JS.ACK.>", response_type: "stream" },
           { stream: "A.>", accounts: ["A"] },
         ],
       },

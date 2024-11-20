@@ -13,13 +13,7 @@
  * limitations under the License.
  */
 
-import {
-  cleanup,
-  connect,
-  jetstreamServerConf,
-  NatsServer,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { setupStreamAndConsumer } from "../examples/util.ts";
 import {
   assert,
@@ -34,18 +28,19 @@ import {
   delay,
   errors,
   nanos,
+  type NatsConnectionImpl,
   syncIterator,
-} from "@nats-io/nats-core";
+} from "@nats-io/nats-core/internal";
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 import {
   AckPolicy,
   ConsumerEvents,
+  type ConsumerStatus,
   DeliverPolicy,
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
-
-import type { ConsumerStatus } from "../src/mod.ts";
+import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
 
 Deno.test("consumers - consume", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -103,8 +98,7 @@ Deno.test("consumers - consume callback rejects iter", async () => {
 });
 
 Deno.test("consume - heartbeats", async () => {
-  const servers = await NatsServer.setupDataConnCluster(4);
-  const nc = await connect({ port: servers[0].port });
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -118,20 +112,12 @@ Deno.test("consume - heartbeats", async () => {
     max_messages: 100,
     idle_heartbeat: 1000,
     expires: 30000,
-  });
+  }) as PushConsumerMessagesImpl;
 
-  const buf: Promise<void>[] = [];
-  // stop the data serverss
-  setTimeout(() => {
-    buf.push(servers[1].stop());
-    buf.push(servers[2].stop());
-    buf.push(servers[3].stop());
-  }, 1000);
-
-  await Promise.all(buf);
+  // make heartbeats trigger
+  (nc as NatsConnectionImpl)._resub(iter.sub, "foo");
 
   const d = deferred<ConsumerStatus>();
-
   await (async () => {
     const status = iter.status();
     for await (const s of status) {
@@ -151,8 +137,7 @@ Deno.test("consume - heartbeats", async () => {
   assertEquals(cs.type, ConsumerEvents.HeartbeatsMissed);
   assertEquals(cs.data, 2);
 
-  await nc.close();
-  await NatsServer.stopAll(servers, true);
+  await cleanup(ns, nc);
 });
 
 Deno.test("consume - deleted consumer", async () => {
@@ -445,6 +430,57 @@ Deno.test("consume - consumer bind", async () => {
   assert(hbm > 1);
   assertEquals(cnf, 0);
   assertEquals(cisub.getProcessed(), 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - timer is based on idle_hb", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a");
+  const c = await js.consumers.get("A", "a");
+
+  const iter = await c.fetch({
+    expires: 2000,
+    max_messages: 10,
+  }) as PullConsumerMessagesImpl;
+
+  let hbm = false;
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === ConsumerEvents.HeartbeatsMissed) {
+        hbm = true;
+      }
+    }
+  })().then();
+
+  const buf = [];
+  await assertRejects(
+    async () => {
+      for await (const m of iter) {
+        buf.push(m);
+        m.ack();
+        // make the subscription now fail
+        const nci = nc as NatsConnectionImpl;
+        nci._resub(iter.sub, "foo");
+      }
+    },
+    Error,
+    "heartbeats missed",
+  );
+
+  assertEquals(buf.length, 1);
+  assertEquals(hbm, true);
 
   await cleanup(ns, nc);
 });

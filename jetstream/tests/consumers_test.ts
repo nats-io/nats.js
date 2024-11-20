@@ -25,15 +25,10 @@ import {
   ConsumerEvents,
   DeliverPolicy,
   jetstream,
+  JetStreamError,
   jetstreamManager,
 } from "../src/mod.ts";
-import type {
-  Consumer,
-  ConsumerMessages,
-  ConsumerStatus,
-  PullOptions,
-} from "../src/mod.ts";
-import { connect, NatsServer } from "test_helpers";
+import type { Consumer, ConsumerStatus, PullOptions } from "../src/mod.ts";
 import { deferred, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
@@ -181,9 +176,7 @@ Deno.test("consumers - push consumer on get", async () => {
 });
 
 Deno.test("consumers - fetch heartbeats", async () => {
-  const servers = await NatsServer.setupDataConnCluster(4);
-
-  const nc = await connect({ port: servers[0].port });
+  const { ns, nc } = await setup(jetstreamServerConf());
   const { stream } = await initStream(nc);
   const jsm = await jetstreamManager(nc);
   await jsm.consumers.add(stream, {
@@ -193,21 +186,11 @@ Deno.test("consumers - fetch heartbeats", async () => {
 
   const js = jetstream(nc);
   const c = await js.consumers.get(stream, "a");
-  const iter: ConsumerMessages = await c.fetch({
+  const iter = await c.fetch({
     max_messages: 100,
     idle_heartbeat: 1000,
     expires: 30000,
-  });
-
-  const buf: Promise<void>[] = [];
-  // stop the data serverss
-  setTimeout(() => {
-    buf.push(servers[1].stop());
-    buf.push(servers[2].stop());
-    buf.push(servers[3].stop());
-  }, 1000);
-
-  await Promise.all(buf);
+  }) as PullConsumerMessagesImpl;
 
   const d = deferred<ConsumerStatus>();
 
@@ -215,23 +198,29 @@ Deno.test("consumers - fetch heartbeats", async () => {
     const status = iter.status();
     for await (const s of status) {
       d.resolve(s);
-      iter.stop();
       break;
     }
   })();
 
-  await (async () => {
-    for await (const _r of iter) {
-      // nothing
-    }
-  })();
+  await assertRejects(
+    async () => {
+      for await (const _ of iter) {
+        // ignore
+      }
+    },
+    JetStreamError,
+    "heartbeats missed",
+  );
+
+  const nci = nc as NatsConnectionImpl;
+  // make it not get anything from the server
+  nci._resub(iter.sub, "foo");
 
   const cs = await d;
   assertEquals(cs.type, ConsumerEvents.HeartbeatsMissed);
   assertEquals(cs.data, 2);
 
-  await nc.close();
-  await NatsServer.stopAll(servers, true);
+  await cleanup(ns, nc);
 });
 
 Deno.test("consumers - bad options", async () => {

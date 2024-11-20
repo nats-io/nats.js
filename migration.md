@@ -133,6 +133,8 @@ To use JetStream, you must install and import `@nats/jetstream`.
   found error raises, this simplifies client usage and aligns with other APIs in
   the client.
 - MsgRequest for `Stream#getMessage()` removed deprecated number argument.
+- For non-ordered consumers next/fetch() can will now throw/reject when
+  heartbeats are missed.
 
 ## Changes to KV
 

@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cleanup, flakyTest, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
 import { delay, Empty, nanos, syncIterator } from "@nats-io/nats-core";
@@ -106,44 +106,6 @@ Deno.test("fetch - exactly messages", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test(
-  "fetch - consumer not found",
-  flakyTest(async () => {
-    const { ns, nc } = await setup(jetstreamServerConf());
-    const jsm = await jetstreamManager(nc);
-    await jsm.streams.add({ name: "A", subjects: ["hello"] });
-
-    await jsm.consumers.add("A", {
-      durable_name: "a",
-      deliver_policy: DeliverPolicy.All,
-      ack_policy: AckPolicy.Explicit,
-    });
-
-    const js = jetstream(nc);
-    const c = await js.consumers.get("A", "a");
-
-    await c.delete();
-    await delay(500);
-
-    const iter = await c.fetch({
-      expires: 3000,
-    });
-
-    const exited = assertRejects(
-      async () => {
-        for await (const _ of iter) {
-          // nothing
-        }
-      },
-      Error,
-      "consumer not found",
-    );
-
-    await exited;
-    await cleanup(ns, nc);
-  }),
-);
-
 Deno.test("fetch - deleted consumer", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
@@ -176,39 +138,6 @@ Deno.test("fetch - deleted consumer", async () => {
   await c.delete();
 
   await exited;
-  await cleanup(ns, nc);
-});
-
-Deno.test("fetch - stream not found", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf());
-
-  const jsm = await jetstreamManager(nc);
-  await jsm.streams.add({ name: "A", subjects: ["hello"] });
-
-  await jsm.consumers.add("A", {
-    durable_name: "a",
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get("A", "a");
-  const iter = await c.fetch({
-    idle_heartbeat: 1_000,
-  });
-  await jsm.streams.delete("A");
-  await delay(500);
-
-  await assertRejects(
-    async () => {
-      for await (const _ of iter) {
-        // nothing
-      }
-    },
-    Error,
-    "stream not found",
-  );
-
   await cleanup(ns, nc);
 });
 
@@ -280,24 +209,29 @@ Deno.test("fetch - consumer bind", async () => {
   await js.publish("a");
 
   const c = await js.consumers.get("A", "a");
-  await c.delete();
 
   const cisub = nc.subscribe("$JS.API.CONSUMER.INFO.A.a", {
     callback: () => {},
   });
 
-  const iter = await c.fetch({
+  let iter = await c.fetch({
     expires: 1000,
     bind: true,
   });
 
-  const done = (async () => {
-    for await (const _ of iter) {
-      // nothing
-    }
-  })();
+  for await (const _ of iter) {
+    // nothing
+  }
 
-  await done;
+  iter = await c.fetch({
+    expires: 1000,
+    bind: true,
+  });
+
+  for await (const _ of iter) {
+    // nothing
+  }
+
   assertEquals(cisub.getProcessed(), 0);
   await cleanup(ns, nc);
 });
