@@ -21,18 +21,21 @@ import {
 } from "jsr:@std/assert";
 import {
   AckPolicy,
-  ConsumerDebugEvents,
-  ConsumerEvents,
   DeliverPolicy,
   jetstream,
   JetStreamError,
   jetstreamManager,
 } from "../src/mod.ts";
-import type { Consumer, ConsumerStatus, PullOptions } from "../src/mod.ts";
+import type { Consumer, PullOptions } from "../src/mod.ts";
 import { deferred, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
+import type {
+  ConsumerNotification,
+  Discard,
+  HeartbeatsMissed,
+} from "../src/types.ts";
 
 Deno.test("consumers - min supported server", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
@@ -192,7 +195,7 @@ Deno.test("consumers - fetch heartbeats", async () => {
     expires: 30000,
   }) as PullConsumerMessagesImpl;
 
-  const d = deferred<ConsumerStatus>();
+  const d = deferred<ConsumerNotification>();
 
   await (async () => {
     const status = iter.status();
@@ -217,8 +220,8 @@ Deno.test("consumers - fetch heartbeats", async () => {
   nci._resub(iter.sub, "foo");
 
   const cs = await d;
-  assertEquals(cs.type, ConsumerEvents.HeartbeatsMissed);
-  assertEquals(cs.data, 2);
+  assertEquals(cs.type, "heartbeats_missed");
+  assertEquals((cs as HeartbeatsMissed).count, 2);
 
   await cleanup(ns, nc);
 });
@@ -309,9 +312,8 @@ Deno.test("consumers - discard notifications", async () => {
     }
   })().then();
   for await (const s of iter.status()) {
-    if (s.type === ConsumerDebugEvents.Discard) {
-      const r = s.data as Record<string, number>;
-      assertEquals(r.msgsLeft, 100);
+    if (s.type === "discard") {
+      assertEquals(s.messagesLeft, 100);
       break;
     }
   }
@@ -345,8 +347,8 @@ Deno.test("consumers - threshold_messages", async () => {
   let next: PullOptions[] = [];
   const done = (async () => {
     for await (const s of iter.status()) {
-      if (s.type === ConsumerDebugEvents.Next) {
-        next.push(s.data as PullOptions);
+      if (s.type === "next") {
+        next.push(s.options);
       }
     }
   })().then();
@@ -399,14 +401,14 @@ Deno.test("consumers - threshold_messages bytes", async () => {
   }) as PullConsumerMessagesImpl;
 
   const next: PullOptions[] = [];
-  const discards: { msgsLeft: number; bytesLeft: number }[] = [];
+  const discards: Discard[] = [];
   const done = (async () => {
     for await (const s of iter.status()) {
-      if (s.type === ConsumerDebugEvents.Next) {
-        next.push(s.data as PullOptions);
+      if (s.type === "next") {
+        next.push(s.options);
       }
-      if (s.type === ConsumerDebugEvents.Discard) {
-        discards.push(s.data as { msgsLeft: number; bytesLeft: number });
+      if (s.type === "discard") {
+        discards.push(s);
       }
     }
   })().then();
@@ -433,7 +435,7 @@ Deno.test("consumers - threshold_messages bytes", async () => {
       continue;
     }
     // pull batch - close responses
-    received += next[i].batch - discards[i].msgsLeft;
+    received += next[i].batch - discards[i].messagesLeft;
   }
   // FIXME: this is wrong, making so test passes
   assertEquals(received, 996);

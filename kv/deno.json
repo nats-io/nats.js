@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/kv",
-  "version": "3.0.0-23",
+  "version": "3.0.0-25",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -34,6 +34,6 @@
   },
   "imports": {
     "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-42",
-    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-29"
+    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-31"
   }
 }

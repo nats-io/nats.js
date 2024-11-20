@@ -135,6 +135,9 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - MsgRequest for `Stream#getMessage()` removed deprecated number argument.
 - For non-ordered consumers next/fetch() can will now throw/reject when
   heartbeats are missed.
+- The `ConsumerEvents` and `ConsumerDebugEvents` enum has been removed and
+  replaced with `ConsumerNotification` which have a discriminating field `type`.
+  The status objects provide a more specific API for querying those events.
 
 ## Changes to KV
 
