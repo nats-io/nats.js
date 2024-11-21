@@ -99,6 +99,9 @@ these modules for cross-runtime consumption.
   [Lifecycle and Informational and Events](core/README.md#lifecycle-and-informational-events)
 - Subscription#closed now resolves to void or an Error (it doesn't throw). The
   error is the reason why the subscription closed.
+- RequestStrategy "Jitter" is now called "stall" to adopt the term used by new
+  implementations in other clients and the RequestStrategy enum is now a type
+  alias to simple strings "timer", "count", "stall", "sentinel".
 
 ## Changes in JetStream
 

@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/jetstream",
-  "version": "3.0.0-31",
+  "version": "3.0.0-32",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -33,6 +33,6 @@
     "test": "deno test -A --parallel --reload --trace-leaks --quiet tests/ --import-map=import_map.json"
   },
   "imports": {
-    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-42"
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-45"
   }
 }

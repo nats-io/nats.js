@@ -18,13 +18,7 @@ import type {
   NatsConnectionImpl,
   QueuedIteratorImpl,
 } from "../src/internal_mod.ts";
-import {
-  createInbox,
-  deferred,
-  delay,
-  Empty,
-  RequestStrategy,
-} from "../src/internal_mod.ts";
+import { createInbox, deferred, delay, Empty } from "../src/internal_mod.ts";
 
 import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import { errors } from "../src/errors.ts";
@@ -47,7 +41,7 @@ async function requestManyCount(noMux = false): Promise<void> {
   });
 
   const iter = await nci.requestMany(subj, "hello", {
-    strategy: RequestStrategy.Count,
+    strategy: "count",
     maxWait: 2000,
     maxMessages: 5,
     noMux,
@@ -89,7 +83,7 @@ async function requestManyJitter(noMux = false): Promise<void> {
   const start = Date.now();
 
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.JitterTimer,
+    strategy: "stall",
     maxWait: 5000,
     noMux,
   });
@@ -133,7 +127,7 @@ async function requestManySentinel(
 
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.SentinelMsg,
+    strategy: "sentinel",
     maxWait: 2000,
     noMux,
   });
@@ -180,7 +174,7 @@ async function requestManyTimerNoResponse(noMux = false): Promise<void> {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Timer,
+    strategy: "timer",
     maxWait: 2000,
     noMux,
   });
@@ -219,7 +213,7 @@ async function requestTimerLateResponse(noMux = false): Promise<void> {
   let count = 0;
   const start = Date.now();
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Timer,
+    strategy: "timer",
     maxWait: 2000,
     noMux,
   });
@@ -250,7 +244,7 @@ async function requestManyStopsOnError(noMux = false): Promise<void> {
   const subj = createInbox();
 
   const iter = await nci.requestMany(subj, Empty, {
-    strategy: RequestStrategy.Timer,
+    strategy: "timer",
     maxWait: 2000,
     noMux,
   });
@@ -299,7 +293,7 @@ Deno.test("mreq - pub permission error", async () => {
   })().then();
 
   const iter = await nc.requestMany("q", Empty, {
-    strategy: RequestStrategy.Count,
+    strategy: "count",
     maxMessages: 3,
     maxWait: 2000,
   });
@@ -351,7 +345,7 @@ Deno.test("mreq - sub permission error", async () => {
   await assertRejects(
     async () => {
       const iter = await nc.requestMany("q", Empty, {
-        strategy: RequestStrategy.Count,
+        strategy: "count",
         maxMessages: 3,
         maxWait: 2000,
         noMux: true,
@@ -412,9 +406,9 @@ Deno.test("mreq - lost sub permission", async () => {
   })().then();
 
   const iter = await nc.requestMany("q", Empty, {
-    strategy: RequestStrategy.Count,
+    strategy: "count",
     maxMessages: 100,
-    jitter: 2000,
+    stall: 2000,
     maxWait: 2000,
     noMux: true,
   }) as QueuedIteratorImpl<Msg>;

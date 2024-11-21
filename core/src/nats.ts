@@ -41,7 +41,7 @@ import type {
   Subscription,
   SubscriptionOptions,
 } from "./core.ts";
-import { createInbox, RequestStrategy } from "./core.ts";
+import { createInbox } from "./core.ts";
 import { errors, InvalidArgumentError, TimeoutError } from "./errors.ts";
 
 export class NatsConnectionImpl implements NatsConnection {
@@ -182,7 +182,7 @@ export class NatsConnectionImpl implements NatsConnection {
       return Promise.reject(err);
     }
 
-    opts.strategy = opts.strategy || RequestStrategy.Timer;
+    opts.strategy = opts.strategy || "timer";
     opts.maxWait = opts.maxWait || 1000;
     if (opts.maxWait < 1) {
       return Promise.reject(
@@ -236,19 +236,19 @@ export class NatsConnectionImpl implements NatsConnection {
           // push the message
           callback(null, msg);
           // see if the m request is completed
-          if (opts.strategy === RequestStrategy.Count) {
+          if (opts.strategy === "count") {
             max--;
             if (max === 0) {
               cancel();
             }
           }
-          if (opts.strategy === RequestStrategy.JitterTimer) {
+          if (opts.strategy === "stall") {
             clearTimers();
             timer = setTimeout(() => {
               cancel();
             }, 300);
           }
-          if (opts.strategy === RequestStrategy.SentinelMsg) {
+          if (opts.strategy === "sentinel") {
             if (msg && msg.data.length === 0) {
               cancel();
             }

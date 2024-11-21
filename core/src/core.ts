@@ -299,12 +299,7 @@ export interface RequestOptions {
   reply?: string;
 }
 
-export enum RequestStrategy {
-  Timer = "timer",
-  Count = "count",
-  JitterTimer = "jitterTimer",
-  SentinelMsg = "sentinelMsg",
-}
+export type RequestStrategy = "timer" | "count" | "stall" | "sentinel";
 
 export interface RequestManyOptions {
   strategy: RequestStrategy;
@@ -312,7 +307,7 @@ export interface RequestManyOptions {
   headers?: MsgHdrs;
   maxMessages?: number;
   noMux?: boolean;
-  jitter?: number;
+  stall?: number;
 }
 
 export interface Stats {

@@ -13,11 +13,7 @@
  * limitations under the License.
  */
 import { parse } from "jsr:@std/flags";
-import {
-  connect,
-  RequestStrategy,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import type { ConnectionOptions } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect, type ConnectionOptions } from "@nats-io/transport-deno";
 
 import { humanizeBytes } from "./03_util.ts";
 
@@ -50,7 +46,7 @@ const iter = await nc.requestMany(
   "data",
   JSON.stringify({ max_chunk, size }),
   {
-    strategy: RequestStrategy.SentinelMsg,
+    strategy: "sentinel",
     maxWait: 10000,
   },
 );

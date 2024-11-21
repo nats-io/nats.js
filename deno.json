@@ -71,5 +71,5 @@
     "./obj",
     "./services"
   ],
-  "nodeModulesDir": "auto"
+  "nodeModulesDir": "none"
 }
