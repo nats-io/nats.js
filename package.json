@@ -6,5 +6,8 @@
     "./obj",
     "./services",
     "./transport-node"
-  ]
+  ],
+  "dependencies": {
+    "tweetnacl": "^1.0.3"
+  }
 }

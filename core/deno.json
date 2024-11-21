@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-44",
+  "version": "3.0.0-45",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -35,7 +35,7 @@
     "test": "deno test -A --parallel --reload tests/ --import-map=./import_map.json"
   },
   "imports": {
-    "@nats-io/nkeys": "jsr:@nats-io/nkeys@~2.0.0-2",
+    "@nats-io/nkeys": "jsr:@nats-io/nkeys@~2.0.0-3",
     "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.1-2"
   }
 }
