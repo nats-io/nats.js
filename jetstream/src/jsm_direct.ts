@@ -299,11 +299,11 @@ export class DirectConsumer {
     const src = await this.api.get(this.stream, {
       seq: this.cursor + 1,
       batch: fo.max_messages ?? 100,
-      callback: (done, err, sm) => {
+      callback: (done, sm) => {
         if (!abort) {
           if (done) {
             qi.push(() => {
-              err ? qi.stop(err) : qi.stop();
+              done.err ? qi.stop(done.err) : qi.stop();
             });
           } else {
             if (this.ordered && sm) {
