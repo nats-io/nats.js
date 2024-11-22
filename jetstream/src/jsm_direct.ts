@@ -22,13 +22,14 @@ import type {
 } from "./types.ts";
 import { DirectMsgHeaders } from "./types.ts";
 import type {
+  CallbackFn,
   Codec,
   Msg,
   MsgHdrs,
   NatsConnection,
   QueuedIterator,
   ReviverFn,
-} from "@nats-io/nats-core";
+} from "@nats-io/nats-core/internal";
 import {
   createInbox,
   Empty,
@@ -37,6 +38,7 @@ import {
   TD,
 } from "@nats-io/nats-core/internal";
 import type {
+  CompletionResult,
   DirectBatchOptions,
   DirectLastFor,
   DirectMsgRequest,
@@ -121,32 +123,72 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       throw new Error(`batch direct require server ${min}`);
     }
     validateStreamName(stream);
-
+    const callback = typeof opts.callback === "function" ? opts.callback : null;
     const iter = new QueuedIteratorImpl<StoredMsg>();
+
+    function pushIter(
+      done: CompletionResult | null,
+      d: StoredMsg | CallbackFn,
+    ) {
+      if (done) {
+        iter.push(() => {
+          done.err ? iter.stop(done.err) : iter.stop();
+        });
+        return;
+      }
+      iter.push(d);
+    }
+
+    function pushCb(
+      done: CompletionResult | null,
+      m: StoredMsg | CallbackFn,
+    ) {
+      const cb = callback!;
+      if (typeof m === "function") {
+        m();
+        return;
+      }
+      cb(done, m);
+    }
+
+    if (callback) {
+      iter.iterClosed.then((err) => {
+        push({ err: err ? err : undefined }, {} as StoredMsg);
+        sub.unsubscribe();
+      });
+    }
+
+    const push = callback ? pushCb : pushIter;
+
     const inbox = createInbox(this.nc.options.inboxPrefix);
     let batchSupported = false;
     const sub = this.nc.subscribe(inbox, {
-      timeout: 10_000,
+      timeout: 5000,
       callback: (err, msg) => {
         if (err) {
-          iter.push(() => {
-            iter.stop(err);
-          });
+          iter.stop(err);
           sub.unsubscribe();
           return;
         }
         const status = JetStreamStatus.maybeParseStatus(msg);
         if (status) {
-          iter.push(() => {
-            status.isEndOfBatch() ? iter.stop() : iter.stop(status.toError());
-          });
+          if (status.isEndOfBatch()) {
+            push({}, () => {
+              iter.stop();
+            });
+          } else {
+            const err = status.toError();
+            push({ err }, () => {
+              iter.stop(err);
+            });
+          }
           return;
         }
         if (!batchSupported) {
           if (typeof msg.headers?.get("Nats-Num-Pending") !== "string") {
             // no batch/max_bytes option was provided, so single response
             sub.unsubscribe();
-            iter.push(() => {
+            push({}, () => {
               iter.stop();
             });
           } else {
@@ -154,7 +196,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
           }
         }
 
-        iter.push(new DirectMsgImpl(msg));
+        push(null, new DirectMsgImpl(msg));
       },
     });
 

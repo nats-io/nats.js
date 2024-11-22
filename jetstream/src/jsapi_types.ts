@@ -15,6 +15,7 @@
 
 import type { Nanos } from "@nats-io/nats-core";
 import { nanos } from "@nats-io/nats-core";
+import type { StoredMsg } from "./types.ts";
 
 export interface ApiPaged {
   total: number;
@@ -509,11 +510,14 @@ export type DirectMsgRequest =
   | NextMsgRequest
   | StartTimeMsgRequest;
 
+export type CompletionResult = { err?: Error };
+export type BatchCallback<T> = (done: CompletionResult | null, d: T) => void;
 export type StartSeq = { seq?: number };
 export type StartTime = { start_time?: Date | string };
 export type DirectBatchLimits = {
   batch?: number;
   max_bytes?: number;
+  callback?: BatchCallback<StoredMsg>;
 };
 export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
 export type DirectBatchStartTime = StartTime & DirectBatchLimits;
