@@ -900,7 +900,8 @@ export type StoredMsg = {
 
   /**
    * The number of messages in the stream that are pending for a similar
-   * batch request. 0 if it was not a batch request
+   * batch request. if -1, the number of pending messages is unknown and
+   * the stored message was received outside the context of a batch
    */
   pending: number;
 

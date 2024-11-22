@@ -12,29 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {
-  assertArrayIncludes,
-  assertEquals,
-  assertExists,
-  assertIsError,
-  assertRejects,
-  fail,
-} from "jsr:@std/assert";
+import { assertEquals } from "jsr:@std/assert";
 
-import { deferred, delay } from "@nats-io/nats-core";
-
-import {
-  jetstream,
-  JetStreamError,
-  jetstreamManager,
-  StorageType,
-  type StoredMsg,
-} from "../src/mod.ts";
+import { jetstreamManager, type StoredMsg } from "../src/mod.ts";
 import {
   cleanup,
   jetstreamServerConf,
   notCompatible,
-  notSupported,
   setup,
 } from "test_helpers";
 import { DirectConsumer, DirectStreamAPIImpl } from "../src/jsm_direct.ts";
@@ -57,7 +41,6 @@ Deno.test("direct consumer - next", async () => {
   const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc));
 
   const m = await dc.next();
-  console.log(m);
   assertEquals(m?.seq, 1);
   assertEquals((await dc.next())?.seq, 2);
   assertEquals((await dc.next())?.seq, 3);
@@ -86,20 +69,62 @@ Deno.test("direct consumer - batch", async () => {
 
   let iter = await dc.fetch({ max_messages: 5 });
   let s = 0;
+  let last: StoredMsg | undefined;
   for await (const sm of iter) {
-    console.log(sm);
     assertEquals(sm.seq, ++s);
+    last = sm;
   }
   assertEquals(s, 5);
-  const m = await dc.next();
-  assertEquals(m?.seq, 6);
-  s = 6;
+  assertEquals(last?.pending, 95);
+
+  const n = await dc.next();
+  if (n) {
+    last = n;
+    s = 6;
+  }
+  assertEquals(last?.seq, 6);
 
   iter = await dc.fetch();
   for await (const sm of iter) {
+    last = sm;
     assertEquals(sm.seq, ++s);
   }
   assertEquals(s, 100);
+  assertEquals(last?.pending, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct consumer - consume", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a", "b"],
+    allow_direct: true,
+  });
+
+  const js = jsm.jetstream();
+  const buf = [];
+  for (let i = 0; i < 100; i++) {
+    const subj = Math.random() >= .5 ? "b" : "a";
+    buf.push(js.publish(subj, `${i}`));
+  }
+
+  await Promise.all(buf);
+
+  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc));
+  const iter = await dc.consume({ max_messages: 7 });
+  for await (const m of iter) {
+    if (m.pending === 0) {
+      break;
+    }
+  }
+
+  assertEquals(iter.getProcessed(), 100);
 
   await cleanup(ns, nc);
 });
