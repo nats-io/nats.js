@@ -38,10 +38,10 @@ import {
   TD,
 } from "@nats-io/nats-core/internal";
 import type {
+  CompletionResult,
   DirectBatchOptions,
   DirectLastFor,
   DirectMsgRequest,
-  Done,
   LastForMsgRequest,
 } from "./jsapi_types.ts";
 import { validateStreamName } from "./jsutil.ts";
@@ -127,7 +127,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const iter = new QueuedIteratorImpl<StoredMsg>();
 
     function pushIter(
-      done: Done | null,
+      done: CompletionResult | null,
       d: StoredMsg | CallbackFn,
     ) {
       if (done) {
@@ -140,7 +140,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     }
 
     function pushCb(
-      done: Done | null,
+      done: CompletionResult | null,
       m: StoredMsg | CallbackFn,
     ) {
       const cb = callback!;

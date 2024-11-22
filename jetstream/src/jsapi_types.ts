@@ -510,8 +510,8 @@ export type DirectMsgRequest =
   | NextMsgRequest
   | StartTimeMsgRequest;
 
-export type Done = { err?: Error };
-export type BatchCallback<T> = (done: Done | null, d: T) => void;
+export type CompletionResult = { err?: Error };
+export type BatchCallback<T> = (done: CompletionResult | null, d: T) => void;
 export type StartSeq = { seq?: number };
 export type StartTime = { start_time?: Date | string };
 export type DirectBatchLimits = {
