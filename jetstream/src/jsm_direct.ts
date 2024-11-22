@@ -15,9 +15,14 @@
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import type {
+  ConsumeOptions,
+  Consumer,
+  ConsumerMessages,
   DirectMsg,
   DirectStreamAPI,
+  FetchOptions,
   JetStreamOptions,
+  NextOptions,
   StoredMsg,
 } from "./types.ts";
 import { DirectMsgHeaders } from "./types.ts";
@@ -256,11 +261,77 @@ export class DirectMsgImpl implements DirectMsg {
     return typeof v === "string" ? parseInt(v) : 0;
   }
 
+  get pending(): number {
+    const v = this.header.last(DirectMsgHeaders.NumPending);
+    return typeof v === "string" ? parseInt(v) : 0;
+  }
+
   json<T = unknown>(reviver?: ReviverFn): T {
     return JSON.parse(new TextDecoder().decode(this.data), reviver);
   }
 
   string(): string {
     return TD.decode(this.data);
+  }
+}
+
+export class DirectConsumer {
+  stream: string;
+  api: DirectStreamAPIImpl;
+  cursor: number;
+  ordered: boolean;
+
+  constructor(stream: string, api: DirectStreamAPIImpl) {
+    this.stream = stream;
+    this.api = api;
+    this.cursor = 0;
+    this.ordered = false;
+  }
+
+  consume(opts?: ConsumeOptions): Promise<QueuedIterator<StoredMsg>> {
+    throw new Error("Method not implemented.");
+  }
+
+  async fetch(opts?: FetchOptions): Promise<QueuedIterator<StoredMsg>> {
+    const qi = new QueuedIteratorImpl<StoredMsg>();
+    const fo = opts || {};
+    let abort = false;
+    const src = await this.api.get(this.stream, {
+      seq: this.cursor + 1,
+      batch: fo.max_messages ?? 100,
+      callback: (done, err, sm) => {
+        if (!abort) {
+          if (done) {
+            qi.push(() => {
+              err ? qi.stop(err) : qi.stop();
+            });
+          } else {
+            if (this.ordered && sm) {
+              if (sm.lastSequence !== this.cursor) {
+                qi.push(() => {
+                  qi.stop();
+                });
+                abort = true;
+                qi.stop();
+                src.stop();
+              }
+            }
+            qi.push(sm);
+            this.cursor = sm.seq;
+          }
+        }
+      },
+    });
+
+    return qi;
+  }
+
+  async next(): Promise<StoredMsg | null> {
+    const sm = await this.api.getMessage(this.stream, { seq: this.cursor + 1 });
+    const seq = sm?.seq;
+    if (seq) {
+      this.cursor = seq;
+    }
+    return sm;
   }
 }

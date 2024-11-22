@@ -893,6 +893,18 @@ export type StoredMsg = {
   timestamp: string;
 
   /**
+   * The previous sequence delivered to the client in the current batch.
+   * This value will be 0 if it was not from a batch request
+   */
+  lastSequence: number;
+
+  /**
+   * The number of messages in the stream that are pending for a similar
+   * batch request. 0 if it was not a batch request
+   */
+  pending: number;
+
+  /**
    * Convenience method to parse the message payload as JSON. This method
    * will throw an exception if there's a parsing error;
    * @param reviver
@@ -1032,6 +1044,7 @@ export enum DirectMsgHeaders {
   TimeStamp = "Nats-Time-Stamp",
   Subject = "Nats-Subject",
   LastSequence = "Nats-Last-Sequence",
+  NumPending = "Nats-Num-Pending",
 }
 
 export enum RepublishHeaders {
