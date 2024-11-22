@@ -17,7 +17,9 @@ import {
   assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertIsError,
   assertRejects,
+  fail,
 } from "jsr:@std/assert";
 
 import { deferred, delay } from "@nats-io/nats-core";
@@ -27,6 +29,7 @@ import {
   JetStreamError,
   jetstreamManager,
   StorageType,
+  type StoredMsg,
 } from "../src/mod.ts";
 import {
   cleanup,
@@ -36,9 +39,15 @@ import {
   setup,
 } from "test_helpers";
 
+import { JetStreamStatusError } from "../src/jserrors.ts";
+
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import type { DirectBatchOptions, DirectLastFor } from "../src/jsapi_types.ts";
-import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import {
+  type NatsConnectionImpl,
+  type QueuedIteratorImpl,
+  TimeoutError,
+} from "@nats-io/nats-core/internal";
 
 Deno.test("direct - decoder", async (t) => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
@@ -169,6 +178,96 @@ Deno.test("direct - get", async (t) => {
     assertExists(m);
     assertEquals(m.seq, 24);
     assertEquals(m.subject, "z.a");
+  });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct callback", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  const jsm = await jetstreamManager(nci) as JetStreamManagerImpl;
+
+  await t.step("no stream", async () => {
+    const d = deferred();
+    const iter = await jsm.direct.getBatch("hello", {
+      //@ts-ignore: test
+      seq: 1,
+      callback: (done, err, _) => {
+        assertEquals(done, true);
+        assertIsError(err, TimeoutError);
+        d.resolve();
+      },
+    }) as QueuedIteratorImpl<StoredMsg>;
+
+    const err = await iter.iterClosed;
+    assertIsError(err, TimeoutError);
+  });
+
+  await t.step("message not found", async () => {
+    await jsm.streams.add({
+      name: "empty",
+      subjects: ["empty"],
+      storage: StorageType.Memory,
+      allow_direct: true,
+    });
+
+    const iter = await jsm.direct.getBatch("empty", {
+      //@ts-ignore: test
+      seq: 1,
+      callback: (done, err, _) => {
+        assertEquals(done, true);
+        assertIsError(err, JetStreamStatusError, "message not found");
+      },
+    }) as QueuedIteratorImpl<StoredMsg>;
+
+    const err = await iter.iterClosed;
+    assertIsError(err, JetStreamStatusError, "message not found");
+  });
+
+  await t.step("6 messages", async () => {
+    await jsm.streams.add({
+      name: "A",
+      subjects: ["a.*"],
+      storage: StorageType.Memory,
+      allow_direct: true,
+    });
+
+    const js = jetstream(nc);
+    await Promise.all([
+      js.publish("a.a"),
+      js.publish("a.b"),
+      js.publish("a.c"),
+    ]);
+
+    const buf: StoredMsg[] = [];
+
+    const iter = await jsm.direct.getBatch("A", {
+      batch: 10,
+      seq: 1,
+      callback: (done, err, sm) => {
+        if (done) {
+          if (err) {
+            console.log(err);
+            fail(err.message);
+          }
+          return;
+        }
+        buf.push(sm);
+      },
+    }) as QueuedIteratorImpl<StoredMsg>;
+
+    const err = await iter.iterClosed;
+    assertEquals(err, undefined);
+
+    const subj = buf.map((m) => m.subject);
+    assertEquals(subj.length, 3);
+    assertEquals(subj[0], "a.a");
+    assertEquals(subj[1], "a.b");
+    assertEquals(subj[2], "a.c");
   });
 
   await cleanup(ns, nc);
