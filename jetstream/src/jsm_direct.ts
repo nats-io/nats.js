@@ -41,6 +41,7 @@ import type {
   DirectBatchOptions,
   DirectLastFor,
   DirectMsgRequest,
+  Done,
   LastForMsgRequest,
 } from "./jsapi_types.ts";
 import { validateStreamName } from "./jsutil.ts";
@@ -126,13 +127,12 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     const iter = new QueuedIteratorImpl<StoredMsg>();
 
     function pushIter(
-      done: boolean,
-      err: Error | null,
+      done: Done | null,
       d: StoredMsg | CallbackFn,
     ) {
-      if (done || err) {
+      if (done) {
         iter.push(() => {
-          err ? iter.stop(err) : iter.stop();
+          done.err ? iter.stop(done.err) : iter.stop();
         });
         return;
       }
@@ -140,8 +140,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     }
 
     function pushCb(
-      done: boolean,
-      err: Error | null,
+      done: Done | null,
       m: StoredMsg | CallbackFn,
     ) {
       const cb = callback!;
@@ -149,12 +148,12 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         m();
         return;
       }
-      cb(done, err, m);
+      cb(done, m);
     }
 
     if (callback) {
       iter.iterClosed.then((err) => {
-        push(true, err as Error, {} as StoredMsg);
+        push({ err: err ? err : undefined }, {} as StoredMsg);
         sub.unsubscribe();
       });
     }
@@ -174,12 +173,12 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         const status = JetStreamStatus.maybeParseStatus(msg);
         if (status) {
           if (status.isEndOfBatch()) {
-            push(true, null, () => {
+            push({}, () => {
               iter.stop();
             });
           } else {
             const err = status.toError();
-            push(true, err, () => {
+            push({ err }, () => {
               iter.stop(err);
             });
           }
@@ -189,7 +188,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
           if (typeof msg.headers?.get("Nats-Num-Pending") !== "string") {
             // no batch/max_bytes option was provided, so single response
             sub.unsubscribe();
-            push(true, null, () => {
+            push({}, () => {
               iter.stop();
             });
           } else {
@@ -197,7 +196,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
           }
         }
 
-        push(false, null, new DirectMsgImpl(msg));
+        push(null, new DirectMsgImpl(msg));
       },
     });
 

@@ -196,9 +196,9 @@ Deno.test("direct callback", async (t) => {
     const iter = await jsm.direct.getBatch("hello", {
       //@ts-ignore: test
       seq: 1,
-      callback: (done, err, _) => {
-        assertEquals(done, true);
-        assertIsError(err, TimeoutError);
+      callback: (done, _) => {
+        assertExists(done);
+        assertIsError(done.err, TimeoutError);
         d.resolve();
       },
     }) as QueuedIteratorImpl<StoredMsg>;
@@ -218,9 +218,9 @@ Deno.test("direct callback", async (t) => {
     const iter = await jsm.direct.getBatch("empty", {
       //@ts-ignore: test
       seq: 1,
-      callback: (done, err, _) => {
-        assertEquals(done, true);
-        assertIsError(err, JetStreamStatusError, "message not found");
+      callback: (done, _) => {
+        assertExists(done);
+        assertIsError(done.err, JetStreamStatusError, "message not found");
       },
     }) as QueuedIteratorImpl<StoredMsg>;
 
@@ -248,11 +248,11 @@ Deno.test("direct callback", async (t) => {
     const iter = await jsm.direct.getBatch("A", {
       batch: 10,
       seq: 1,
-      callback: (done, err, sm) => {
+      callback: (done, sm) => {
         if (done) {
-          if (err) {
-            console.log(err);
-            fail(err.message);
+          if (done.err) {
+            console.log(done.err);
+            fail(done.err.message);
           }
           return;
         }
