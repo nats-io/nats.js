@@ -16,19 +16,19 @@
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import type {
   ConsumeOptions,
-  Consumer,
-  ConsumerMessages,
+  ConsumerNotification,
   DirectMsg,
   DirectStreamAPI,
   FetchOptions,
   JetStreamOptions,
-  NextOptions,
   StoredMsg,
 } from "./types.ts";
 import { DirectMsgHeaders } from "./types.ts";
 import type {
   CallbackFn,
   Codec,
+  Deferred,
+  Delay,
   Msg,
   MsgHdrs,
   NatsConnection,
@@ -37,6 +37,8 @@ import type {
 } from "@nats-io/nats-core/internal";
 import {
   createInbox,
+  deferred,
+  delay,
   Empty,
   Feature,
   QueuedIteratorImpl,
@@ -48,9 +50,10 @@ import type {
   DirectLastFor,
   DirectMsgRequest,
   LastForMsgRequest,
+  PullOptions,
 } from "./jsapi_types.ts";
 import { validateStreamName } from "./jsutil.ts";
-import { JetStreamStatus } from "./jserrors.ts";
+import { JetStreamStatus, JetStreamStatusError } from "./jserrors.ts";
 
 export class DirectStreamAPIImpl extends BaseApiClientImpl
   implements DirectStreamAPI {
@@ -263,7 +266,11 @@ export class DirectMsgImpl implements DirectMsg {
 
   get pending(): number {
     const v = this.header.last(DirectMsgHeaders.NumPending);
-    return typeof v === "string" ? parseInt(v) : 0;
+    // if we have a pending - this pending will include the number of messages
+    // in the stream + the end of batch signal - better to remove the eob signal
+    // from the count so the client can estimate how many messages are
+    // in the stream. If a batch is 1 message, the pending is not included.
+    return typeof v === "string" ? parseInt(v) - 1 : -1;
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
@@ -278,59 +285,177 @@ export class DirectMsgImpl implements DirectMsg {
 export class DirectConsumer {
   stream: string;
   api: DirectStreamAPIImpl;
-  cursor: number;
-  ordered: boolean;
+  cursor: { last: number; pending?: number };
+  listeners: QueuedIteratorImpl<ConsumerNotification>[];
 
   constructor(stream: string, api: DirectStreamAPIImpl) {
     this.stream = stream;
     this.api = api;
-    this.cursor = 0;
-    this.ordered = false;
+    this.cursor = { last: 0 };
+    this.listeners = [];
+  }
+
+  status(): AsyncIterable<ConsumerNotification> {
+    const iter = new QueuedIteratorImpl<ConsumerNotification>();
+    this.listeners.push(iter);
+    return iter;
+  }
+
+  notify(n: ConsumerNotification): void {
+    if (this.listeners.length > 0) {
+      (() => {
+        const remove: QueuedIteratorImpl<ConsumerNotification>[] = [];
+        this.listeners.forEach((l) => {
+          const qi = l as QueuedIteratorImpl<ConsumerNotification>;
+          if (!qi.done) {
+            qi.push(n);
+          } else {
+            remove.push(qi);
+          }
+        });
+        this.listeners = this.listeners.filter((l) => !remove.includes(l));
+      })();
+    }
+  }
+
+  debug() {
+    console.log(this.cursor);
   }
 
   consume(opts?: ConsumeOptions): Promise<QueuedIterator<StoredMsg>> {
-    throw new Error("Method not implemented.");
+    let pending: Delay;
+    let requestDone: Deferred<void>;
+    const fo = opts || {};
+    const qi = new QueuedIteratorImpl<StoredMsg>();
+
+    (async () => {
+      while (true) {
+        // if we have nothing pending, slow it down
+        // on the first pull pending doesn't exist so no delay
+        if (this.cursor.pending === 0) {
+          this.notify({
+            type: "debug",
+            code: 0,
+            description: "sleeping for 2500",
+          });
+          pending = delay(2500);
+          await pending;
+        }
+        // check that we are still supposed to be running
+        // pending could have released if the iter closed
+        if (qi.done) {
+          break;
+        }
+        requestDone = deferred<void>();
+        const opts = {
+          batch: fo.max_messages ?? 100,
+          seq: this.cursor.last + 1,
+        } as DirectBatchOptions;
+        this.notify({
+          type: "next",
+          options: Object.assign({}, opts) as PullOptions,
+        });
+
+        opts.callback = (r: CompletionResult | null, sm: StoredMsg): void => {
+          if (r) {
+            // if the current fetch is done, ready to schedule the next
+            if (r.err) {
+              if (r.err instanceof JetStreamStatusError) {
+                this.notify({
+                  type: "debug",
+                  code: r.err.code,
+                  description: r.err.message,
+                });
+              } else {
+                this.notify({
+                  type: "debug",
+                  code: 0,
+                  description: r.err.message,
+                });
+              }
+            }
+            requestDone.resolve();
+          } else if (
+            sm.lastSequence > 0 && sm.lastSequence !== this.cursor.last
+          ) {
+            // need to reset
+            src.stop();
+            requestDone.resolve();
+            this.notify({
+              type: "reset",
+              name: "direct",
+            });
+          } else {
+            qi.push(sm);
+            qi.received++;
+            this.cursor.last = sm.seq;
+            this.cursor.pending = sm.pending;
+          }
+        };
+
+        const src = await this.api.getBatch(
+          this.stream,
+          opts,
+        ) as QueuedIteratorImpl<StoredMsg>;
+
+        qi.iterClosed.then(() => {
+          src.stop();
+          pending?.cancel();
+          requestDone?.resolve();
+        });
+
+        await requestDone;
+      }
+    })().catch((err) => {
+      qi.stop(err);
+    });
+
+    return Promise.resolve(qi);
   }
 
   async fetch(opts?: FetchOptions): Promise<QueuedIterator<StoredMsg>> {
     const qi = new QueuedIteratorImpl<StoredMsg>();
     const fo = opts || {};
-    let abort = false;
     const src = await this.api.get(this.stream, {
-      seq: this.cursor + 1,
+      seq: this.cursor.last + 1,
       batch: fo.max_messages ?? 100,
       callback: (done, sm) => {
-        if (!abort) {
-          if (done) {
-            qi.push(() => {
-              done.err ? qi.stop(done.err) : qi.stop();
-            });
-          } else {
-            if (this.ordered && sm) {
-              if (sm.lastSequence !== this.cursor) {
-                qi.push(() => {
-                  qi.stop();
-                });
-                abort = true;
-                qi.stop();
-                src.stop();
-              }
-            }
-            qi.push(sm);
-            this.cursor = sm.seq;
-          }
+        if (done) {
+          // the server sent error or is done, we are done
+          qi.push(() => {
+            done.err ? qi.stop(done.err) : qi.stop();
+          });
+        } else if (
+          sm.lastSequence > 0 && sm.lastSequence !== this.cursor.last
+        ) {
+          // we are done early because the sequence jumped unexpectedly
+          qi.push(() => {
+            qi.stop();
+          });
+          src.stop();
+        } else {
+          // pass-through to client, and record
+          qi.push(sm);
+          qi.received++;
+          this.cursor.last = sm.seq;
+          this.cursor.pending = sm.pending;
         }
       },
+    });
+    qi.iterClosed.then(() => {
+      src.stop();
     });
 
     return qi;
   }
 
   async next(): Promise<StoredMsg | null> {
-    const sm = await this.api.getMessage(this.stream, { seq: this.cursor + 1 });
+    const sm = await this.api.getMessage(this.stream, {
+      seq: this.cursor.last + 1,
+    });
     const seq = sm?.seq;
     if (seq) {
-      this.cursor = seq;
+      this.cursor.last = seq;
     }
     return sm;
   }
