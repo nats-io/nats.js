@@ -462,6 +462,7 @@ export type IdleHeartbeat = {
    */
   idle_heartbeat?: number;
 };
+
 export type ConsumerCallbackFn = (r: JsMsg) => void;
 export type ConsumeCallback = {
   /**

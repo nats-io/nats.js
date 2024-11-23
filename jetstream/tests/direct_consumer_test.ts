@@ -38,7 +38,7 @@ Deno.test("direct consumer - next", async () => {
     js.publish("a"),
   ]);
 
-  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc));
+  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc), { seq: 0 });
 
   const m = await dc.next();
   assertEquals(m?.seq, 1);
@@ -65,9 +65,13 @@ Deno.test("direct consumer - batch", async () => {
 
   await Promise.all(buf);
 
-  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc));
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 },
+  );
 
-  let iter = await dc.fetch({ max_messages: 5 });
+  let iter = await dc.fetch({ batch: 5 });
   let s = 0;
   let last: StoredMsg | undefined;
   for await (const sm of iter) {
@@ -116,8 +120,12 @@ Deno.test("direct consumer - consume", async () => {
 
   await Promise.all(buf);
 
-  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc));
-  const iter = await dc.consume({ max_messages: 7 });
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 },
+  );
+  const iter = await dc.consume({ batch: 7 });
   for await (const m of iter) {
     if (m.pending === 0) {
       break;

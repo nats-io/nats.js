@@ -15,11 +15,9 @@
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import type {
-  ConsumeOptions,
   ConsumerNotification,
   DirectMsg,
   DirectStreamAPI,
-  FetchOptions,
   JetStreamOptions,
   StoredMsg,
 } from "./types.ts";
@@ -47,10 +45,13 @@ import {
 import type {
   CompletionResult,
   DirectBatchOptions,
+  DirectFetchOptions,
   DirectLastFor,
   DirectMsgRequest,
   LastForMsgRequest,
   PullOptions,
+  StartSeq,
+  StartTime,
 } from "./jsapi_types.ts";
 import { validateStreamName } from "./jsutil.ts";
 import { JetStreamStatus, JetStreamStatusError } from "./jserrors.ts";
@@ -287,12 +288,47 @@ export class DirectConsumer {
   api: DirectStreamAPIImpl;
   cursor: { last: number; pending?: number };
   listeners: QueuedIteratorImpl<ConsumerNotification>[];
+  start: StartSeq & StartTime;
 
-  constructor(stream: string, api: DirectStreamAPIImpl) {
+  constructor(
+    stream: string,
+    api: DirectStreamAPIImpl,
+    start: StartSeq & StartTime,
+  ) {
     this.stream = stream;
     this.api = api;
     this.cursor = { last: 0 };
     this.listeners = [];
+    this.start = start;
+  }
+
+  getOptions(
+    opts: Partial<DirectFetchOptions> = {},
+  ): Partial<DirectBatchOptions> {
+    const dbo: Partial<DirectBatchOptions> = {};
+
+    if (this.cursor.last === 0) {
+      // we have never pulled, honor initial request options
+      if (this.start.seq) {
+        dbo.seq = this.start.seq;
+      } else if (this.start.start_time) {
+        dbo.start_time = this.start.start_time;
+      } else {
+        dbo.seq = 1;
+      }
+    } else {
+      dbo.seq = this.cursor.last + 1;
+    }
+
+    if (opts.batch) {
+      dbo.batch = opts.batch;
+    } else if (opts.max_bytes) {
+      dbo.max_bytes = opts.max_bytes;
+    } else {
+      dbo.batch = 100;
+    }
+
+    return dbo;
   }
 
   status(): AsyncIterable<ConsumerNotification> {
@@ -322,10 +358,9 @@ export class DirectConsumer {
     console.log(this.cursor);
   }
 
-  consume(opts?: ConsumeOptions): Promise<QueuedIterator<StoredMsg>> {
+  consume(opts?: DirectBatchOptions): Promise<QueuedIterator<StoredMsg>> {
     let pending: Delay;
     let requestDone: Deferred<void>;
-    const fo = opts || {};
     const qi = new QueuedIteratorImpl<StoredMsg>();
 
     (async () => {
@@ -347,16 +382,13 @@ export class DirectConsumer {
           break;
         }
         requestDone = deferred<void>();
-        const opts = {
-          batch: fo.max_messages ?? 100,
-          seq: this.cursor.last + 1,
-        } as DirectBatchOptions;
+        const dbo = this.getOptions(opts);
         this.notify({
           type: "next",
           options: Object.assign({}, opts) as PullOptions,
         });
 
-        opts.callback = (r: CompletionResult | null, sm: StoredMsg): void => {
+        dbo.callback = (r: CompletionResult | null, sm: StoredMsg): void => {
           if (r) {
             // if the current fetch is done, ready to schedule the next
             if (r.err) {
@@ -395,7 +427,7 @@ export class DirectConsumer {
 
         const src = await this.api.getBatch(
           this.stream,
-          opts,
+          dbo,
         ) as QueuedIteratorImpl<StoredMsg>;
 
         qi.iterClosed.then(() => {
@@ -413,35 +445,36 @@ export class DirectConsumer {
     return Promise.resolve(qi);
   }
 
-  async fetch(opts?: FetchOptions): Promise<QueuedIterator<StoredMsg>> {
+  async fetch(opts?: DirectBatchOptions): Promise<QueuedIterator<StoredMsg>> {
+    const dbo = this.getOptions(opts);
     const qi = new QueuedIteratorImpl<StoredMsg>();
-    const fo = opts || {};
-    const src = await this.api.get(this.stream, {
-      seq: this.cursor.last + 1,
-      batch: fo.max_messages ?? 100,
-      callback: (done, sm) => {
-        if (done) {
-          // the server sent error or is done, we are done
-          qi.push(() => {
-            done.err ? qi.stop(done.err) : qi.stop();
-          });
-        } else if (
-          sm.lastSequence > 0 && sm.lastSequence !== this.cursor.last
-        ) {
-          // we are done early because the sequence jumped unexpectedly
-          qi.push(() => {
-            qi.stop();
-          });
-          src.stop();
-        } else {
-          // pass-through to client, and record
-          qi.push(sm);
-          qi.received++;
-          this.cursor.last = sm.seq;
-          this.cursor.pending = sm.pending;
-        }
-      },
-    });
+    const src = await this.api.get(
+      this.stream,
+      Object.assign({
+        callback: (done: CompletionResult | null, sm: StoredMsg) => {
+          if (done) {
+            // the server sent error or is done, we are done
+            qi.push(() => {
+              done.err ? qi.stop(done.err) : qi.stop();
+            });
+          } else if (
+            sm.lastSequence > 0 && sm.lastSequence !== this.cursor.last
+          ) {
+            // we are done early because the sequence jumped unexpectedly
+            qi.push(() => {
+              qi.stop();
+            });
+            src.stop();
+          } else {
+            // pass-through to client, and record
+            qi.push(sm);
+            qi.received++;
+            this.cursor.last = sm.seq;
+            this.cursor.pending = sm.pending;
+          }
+        },
+      }, dbo),
+    );
     qi.iterClosed.then(() => {
       src.stop();
     });
