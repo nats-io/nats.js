@@ -528,7 +528,6 @@ export type DirectBatchLimits = {
 export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
 export type DirectBatchStartTime = StartTime & DirectBatchLimits;
 export type DirectBatchOptions = DirectBatchStartSeq & DirectBatchStartTime;
-export type DirectFetchOptions = DirectBatch & DirectMaxBytes;
 
 export type DirectLastFor = {
   multi_last: string[];
