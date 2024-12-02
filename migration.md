@@ -102,6 +102,7 @@ these modules for cross-runtime consumption.
 - RequestStrategy "Jitter" is now called "stall" to adopt the term used by new
   implementations in other clients and the RequestStrategy enum is now a type
   alias to simple strings "timer", "count", "stall", "sentinel".
+- `SHA256` a support type for object store has been moved to @nats-io/obj
 
 ## Changes in JetStream
 

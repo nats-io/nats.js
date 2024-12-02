@@ -15,3 +15,5 @@ export type {
 export { StorageType } from "./types.ts";
 
 export { Objm } from "./objectstore.ts";
+
+export { SHA256, sha256 } from "./sha256.ts";

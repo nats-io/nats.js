@@ -33,13 +33,13 @@ import {
   headers,
   nanos,
   nuid,
-  SHA256,
 } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import type { ObjectInfo, ObjectStoreMeta } from "../src/types.ts";
 import { jetstreamManager, StorageType } from "@nats-io/jetstream";
 import { equals } from "https://deno.land/std@0.221.0/bytes/mod.ts";
 import { digestType, Objm } from "../src/objectstore.ts";
+import { SHA256 } from "../src/sha256.ts";
 
 function readableStreamFrom(data: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
