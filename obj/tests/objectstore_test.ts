@@ -1226,3 +1226,42 @@ Deno.test("os - os rejects in older servers", async () => {
   await t("2.6.3", true);
   await cleanup(ns, nc);
 });
+
+Deno.test("os - objm open", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  const objm = new Objm(nc);
+  await assertRejects(
+    () => {
+      return objm.open("hello");
+    },
+    Error,
+    "object store not found",
+  );
+
+  let obj = await objm.open("hello", false);
+
+  await assertRejects(
+    () => {
+      return obj.get("hello");
+    },
+    Error,
+    "stream not found",
+  );
+
+  await assertRejects(
+    () => {
+      return obj.put({ name: "hi" }, readableStreamFrom(Empty));
+    },
+    Error,
+    "stream not found",
+  );
+
+  await objm.create("hello");
+
+  obj = await objm.open("hello");
+  const oi = await obj.put({ name: "hello" }, readableStreamFrom(Empty));
+  assertEquals(oi.name, "hello");
+
+  await cleanup(ns, nc);
+});
