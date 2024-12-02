@@ -27,7 +27,6 @@ import {
   MsgHdrsImpl,
   nuid,
   QueuedIteratorImpl,
-  SHA256,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -70,6 +69,7 @@ import type {
   ObjectStoreStatus,
   ObjectWatchInfo,
 } from "./types.ts";
+import { SHA256 } from "./sha256.ts";
 
 export const osPrefix = "OBJ_";
 export const digestType = "SHA-256=";
