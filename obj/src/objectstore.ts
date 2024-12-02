@@ -103,7 +103,8 @@ export class Objm {
   }
 
   /**
-   * Creates and opens the specified ObjectStore. If the Object already exists, it opens the existing ObjectStore.
+   * Creates and opens the specified ObjectStore. If the ObjectStore already exists,
+   * it opens the existing ObjectStore.
    * @param name
    * @param opts
    */
@@ -112,6 +113,21 @@ export class Objm {
     opts: Partial<ObjectStoreOptions> = {},
   ): Promise<ObjectStore> {
     return this.#maybeCreate(name, opts);
+  }
+
+  /**
+   * Opens the specified ObjectStore
+   * @param name
+   * @param check - if set to false, it will not check if the ObjectStore exists.
+   */
+  async open(name: string, check = true): Promise<ObjectStore> {
+    const jsm = await this.js.jetstreamManager();
+    const os = new ObjectStoreImpl(name, jsm, this.js);
+    os.stream = objectStoreStreamName(name);
+    if (check) {
+      await os.status();
+    }
+    return Promise.resolve(os);
   }
 
   #maybeCreate(
