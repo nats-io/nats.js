@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-29",
+  "version": "3.0.0-30",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"

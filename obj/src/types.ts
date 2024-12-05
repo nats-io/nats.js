@@ -56,11 +56,11 @@ export type ObjectStoreMeta = {
   metadata?: Record<string, string>;
 };
 
-export interface ObjectWatchInfo extends ObjectInfo {
+export type ObjectWatchInfo = ObjectInfo & {
   isUpdate: boolean;
-}
+};
 
-export interface ObjectInfo extends ObjectStoreMeta {
+export type ObjectInfo = ObjectStoreMeta & {
   /**
    * The name of the bucket where the object is stored.
    */
@@ -93,12 +93,12 @@ export interface ObjectInfo extends ObjectStoreMeta {
    * The revision number for the entry
    */
   revision: number;
-}
+};
 
 /**
  * A link reference
  */
-export interface ObjectLink {
+export type ObjectLink = {
   /**
    * The object store the source data
    */
@@ -108,7 +108,7 @@ export interface ObjectLink {
    * set it is a complete object store reference.
    */
   name?: string;
-}
+};
 
 export type ObjectStoreStatus = {
   /**
@@ -232,7 +232,7 @@ export type ObjectStorePutOpts = {
   previousRevision?: number;
 };
 
-export interface ObjectStore {
+export type ObjectStore = {
   /**
    * Returns the ObjectInfo of the named entry. Or null if the
    * entry doesn't exist.
@@ -342,4 +342,4 @@ export interface ObjectStore {
    * Destroys the object store and all its entries.
    */
   destroy(): Promise<boolean>;
-}
+};
