@@ -1,4 +1,13 @@
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+![nats-core](https://github.com/nats-io/nats.js/actions/workflows/core.yml/badge.svg)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/core/index.html)
+
+[![JSR](https://jsr.io/badges/@nats-io/nats-core)](https://jsr.io/@nats-io/nats-core)
+[![JSR](https://jsr.io/badges/@nats-io/nats-core/score)](https://jsr.io/@nats-io/nats-core)
+
+[![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Fnats-core)](https://www.npmjs.com/package/@nats-io/nats-core)
+![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fnats-core)
+![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Fnats-core)
 
 # Core
 

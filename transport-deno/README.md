@@ -3,7 +3,12 @@
 A Deno transport for the [NATS messaging system](https://nats.io).
 
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
-![Test NATS.deno](https://github.com/nats-io/nats.deno/workflows/NATS.deno/badge.svg)
+![transport-deno](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js)
+
+[![JSR](https://jsr.io/badges/@nats-io/kv)](https://jsr.io/@nats-io/transport-deno)
+[![JSR](https://jsr.io/badges/@nats-io/kv/score)](https://jsr.io/@nats-io/transport-deno)
+
 [![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
 
 This module implements a Deno native TCP transport for the NATS. This library

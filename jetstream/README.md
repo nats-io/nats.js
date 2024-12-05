@@ -1,4 +1,13 @@
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+![jetstream](https://github.com/nats-io/nats.js/actions/workflows/jetstream.yml/badge.svg)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/jetstream/index.html)
+
+[![JSR](https://jsr.io/badges/@nats-io/jetstream)](https://jsr.io/@nats-io/jetstream)
+[![JSR](https://jsr.io/badges/@nats-io/jetstream/score)](https://jsr.io/@nats-io/jetstream)
+
+[![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Fjetstream)](https://www.npmjs.com/package/@nats-io/jetstream)
+![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fjetstream)
+![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Fjetstream)
 
 # JetStream
 
