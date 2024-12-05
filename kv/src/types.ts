@@ -21,7 +21,7 @@ import type {
 } from "@nats-io/jetstream";
 import type { Payload, QueuedIterator } from "@nats-io/nats-core";
 
-export interface KvEntry {
+export type KvEntry = {
   bucket: string;
   key: string;
   value: Uint8Array;
@@ -42,23 +42,23 @@ export interface KvEntry {
    * may throw an exception if there's a conversion error
    */
   string(): string;
-}
+};
 
-export interface KvWatchEntry extends KvEntry {
+export type KvWatchEntry = KvEntry & {
   isUpdate: boolean;
-}
+};
 
 /**
- * An interface for encoding and decoding values
+ * Generic type for encoding and decoding values
  * before they are stored or returned to the client.
  */
-export interface KvCodec<T> {
+export type KvCodec<T> = {
   encode(k: T): T;
 
   decode(k: T): T;
-}
+};
 
-export interface KvCodecs {
+export type KvCodecs = {
   /**
    * Codec for Keys in the KV
    */
@@ -67,9 +67,9 @@ export interface KvCodecs {
    * Codec for Data in the KV
    */
   value: KvCodec<Uint8Array>;
-}
+};
 
-export interface KvLimits {
+export type KvLimits = {
   /**
    * Sets the specified description on the stream of the KV.
    */
@@ -130,9 +130,9 @@ export interface KvLimits {
    * servers 2.10.x and better.
    */
   compression?: boolean;
-}
+};
 
-export interface KvStatus extends KvLimits {
+export type KvStatus = KvLimits & {
   /**
    * The simple name for a Kv - this name is typically prefixed by `KV_`.
    */
@@ -157,9 +157,9 @@ export interface KvStatus extends KvLimits {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
-}
+};
 
-export interface KvOptions extends KvLimits {
+export type KvOptions = KvLimits & {
   /**
    * How long to wait in milliseconds for a response from the KV
    */
@@ -188,7 +188,7 @@ export interface KvOptions extends KvLimits {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
-}
+};
 
 export enum KvWatchInclude {
   /**
@@ -233,7 +233,7 @@ export type KvWatchOptions = {
   resumeFromRevision?: number;
 };
 
-export interface RoKV {
+export type RoKV = {
   /**
    * Returns the KvEntry stored under the key if it exists or null if not.
    * Note that the entry returned could be marked with a "DEL" or "PURGE"
@@ -272,9 +272,9 @@ export interface RoKV {
    * @param filter - default is all keys
    */
   keys(filter?: string | string[]): Promise<QueuedIterator<string>>;
-}
+};
 
-export interface KV extends RoKV {
+export type KV = RoKV & {
   /**
    * Creates a new entry ensuring that the entry does not exist (or
    * the current version is deleted or the key is purged)
@@ -332,22 +332,22 @@ export interface KV extends RoKV {
    * effectively deletes all data stored under the KV.
    */
   destroy(): Promise<boolean>;
-}
+};
 
-export interface KvPutOptions {
+export type KvPutOptions = {
   /**
    * If set the KV must be at the current sequence or the
    * put will fail.
    */
   previousSeq: number;
-}
+};
 
-export interface KvDeleteOptions {
+export type KvDeleteOptions = {
   /**
    * If set the KV must be at the current sequence or the
    * put will fail.
    */
   previousSeq: number;
-}
+};
 
 export const kvPrefix = "KV_";
