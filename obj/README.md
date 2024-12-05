@@ -1,3 +1,5 @@
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/obj/index.html)
+
 # Obj
 
 The obj module implements the NATS ObjectStore functionality using JetStream for

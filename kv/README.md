@@ -1,3 +1,5 @@
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/kv/index.html)
+
 # kv
 
 The kv module implements the NATS KV functionality using JetStream for

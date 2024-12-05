@@ -1,3 +1,5 @@
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/core/index.html)
+
 # Core
 
 The _core_ module implements the _core_ functionality for JavaScript clients:

@@ -1,3 +1,5 @@
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/jetstream/index.html)
+
 # JetStream
 
 The jetstream module implements the JetStream protocol functionality for
