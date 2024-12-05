@@ -49,13 +49,13 @@ export function defaultJsOptions(opts?: JetStreamOptions): JetStreamOptions {
   return extend({ apiPrefix: defaultPrefix, timeout: defaultTimeout }, opts);
 }
 
-export interface StreamNames {
+export type StreamNames = {
   streams: string[];
-}
+};
 
-export interface StreamNameBySubject {
+export type StreamNameBySubject = {
   subject: string;
-}
+};
 
 export class BaseApiClientImpl {
   nc: NatsConnectionImpl;

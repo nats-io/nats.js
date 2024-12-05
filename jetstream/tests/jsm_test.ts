@@ -80,6 +80,7 @@ import {
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
 import { jserrors } from "../src/jserrors.ts";
+import type { WithRequired } from "../../core/src/util.ts";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
@@ -1625,7 +1626,7 @@ Deno.test("jsm - list filter", async () => {
     }),
   );
 
-  const spec: Partial<StreamConfig>[] = [
+  const spec: WithRequired<Partial<StreamConfig>, "name">[] = [
     { name: "s1", subjects: ["foo"] },
     { name: "s2", subjects: ["bar"] },
     { name: "s3", subjects: ["foo.*", "bar.*"] },

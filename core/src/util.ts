@@ -17,6 +17,18 @@ import { TD } from "./encoders.ts";
 import type { Nanos } from "./core.ts";
 import { TimeoutError } from "./errors.ts";
 
+/**
+ * Allows derived type structures to show through
+ */
+export type Prettify<T> = {
+  [K in keyof T]: T[K];
+};
+
+/**
+ * WithRequired is a utility Type allows a type to specify required fields
+ */
+export type WithRequired<T, K extends keyof T> = T & { [P in K]-?: T[P] };
+
 export type ValueResult<T> = {
   isError: false;
   value: T;
