@@ -95,7 +95,7 @@ acknowledgements. The consumer configuration also specifies options to control
 the rate at which messages are presented to the client.
 
 For more information about JetStream, please visit the
-[JetStream repo](https://github.com/nats-io/jetstream).
+[JetStream docs](https://docs.nats.io/nats-concepts/jetstream).
 
 ## Migration
 
