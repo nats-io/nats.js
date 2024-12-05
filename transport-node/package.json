@@ -65,6 +65,6 @@
     "typescript": "5.6.3",
     "@nats-io/jetstream": "3.0.0-34",
     "@nats-io/kv": "3.0.0-28",
-    "@nats-io/obj": "3.0.0-29"
+    "@nats-io/obj": "3.0.0-30"
   }
 }
