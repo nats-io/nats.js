@@ -1,7 +1,7 @@
 {
   "imports": {
-    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-46",
-    "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@~3.0.0-46/internal",
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-47",
+    "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@~3.0.0-47/internal",
     "test_helpers": "../test_helpers/mod.ts",
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@~2.0.0-3",
     "@nats-io/nuid": "jsr:@nats-io/nuid@~2.0.1-2",

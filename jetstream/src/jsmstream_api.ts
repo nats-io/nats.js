@@ -19,6 +19,7 @@ import type {
   NatsConnection,
   NatsConnectionImpl,
   ReviverFn,
+  WithRequired,
 } from "@nats-io/nats-core/internal";
 import {
   createInbox,
@@ -457,7 +458,9 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     }
   }
 
-  async add(cfg = {} as Partial<StreamConfig>): Promise<StreamInfo> {
+  async add(
+    cfg: WithRequired<Partial<StreamConfig>, "name">,
+  ): Promise<StreamInfo> {
     this.checkStreamConfigVersions(cfg);
     validateStreamName(cfg.name);
     cfg.mirror = convertStreamSourceDomain(cfg.mirror);

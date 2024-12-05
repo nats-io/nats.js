@@ -26,9 +26,11 @@ export type {
   Delay,
   ErrorResult,
   Perf,
+  Prettify,
   Result,
   Timeout,
   ValueResult,
+  WithRequired,
 } from "./util.ts";
 export {
   backoff,

@@ -17,22 +17,22 @@ import type { Nanos } from "@nats-io/nats-core";
 import { nanos } from "@nats-io/nats-core";
 import type { StoredMsg } from "./types.ts";
 
-export interface ApiPaged {
+export type ApiPaged = {
   total: number;
   offset: number;
   limit: number;
-}
+};
 
-export interface ApiPagedRequest {
+export type ApiPagedRequest = {
   offset: number;
-}
+};
 
-export interface ApiResponse {
+export type ApiResponse = {
   type: string;
   error?: ApiError;
-}
+};
 
-export interface ApiError {
+export type ApiError = {
   /**
    * HTTP like error code in the 300 to 500 range
    */
@@ -45,12 +45,12 @@ export interface ApiError {
    * The NATS error code unique to each kind of error
    */
   err_code: number;
-}
+};
 
 /**
  * An alternate location to read mirrored data
  */
-export interface StreamAlternate {
+export type StreamAlternate = {
   /**
    * The mirror Stream name
    */
@@ -64,12 +64,12 @@ export interface StreamAlternate {
    * The domain holding the Stream
    */
   domain: string;
-}
+};
 
 /**
  * Stream configuration info
  */
-export interface StreamInfo extends ApiPaged {
+export type StreamInfo = ApiPaged & {
   /**
    * The active configuration for the Stream
    */
@@ -105,9 +105,9 @@ export interface StreamInfo extends ApiPaged {
    * on servers 2.10.x or better
    */
   "ts"?: string;
-}
+};
 
-export interface SubjectTransformConfig {
+export type SubjectTransformConfig = {
   /**
    * The source pattern
    */
@@ -116,14 +116,14 @@ export interface SubjectTransformConfig {
    * The destination pattern
    */
   dest: string;
-}
+};
 
 /**
  * Sets default consumer limits for inactive_threshold and max_ack_pending
  * to consumers of this stream that don't specify specific values.
  * This functionality requires a server 2.10.x or better.
  */
-export interface StreamConsumerLimits {
+export type StreamConsumerLimits = {
   /**
    * The default `inactive_threshold` applied to consumers.
    * This value is specified in nanoseconds. Please use the `nanos()`
@@ -135,9 +135,9 @@ export interface StreamConsumerLimits {
    * The default `max_ack_pending` applied to consumers of the stream.
    */
   "max_ack_pending"?: number;
-}
+};
 
-export interface StreamConfig extends StreamUpdateConfig {
+export type StreamConfig = StreamUpdateConfig & {
   /**
    * A unique name for the Stream
    */
@@ -172,12 +172,12 @@ export interface StreamConfig extends StreamUpdateConfig {
    * as it may disrupt the synchronization logic.
    */
   "first_seq": number;
-}
+};
 
 /**
  * Stream options that can be updated
  */
-export interface StreamUpdateConfig {
+export type StreamUpdateConfig = {
   /**
    * A list of subjects to consume, supports wildcards. Must be empty when a mirror is configured. May be empty when sources are configured.
    */
@@ -286,9 +286,9 @@ export interface StreamUpdateConfig {
    * become an upper bound for all clients.
    */
   "consumer_limits"?: StreamConsumerLimits;
-}
+};
 
-export interface Republish {
+export type Republish = {
   /**
    * The source subject to republish
    */
@@ -301,7 +301,7 @@ export interface Republish {
    * Only send message headers, no bodies
    */
   "headers_only"?: boolean;
-}
+};
 
 export type ExternalStream = {
   /**
@@ -315,7 +315,7 @@ export type ExternalStream = {
   deliver?: string;
 };
 
-export interface StreamSource {
+export type StreamSource = {
   /**
    * Name of the stream source
    */
@@ -349,9 +349,9 @@ export interface StreamSource {
    * This feature only supported on 2.10.x and better.
    */
   subject_transforms?: SubjectTransformConfig[];
-}
+};
 
-export interface Placement {
+export type Placement = {
   /**
    * The cluster to place the stream on
    */
@@ -360,7 +360,7 @@ export interface Placement {
    * Tags matching server configuration
    */
   tags: string[];
-}
+};
 
 export enum RetentionPolicy {
   /**
@@ -529,7 +529,7 @@ export type DirectLastFor = {
   up_to_seq?: number;
 } & DirectBatchLimits;
 
-export interface StreamState {
+export type StreamState = {
   /**
    * Number of messages stored in the Stream
    */
@@ -580,12 +580,12 @@ export interface StreamState {
    * Subjects and their message counts when a {@link StreamInfoRequestOptions | subjects_filter} was set
    */
   subjects?: Record<string, number>;
-}
+};
 
 /**
  * Records messages that were damaged and unrecoverable
  */
-export interface LostStreamData {
+export type LostStreamData = {
   /**
    * The messages that were lost
    */
@@ -594,9 +594,9 @@ export interface LostStreamData {
    * The number of bytes that were lost
    */
   bytes: number;
-}
+};
 
-export interface ClusterInfo {
+export type ClusterInfo = {
   /**
    * The cluster name
    */
@@ -609,9 +609,9 @@ export interface ClusterInfo {
    * The members of the RAFT cluster
    */
   replicas?: PeerInfo[];
-}
+};
 
-export interface PeerInfo {
+export type PeerInfo = {
   /**
    * The server name of the peer
    */
@@ -632,12 +632,12 @@ export interface PeerInfo {
    * How many uncommitted operations this peer is behind the leader
    */
   lag: number;
-}
+};
 
 /**
  * Information about an upstream stream source in a mirror
  */
-export interface StreamSourceInfo {
+export type StreamSourceInfo = {
   /**
    * The name of the Stream being replicated
    */
@@ -659,7 +659,7 @@ export interface StreamSourceInfo {
    * This feature only supported on 2.10.x and better.
    */
   subject_transforms?: SubjectTransformConfig[];
-}
+};
 
 export type PurgeOpts = PurgeBySeq | PurgeTrimOpts | PurgeBySubject;
 export type PurgeBySeq = {
@@ -689,12 +689,12 @@ export type PurgeBySubject = {
   filter: string;
 };
 
-export interface PurgeResponse extends Success {
+export type PurgeResponse = Success & {
   /**
    * Number of messages purged from the Stream
    */
   purged: number;
-}
+};
 
 export enum ConsumerApiAction {
   CreateOrUpdate = "",
@@ -702,13 +702,13 @@ export enum ConsumerApiAction {
   Create = "create",
 }
 
-export interface CreateConsumerRequest {
+export type CreateConsumerRequest = {
   "stream_name": string;
   config: Partial<ConsumerConfig>;
   action?: ConsumerApiAction;
-}
+};
 
-export interface StreamMsgResponse extends ApiResponse {
+export type StreamMsgResponse = ApiResponse & {
   message: {
     subject: string;
     seq: number;
@@ -716,15 +716,15 @@ export interface StreamMsgResponse extends ApiResponse {
     hdrs: string;
     time: string;
   };
-}
+};
 
-export interface SequenceInfo {
+export type SequenceInfo = {
   "consumer_seq": number;
   "stream_seq": number;
   "last_active": Nanos;
-}
+};
 
-export interface ConsumerInfo {
+export type ConsumerInfo = {
   /**
    * The stream hosting the consumer
    */
@@ -792,22 +792,22 @@ export interface ConsumerInfo {
    * is only available on servers 2.11.x or better
    */
   "pause_remaining": Nanos;
-}
+};
 
-export interface ConsumerListResponse extends ApiResponse, ApiPaged {
+export type ConsumerListResponse = ApiResponse & ApiPaged & {
   consumers: ConsumerInfo[];
-}
+};
 
-export interface StreamListResponse extends ApiResponse, ApiPaged {
+export type StreamListResponse = ApiResponse & ApiPaged & {
   streams: StreamInfo[];
-}
+};
 
-export interface Success {
+export type Success = {
   /**
    * True if the operation succeeded
    */
   success: boolean;
-}
+};
 
 export type SuccessResponse = ApiResponse & Success;
 
@@ -819,7 +819,7 @@ export type MsgDeleteRequest = SeqMsgRequest & {
   "no_erase"?: boolean;
 };
 
-export interface AccountLimits {
+export type AccountLimits = {
   /**
    * The maximum amount of Memory storage Stream Messages may consume
    */
@@ -852,9 +852,9 @@ export interface AccountLimits {
    * Indicates if Streams created in this account requires the max_bytes property set
    */
   "max_bytes_required": number;
-}
+};
 
-export interface JetStreamUsage {
+export type JetStreamUsage = {
   /**
    * Memory Storage being used for Stream Message storage
    */
@@ -871,22 +871,22 @@ export interface JetStreamUsage {
    * "Number of active Consumers
    */
   consumers: number;
-}
+};
 
-export interface JetStreamUsageAccountLimits extends JetStreamUsage {
+export type JetStreamUsageAccountLimits = JetStreamUsage & {
   limits: AccountLimits;
-}
+};
 
-export interface JetStreamAccountStats extends JetStreamUsageAccountLimits {
+export type JetStreamAccountStats = JetStreamUsageAccountLimits & {
   api: JetStreamApiStats;
   domain?: string;
   tiers?: {
     R1?: JetStreamUsageAccountLimits;
     R3?: JetStreamUsageAccountLimits;
   };
-}
+};
 
-export interface JetStreamApiStats {
+export type JetStreamApiStats = {
   /**
    * Total number of API requests received for this account
    */
@@ -895,10 +895,9 @@ export interface JetStreamApiStats {
    * "API requests that resulted in an error response"
    */
   errors: number;
-}
+};
 
-export interface AccountInfoResponse
-  extends ApiResponse, JetStreamAccountStats {}
+export type AccountInfoResponse = ApiResponse & JetStreamAccountStats;
 
 export type PriorityGroups = {
   priority_groups?: string[];
@@ -1140,7 +1139,7 @@ export type PullOptions = Partial<OverflowMinPendingAndMinAck> & {
   "idle_heartbeat": number;
 };
 
-export interface DeliveryInfo {
+export type DeliveryInfo = {
   /**
    * JetStream domain of the message if applicable.
    */
@@ -1182,7 +1181,7 @@ export interface DeliveryInfo {
    * True if the message has been redelivered.
    */
   redelivered: boolean;
-}
+};
 
 export enum PubHeaders {
   MsgIdHdr = "Nats-Msg-Id",

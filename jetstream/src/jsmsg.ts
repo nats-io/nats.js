@@ -39,7 +39,7 @@ const SPACE = Uint8Array.of(32);
 /**
  * Represents a message stored in JetStream
  */
-export interface JsMsg {
+export type JsMsg = {
   /**
    * True if the message was redelivered
    */
@@ -143,7 +143,7 @@ export interface JsMsg {
    * may throw an exception if there's a conversion error
    */
   string(): string;
-}
+};
 
 export function toJsMsg(m: Msg, ackTimeout = 5000): JsMsg {
   return new JsMsgImpl(m, ackTimeout);
