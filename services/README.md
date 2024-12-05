@@ -1,3 +1,5 @@
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/services/index.html)
+
 # Services
 
 The Services module introduces a higher-level API for implementing services with
