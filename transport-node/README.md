@@ -2,9 +2,11 @@
 
 A Node.js transport for the [NATS messaging system](https://nats.io).
 
-![GitHub License](https://img.shields.io/github/license/nats-io/nats.js)
-![NATS.js CI](https://github.com/nats-io/nats.js/workflows/NATS.js%20CI/badge.svg)
-![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Ftransport-node)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+![transport-node](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml/badge.svg)
+[![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js)
+
+[![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Ftransport-node)](https://www.npmjs.com/package/@nats-io/transport-node)
 ![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Ftransport-node)
 ![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Ftransport-node)
 
