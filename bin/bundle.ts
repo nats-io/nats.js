@@ -12,13 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { cli } from "jsr:@aricart/cobra@0.0.13";
-import * as esbuild from "npm:esbuild@0.20.2";
+import { cli } from "jsr:@aricart/cobra";
+import * as esbuild from "npm:esbuild";
 // Import the Wasm build on platforms where running subprocesses is not
 // permitted, such as Deno Deploy, or when running without `--allow-run`.
 // import * as esbuild from "https://deno.land/x/esbuild@0.20.2/wasm.js";
 
-import { denoPlugins } from "jsr:@luca/esbuild-deno-loader@^0.11.0";
+import { denoPlugins } from "jsr:@luca/esbuild-deno-loader";
 
 const root = cli({
   use: "bundle javascript/typescript",
