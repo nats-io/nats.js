@@ -149,6 +149,22 @@ Note that only latest versions of the frameworks are known to be compatible, and
 while I know that the samples work, but they may not if you have more complex
 setups (JavaScript ecosystem is an interesting world.).
 
+### CDN
+
+A number of free CDNs are available that make it possible to reference libraries
+distributed via NPM accessible as ESM modules by a simple URL. One such CDN is
+[jsdelivr](https://www.jsdelivr.com/):
+
+```javascript
+import { wsconnect } from "https://esm.run/@nats-io/nats-core";
+import { jetstreamManager } from "https://esm.run/@nats-io/jetstream";
+import { Kvm } from "https://esm.run/@nats-io/kv";
+import { Objm } from "https://esm.run/@nats-io/obj";
+import { Svc } from "https://esm.run/@nats-io/services";
+
+// Add your code here
+```
+
 ### Next.js
 
 Is supported out of the box - if you want to
@@ -188,3 +204,106 @@ That is it - now you can just import `@nats-io/nats-core` and use the WebSocket
 client right out of the box. JetStream, KV and ObjectStore all work as well. For
 a starting point sample
 [take a look at this repo](https://github.com/aricart/nats-react-native)
+
+## Esbuild
+
+While you can [use a CDN](#CDN) to use the libraries in your browser, sometimes
+it is more convenient to package and host your own, here's an example using
+`esbuild`:
+
+```bash
+# install esbuild
+npm install esbuild --global
+```
+
+```bash
+mkdir mynats
+cd mynats
+npm init es6 -y
+# Adding all the nats libraries here, but you can certainly reference the ones
+# you need
+npx jsr @nats-io/nats-core
+npx jsr @nats-io/jetstream
+npx jsr @nats-io/kv
+npx jsr @nats-io/obj
+npx jsr @nats-io/services
+```
+
+Now creating a simple file that re-exports all the libraries, "nats.js"
+
+```javascript
+export * from "@nats-io/nats-core";
+export * from "@nats-io/jetstream";
+export * from "@nats-io/kv";
+export * from "@nats-io/obj";
+export * from "@nats-io/services";
+```
+
+Create your own local bundled version of the libraries:
+
+```bash
+esbuild --format=esm --bundle --minify nats.js > nats.mjs
+```
+
+Create your own NATS application referencing the bundled modules:
+
+```javascript
+import { jetstreamManager, Kvm, Objm, Svcm, wsconnect } from "./nats.mjs";
+
+const nc = await wsconnect({ servers: "demo.nats.io:8443" });
+console.log(`connected: ${nc.getServer()}`);
+
+const jsm = await jetstreamManager(nc);
+let streams = 0;
+for await (const si of jsm.streams.list()) {
+  streams++;
+}
+console.log(`found ${streams} streams`);
+
+let kvs = 0;
+const kvm = new Kvm(nc);
+for await (const k of kvm.list()) {
+  kvs++;
+}
+console.log(`${kvs} streams are kvs`);
+
+let objs = 0;
+const objm = new Objm(nc);
+for await (const k of objm.list()) {
+  objs++;
+}
+console.log(`${objs} streams are object stores`);
+
+let services = 0;
+const svm = new Svcm(nc);
+const c = svm.client();
+for await (const s of await c.ping()) {
+  services++;
+}
+console.log(`${services} services were found`);
+
+await nc.close();
+```
+
+Here's a run of the above in Deno, which is acting just like a browser
+JavaScript runtime:
+
+```bash
+deno run -A index.js
+connected: demo.nats.io:8443
+found 278 streams
+155 streams are kvs
+27 streams are object stores
+0 services were found
+```
+
+or in th browser directly (note the nats.mjs is referenced relative of the
+script file):
+
+```html
+<html>
+  <body>
+    <script type="module" src="./index.js" />
+  </body>
+</html>
+```

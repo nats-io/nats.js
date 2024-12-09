@@ -19,13 +19,12 @@
 >
 > - [nats.deno](https://github.com/nats-io/nats.deno)
 > - [nats.ws](https://github.com/nats-io/nats.ws)
-> - Note that the old nats.js has been
->   renamed to [nats.node](https://github.com/nats-io/nats.node) so that the repository _nats.js_ could be used for this
->   project.
+> - Note that the old nats.js has been renamed to
+>   [nats.node](https://github.com/nats-io/nats.node) so that the repository
+>   _nats.js_ could be used for this project.
 >
-> Changes are well documented and should be easy to locate and implement, and are all described in [migration.md](migration.md).
-
-
+> Changes are well documented and should be easy to locate and implement, and
+> are all described in [migration.md](migration.md).
 
 Welcome to the new NATS.js repository! Beginning with the v3 release of the
 JavaScript clients, the NATS.js repository reorganizes the NATS JavaScript
