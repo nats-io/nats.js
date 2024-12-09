@@ -52,7 +52,7 @@ import {
   ServiceErrorHeader,
   ServiceResponseType,
   ServiceVerb,
-  Svc,
+  Svcm,
 } from "../src/mod.ts";
 
 Deno.test("service - control subject", () => {
@@ -76,7 +76,7 @@ Deno.test("service - control subject", () => {
 
 Deno.test("service - bad name", async () => {
   const { ns, nc } = await setup({}, {});
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const t = async (name: string, msg: string) => {
     await assertRejects(
       async () => {
@@ -100,7 +100,7 @@ Deno.test("service - bad name", async () => {
 Deno.test("service - client", async () => {
   const { ns, nc } = await setup({}, {});
   const subj = createInbox();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
 
   const srv = await svc.add({
     name: "test",
@@ -201,7 +201,7 @@ Deno.test("service - client", async () => {
 
 Deno.test("service - basics", async () => {
   const { ns, nc } = await setup({}, {});
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const conf: ServiceConfig = {
     name: "test",
     version: "0.0.0",
@@ -273,7 +273,7 @@ Deno.test("service - stop error", async () => {
     },
   }, { user: "a", pass: "a" });
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -308,7 +308,7 @@ Deno.test("service - start error", async () => {
     },
   }, { user: "a", pass: "a" });
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -326,7 +326,7 @@ Deno.test("service - start error", async () => {
 
 Deno.test("service - callback error", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -347,7 +347,7 @@ Deno.test("service - callback error", async () => {
 
 Deno.test("service - service error is headers", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -366,7 +366,7 @@ Deno.test("service - service error is headers", async () => {
 
 Deno.test("service - sub stop", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -390,7 +390,7 @@ Deno.test("service - sub stop", async () => {
 
 Deno.test("service - monitoring sub stop", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -414,7 +414,7 @@ Deno.test("service - monitoring sub stop", async () => {
 
 Deno.test("service - custom stats handler", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -447,7 +447,7 @@ Deno.test("service - bad stats handler", async () => {
     statsHandler: "hello world",
   };
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add(config as unknown as ServiceConfig);
   srv.addEndpoint("q", (_err, m) => {
     m.respond();
@@ -463,7 +463,7 @@ Deno.test("service - bad stats handler", async () => {
 
 Deno.test("service - stats handler error", async () => {
   const { ns, nc } = await setup();
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -490,7 +490,7 @@ Deno.test("service - stats handler error", async () => {
 Deno.test("service - reset", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -532,7 +532,7 @@ Deno.test("service - reset", async () => {
 Deno.test("service - iter", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -568,7 +568,7 @@ Deno.test("service - iter", async () => {
 Deno.test("service - iter closed", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const service = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -591,7 +591,7 @@ Deno.test("service - iter closed", async () => {
 Deno.test("service - version must be semver", async () => {
   const { ns, nc } = await setup();
   const test = (v?: string): Promise<Service> => {
-    const svc = new Svc(nc);
+    const svc = new Svcm(nc);
     return svc.add({
       name: "test",
       version: v!,
@@ -628,7 +628,7 @@ Deno.test("service - version must be semver", async () => {
 Deno.test("service - service errors", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "test",
     version: "2.0.0",
@@ -721,7 +721,7 @@ Deno.test("service - service errors", async () => {
 Deno.test("service - stats name respects assigned name", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const test = await svc.add({
     name: "tEsT",
     // @ts-ignore: testing
@@ -742,7 +742,7 @@ Deno.test("service - stats name respects assigned name", async () => {
 Deno.test("service - multiple endpoints", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const ms = await svc.add({
     name: "multi",
     version: "0.0.1",
@@ -778,7 +778,7 @@ Deno.test("service - multiple endpoints", async () => {
 Deno.test("service - multi cb/iterator", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -805,7 +805,7 @@ Deno.test("service - multi cb/iterator", async () => {
 Deno.test("service - group and endpoint names", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -833,7 +833,7 @@ Deno.test("service - group and endpoint names", async () => {
 Deno.test("service - group subs", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -862,7 +862,7 @@ Deno.test("service - group subs", async () => {
 Deno.test("service - metadata", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -888,7 +888,7 @@ Deno.test("service - metadata", async () => {
 Deno.test("service - schema metadata", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -909,7 +909,7 @@ Deno.test("service - schema metadata", async () => {
 Deno.test("service - json reviver", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -937,7 +937,7 @@ Deno.test("service - json reviver", async () => {
 });
 
 async function testQueueName(nc: NatsConnection, subj: string, q?: string) {
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -1013,7 +1013,7 @@ function checkQueueGroup(srv: Service, subj: string, queue: string) {
 Deno.test("service - endpoint default queue group", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -1051,7 +1051,7 @@ Deno.test("service - endpoint default queue group", async () => {
 Deno.test("service - endpoint no queue group", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",
@@ -1087,7 +1087,7 @@ Deno.test("service - endpoint no queue group", async () => {
 Deno.test("service - metadata is not editable", async () => {
   const { ns, nc } = await setup();
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const srv = await svc.add({
     name: "example",
     version: "0.0.1",

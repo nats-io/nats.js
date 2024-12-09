@@ -30,7 +30,7 @@ export {
   ServiceVerb,
 } from "./types.ts";
 
-export class Svc {
+export class Svcm {
   nc: NatsConnection;
 
   constructor(nc: NatsConnection) {

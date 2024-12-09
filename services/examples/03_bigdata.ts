@@ -14,12 +14,12 @@
  */
 
 import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { Svc } from "../src/mod.ts";
+import { Svcm } from "../src/mod.ts";
 import { humanizeBytes } from "./03_util.ts";
 import type { DataRequest } from "./03_util.ts";
 
 const nc = await connect({ servers: "demo.nats.io" });
-const svc = new Svc(nc);
+const svc = new Svcm(nc);
 const srv = await svc.add({
   name: "big-data",
   version: "0.0.1",
