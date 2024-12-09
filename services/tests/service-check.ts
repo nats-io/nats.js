@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { cli } from "https://deno.land/x/cobra@v0.0.9/mod.ts";
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-4";
+import { cli } from "jsr:@aricart/cobra";
+import { connect } from "@nats-io/transport-deno";
 import { collect, parseSemVer } from "@nats-io/nats-core/internal";
 
 import type { NatsConnection } from "@nats-io/nats-core/internal";
@@ -24,7 +24,7 @@ import {
   ServiceError,
   ServiceResponseType,
   ServiceVerb,
-  Svc,
+  Svcm,
 } from "../src/mod.ts";
 
 import type { ServiceClientImpl } from "../src/serviceclient.ts";
@@ -136,7 +136,7 @@ async function checkPing(nc: NatsConnection, name: string) {
 }
 
 async function invoke(nc: NatsConnection, name: string): Promise<void> {
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const sc = svc.client();
   const infos = await collect(await sc.info(name));
 
@@ -199,7 +199,7 @@ async function check<T extends ServiceIdentity>(
     }
   };
 
-  const svc = new Svc(nc);
+  const svc = new Svcm(nc);
   const sc = svc.client() as ServiceClientImpl;
   // all
   let responses = filter(

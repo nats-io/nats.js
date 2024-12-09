@@ -222,7 +222,7 @@ instance of Svc, which allows you to `add()` a service and create a
 ServiceClient `client(nc)`:
 
 ```typescript
-const svc = new Svc(nc);
+const svc = new Svcm(nc);
 const service = await svc.add({
   name: "max",
   version: "0.0.1",
@@ -234,4 +234,4 @@ const service = await svc.add({
 ```
 
 - `services` property has been removed. Install and import the `Services`
-  library, and call `services(nc: NatsConnection)`
+  library, and call `Svcm(nc: NatsConnection)`

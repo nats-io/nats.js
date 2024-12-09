@@ -14,14 +14,14 @@
  */
 
 import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import { ServiceError, Svc } from "../src/mod.ts";
+import { ServiceError, Svcm } from "../src/mod.ts";
 import type { ServiceMsg } from "../src/mod.ts";
 
 // connect to NATS on demo.nats.io
 const nc = await connect({ servers: ["demo.nats.io"] });
 
 // create a service - using the statsHandler and decoder
-const svc = new Svc(nc);
+const svc = new Svcm(nc);
 const calc = await svc.add({
   name: "calc",
   version: "0.0.1",
