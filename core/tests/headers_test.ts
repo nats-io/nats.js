@@ -29,7 +29,12 @@ import type {
   RequestOptions,
 } from "../src/internal_mod.ts";
 import { NatsServer } from "../../test_helpers/launcher.ts";
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertThrows,
+} from "jsr:@std/assert";
 import { TestDispatcher } from "./parser_test.ts";
 import { cleanup, setup } from "test_helpers";
 import { errors } from "../src/errors.ts";
@@ -442,4 +447,67 @@ Deno.test("headers - malformed headers", async () => {
 
   await done;
   await cleanup(ns, nc);
+});
+
+Deno.test("headers - iterator", () => {
+  const h = headers();
+  h.set("a", "aa");
+  h.set("b", "bb");
+  h.set("c", "cc");
+
+  let c = 0;
+  const abc = ["a", "b", "c"];
+  for (const tuple of h) {
+    const letter = abc[c];
+    assertEquals(tuple[0], letter);
+    assertEquals(tuple[1][0], `${letter}${letter}`);
+    c++;
+  }
+  assertEquals(c, 3);
+});
+
+Deno.test("headers - last", () => {
+  const h = headers();
+  h.set("a", "aa");
+  h.append("b", "bb");
+  h.append("b", "bbb");
+
+  assertEquals(h.last("foo"), "");
+  assertEquals(h.last("a"), "aa");
+  assertEquals(h.last("b"), "bbb");
+});
+
+Deno.test("headers - record", () => {
+  const h = headers();
+  h.set("a", "aa");
+  h.append("b", "bb");
+  h.append("b", "bbb");
+
+  const r = (h as MsgHdrsImpl).toRecord();
+  assertEquals(r, {
+    a: ["aa"],
+    b: ["bb", "bbb"],
+  });
+
+  const hr = MsgHdrsImpl.fromRecord(r) as MsgHdrsImpl;
+  assertEquals(hr.get("foo"), "");
+  assertEquals(h.get("a"), "aa");
+  assertEquals(h.get("b"), "bb");
+  assertEquals(h.last("b"), "bbb");
+
+  assert(hr.equals(h as MsgHdrsImpl));
+});
+
+Deno.test("headers - not equals", () => {
+  const h = headers() as MsgHdrsImpl;
+  h.set("a", "aa");
+  h.append("b", "bb");
+  h.append("b", "bbb");
+
+  assertFalse(h.equals(headers() as MsgHdrsImpl));
+});
+
+Deno.test("headers - empty", () => {
+  const h = headers() as MsgHdrsImpl;
+  assertEquals(h.toString(), "");
 });

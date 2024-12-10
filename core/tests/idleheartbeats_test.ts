@@ -14,7 +14,12 @@
  */
 
 import { deferred, IdleHeartbeatMonitor } from "../src/internal_mod.ts";
-import { assert, assertEquals } from "jsr:@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+} from "jsr:@std/assert";
 
 Deno.test("idleheartbeat - basic", async () => {
   const d = deferred<number>();
@@ -102,4 +107,39 @@ Deno.test("idleheartbeat - timeout autocancel", async () => {
   assertEquals(h.timer, 0);
   assertEquals(h.autoCancelTimer, 0);
   assert(h.count >= 6, `${h.count} >= 6`);
+});
+
+Deno.test("idleheartbeat - change", () => {
+  const h = new IdleHeartbeatMonitor(2000, (_v: number): boolean => {
+    return true;
+  }, { maxOut: 2, cancelAfter: 2000 });
+
+  assertEquals(h.cancelAfter, 2000);
+  assertEquals(h.maxOut, 2);
+  assertEquals(h.interval, 2000);
+  assertExists(h.timer);
+  const old = h.timer;
+
+  h._change(3000, 3000, 4);
+  assertEquals(h.cancelAfter, 3000);
+  assertEquals(h.maxOut, 4);
+  assertEquals(h.interval, 3000);
+  assertNotEquals(old, h.timer);
+
+  h.cancel();
+});
+
+Deno.test("idleheartbeat - restart", () => {
+  const h = new IdleHeartbeatMonitor(2000, (_v: number): boolean => {
+    return true;
+  }, { maxOut: 2, cancelAfter: 2000 });
+
+  assertExists(h.timer);
+  const old = h.timer;
+
+  h.restart();
+  assertExists(h.timer);
+  assertNotEquals(old, h.timer);
+
+  h.cancel();
 });

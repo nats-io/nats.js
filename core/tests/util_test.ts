@@ -12,8 +12,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals } from "jsr:@std/assert";
-import { backoff, SimpleMutex } from "../src/internal_mod.ts";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert";
+import {
+  backoff,
+  deadline,
+  debugDeferred,
+  deferred,
+  millis,
+  nanos,
+  SimpleMutex,
+} from "../src/util.ts";
+import { TimeoutError } from "../src/errors.ts";
 
 Deno.test("util - simple mutex", () => {
   const r = new SimpleMutex(1);
@@ -41,4 +50,29 @@ Deno.test("util - backoff", () => {
   assert(n >= 100 && 300 >= n, `${n} >= 100 && 300 >= ${n}`);
   n = b.backoff(3);
   assert(n >= 100 && 300 >= n, `${n} >= 100 && 300 >= ${n}`);
+});
+
+Deno.test("util - deadline", async () => {
+  await assertRejects(() => {
+    return deadline(deferred(), 100);
+  }, TimeoutError);
+});
+
+Deno.test("util - nanos", () => {
+  assertEquals(nanos(1000), 1000000000);
+  assertEquals(millis(1000000000), 1000);
+});
+
+Deno.test("util - backoff bad arg", () => {
+  //@ts-expect-error: test
+  const b = backoff("hello");
+  assert(b.backoff(1) > 0);
+});
+
+Deno.test("util - debug deferred", async () => {
+  await assertRejects(() => {
+    const d = debugDeferred();
+    d.reject("hello world");
+    return d;
+  });
 });

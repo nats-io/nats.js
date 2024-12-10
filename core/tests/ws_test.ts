@@ -17,6 +17,7 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertFalse,
   assertRejects,
 } from "jsr:@std/assert";
 
@@ -160,6 +161,19 @@ Deno.test(
   },
 );
 
+Deno.test("ws - basics", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+  }) as NatsConnectionImpl;
+
+  const t = nc.protocol.transport;
+  assertFalse(t.isClosed);
+  await nc.close();
+  assertEquals(t.isClosed, true);
+  await ns.stop();
+});
+
 Deno.test("ws - url parse", () => {
   const u = [
     { in: "foo", expect: "wss://foo:443/" },
@@ -187,4 +201,11 @@ Deno.test("ws - url parse", () => {
     const out = wsUrlParseFn(tc.in);
     assertEquals(out, tc.expect, `test ${tc.in}`);
   });
+});
+
+Deno.test("ws - wsURLParseFn", () => {
+  assertEquals(wsUrlParseFn("localhost", true), "wss://localhost:443/");
+  assertEquals(wsUrlParseFn("localhost", false), "ws://localhost:80/");
+  assertEquals(wsUrlParseFn("http://localhost"), "ws://localhost:80/");
+  assertEquals(wsUrlParseFn("https://localhost"), "wss://localhost:443/");
 });
