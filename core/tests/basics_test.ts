@@ -37,6 +37,7 @@ import {
 import type {
   Msg,
   MsgHdrs,
+  MsgImpl,
   NatsConnectionImpl,
   Payload,
   Publisher,
@@ -1600,6 +1601,39 @@ Deno.test("basics - slow", async () => {
   await delay(100);
   assertEquals(sub.getPending(), 11);
   assertEquals(slow, 1);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - msg sids", async () => {
+  const { ns, nc } = await setup();
+  const lock = Lock(2);
+
+  let first: Msg;
+  let second: Msg;
+  const sub = nc.subscribe("test", {
+    callback: (_, msg) => {
+      first = msg;
+      lock.unlock();
+    },
+  });
+
+  const sub2 = nc.subscribe(">", {
+    callback: (_, msg) => {
+      second = msg;
+      lock.unlock();
+    },
+  });
+
+  nc.publish("test", "hello", { reply: "foo" });
+
+  await lock;
+  assertEquals(first!.sid, sub.getID());
+  assertEquals(
+    (first! as MsgImpl).size(),
+    "hello".length + "test".length + "foo".length,
+  );
+  assertEquals(second!.sid, sub2.getID());
 
   await cleanup(ns, nc);
 });

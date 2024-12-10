@@ -15,6 +15,13 @@ import {
   writeAll,
 } from "../src/internal_mod.ts";
 
+import {
+  append,
+  assert as buffer_assert,
+  AssertionError,
+  concat,
+} from "../src/denobuffer.ts";
+
 // N controls how many iterations of certain checks are performed.
 const N = 100;
 let testBytes: Uint8Array | null;
@@ -381,4 +388,46 @@ Deno.test("buffer - bytes copy false grow exact bytes", () => {
 
   assertEquals(actualBytes.byteLength, bufSize);
   assertEquals(actualBytes.buffer.byteLength, actualBytes.byteLength);
+});
+
+Deno.test("buffer - concat", () => {
+  let buf = concat();
+  assertEquals(buf.length, 0);
+
+  const a = new Uint8Array([1]);
+  const b = new Uint8Array([2]);
+
+  buf = concat(undefined, b);
+  assertEquals(buf.length, 1);
+  assertEquals(buf[0], 2);
+
+  buf = concat(a);
+  assertEquals(buf.length, 1);
+  assertEquals(buf[0], 1);
+
+  buf = concat(a, b);
+  assertEquals(buf.length, 2);
+  assertEquals(buf[0], 1);
+  assertEquals(buf[1], 2);
+});
+
+Deno.test("buffer - append", () => {
+  let buf = append(new Uint8Array(0), 1);
+  assertEquals(buf.length, 1);
+  assertEquals(buf[0], 1);
+
+  buf = append(buf, 2);
+  assertEquals(buf.length, 2);
+  assertEquals(buf[0], 1);
+  assertEquals(buf[1], 2);
+});
+
+Deno.test("buffer - assert", () => {
+  assertThrows(
+    () => {
+      buffer_assert(false, "test");
+    },
+    AssertionError,
+    "test",
+  );
 });
