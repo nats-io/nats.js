@@ -103,6 +103,8 @@ these modules for cross-runtime consumption.
   implementations in other clients and the RequestStrategy enum is now a type
   alias to simple strings "timer", "count", "stall", "sentinel".
 - `SHA256` a support type for object store has been moved to @nats-io/obj
+- `Base64Codec`, `Base64UrlCodec`, `Base64UrlPaddedCodec` support types for
+  object store have been moved to @nats-io/obj.
 
 ## Changes in JetStream
 
