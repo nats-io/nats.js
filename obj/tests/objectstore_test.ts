@@ -27,7 +27,6 @@ import {
   equal,
 } from "jsr:@std/assert";
 import {
-  Base64UrlPaddedCodec,
   DataBuffer,
   Empty,
   headers,
@@ -40,6 +39,7 @@ import { jetstreamManager, StorageType } from "@nats-io/jetstream";
 import { equals } from "https://deno.land/std@0.221.0/bytes/mod.ts";
 import { digestType, Objm } from "../src/objectstore.ts";
 import { SHA256 } from "../src/sha256.ts";
+import { Base64UrlPaddedCodec } from "../src/base64.ts";
 
 function readableStreamFrom(data: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
