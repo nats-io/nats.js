@@ -19,7 +19,6 @@ import type {
   QueuedIterator,
 } from "@nats-io/nats-core/internal";
 import {
-  Base64UrlPaddedCodec,
   DataBuffer,
   deferred,
   Feature,
@@ -70,6 +69,7 @@ import type {
   ObjectWatchInfo,
 } from "./types.ts";
 import { SHA256 } from "./sha256.ts";
+import { Base64UrlPaddedCodec } from "./base64.ts";
 
 export const osPrefix = "OBJ_";
 export const digestType = "SHA-256=";

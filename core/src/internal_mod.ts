@@ -140,8 +140,6 @@ export { IdleHeartbeatMonitor } from "./idleheartbeat_monitor.ts";
 
 export { isIPV4OrHostname, Servers } from "./servers.ts";
 
-export { Base64Codec, Base64UrlCodec, Base64UrlPaddedCodec } from "./base64.ts";
-
 export { wsconnect, wsUrlParseFn } from "./ws_transport.ts";
 
 export {

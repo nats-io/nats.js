@@ -14,4 +14,10 @@ export type {
 
 export { StorageType } from "./internal_mod.ts";
 
-export { Objm } from "./objectstore.ts";
+export { Objm } from "./internal_mod.ts";
+
+export {
+  Base64Codec,
+  Base64UrlCodec,
+  Base64UrlPaddedCodec,
+} from "./internal_mod.ts";
