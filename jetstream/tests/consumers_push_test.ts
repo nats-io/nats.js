@@ -1,12 +1,20 @@
 import {
   AckPolicy,
   DeliverPolicy,
+  isPullConsumer,
+  isPushConsumer,
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
+import { isBoundPushConsumerOptions } from "../src/types.ts";
 import { cleanup, jetstreamServerConf, Lock, setup } from "test_helpers";
 import { nanos } from "@nats-io/nats-core";
-import { assert, assertEquals, assertExists } from "jsr:@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertFalse,
+} from "jsr:@std/assert";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
 import { delay } from "@nats-io/nats-core/internal";
 
@@ -21,16 +29,21 @@ Deno.test("push consumers - basics", async () => {
     js.publish("A.c"),
   ]);
 
-  await jsm.consumers.add("A", {
+  const opts = {
     durable_name: "B",
     deliver_subject: "hello",
     deliver_policy: DeliverPolicy.All,
     idle_heartbeat: nanos(5000),
     flow_control: true,
     ack_policy: AckPolicy.Explicit,
-  });
+  };
+  assert(isBoundPushConsumerOptions(opts));
+  await jsm.consumers.add("A", opts);
 
   const c = await js.consumers.getPushConsumer("A", "B");
+  assert(isPushConsumer(c));
+  assertFalse(isPullConsumer(c));
+
   let info = await c.info(true);
   assertEquals(info.config.deliver_group, undefined);
 

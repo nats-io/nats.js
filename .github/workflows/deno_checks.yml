@@ -36,7 +36,7 @@ jobs:
           CI: true
         run: |
           deno task test-${{ matrix.module }}
-          deno coverage --include=${{ matrix.module}}/src ./coverage --lcov > ./coverage/out.lcov
+          deno task coverage
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2

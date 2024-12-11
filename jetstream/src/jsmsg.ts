@@ -18,23 +18,21 @@ import type {
   MsgHdrs,
   MsgImpl,
   ProtocolHandler,
-  RequestOptions,
 } from "@nats-io/nats-core/internal";
 import {
-  DataBuffer,
   deferred,
   millis,
   nanos,
   RequestOne,
 } from "@nats-io/nats-core/internal";
-import type { DeliveryInfo, PullOptions } from "./jsapi_types.ts";
+import type { DeliveryInfo } from "./jsapi_types.ts";
 
 export const ACK = Uint8Array.of(43, 65, 67, 75);
 const NAK = Uint8Array.of(45, 78, 65, 75);
 const WPI = Uint8Array.of(43, 87, 80, 73);
-const NXT = Uint8Array.of(43, 78, 88, 84);
+const _NXT = Uint8Array.of(43, 78, 88, 84);
 const TERM = Uint8Array.of(43, 84, 69, 82, 77);
-const SPACE = Uint8Array.of(32);
+const _SPACE = Uint8Array.of(32);
 
 /**
  * Represents a message stored in JetStream
@@ -100,19 +98,19 @@ export type JsMsg = {
    */
   working(): void;
 
-  /**
-   * !! this is an experimental feature - and could be removed
-   *
-   * next() combines ack() and pull(), requires the subject for a
-   * subscription processing to process a message is provided
-   * (can be the same) however, because the ability to specify
-   * how long to keep the request open can be specified, this
-   * functionality doesn't work well with iterators, as an error
-   * (408s) are expected and needed to re-trigger a pull in case
-   * there was a timeout. In an iterator, the error will close
-   * the iterator, requiring a subscription to be reset.
-   */
-  next(subj: string, ro?: Partial<PullOptions>): void;
+  // /**
+  //  * !! this is an experimental feature - and could be removed
+  //  *
+  //  * next() combines ack() and pull(), requires the subject for a
+  //  * subscription processing to process a message is provided
+  //  * (can be the same) however, because the ability to specify
+  //  * how long to keep the request open can be specified, this
+  //  * functionality doesn't work well with iterators, as an error
+  //  * (408s) are expected and needed to re-trigger a pull in case
+  //  * there was a timeout. In an iterator, the error will close
+  //  * the iterator, requiring a subscription to be reset.
+  //  */
+  // next(subj: string, ro?: Partial<PullOptions>): void;
 
   /**
    * Indicate to the JetStream server that processing of the message
@@ -310,18 +308,18 @@ export class JsMsgImpl implements JsMsg {
     this.doAck(WPI);
   }
 
-  next(subj: string, opts: Partial<PullOptions> = { batch: 1 }) {
-    const args: Partial<PullOptions> = {};
-    args.batch = opts.batch || 1;
-    args.no_wait = opts.no_wait || false;
-    if (opts.expires && opts.expires > 0) {
-      args.expires = nanos(opts.expires);
-    }
-    const data = new TextEncoder().encode(JSON.stringify(args));
-    const payload = DataBuffer.concat(NXT, SPACE, data);
-    const reqOpts = subj ? { reply: subj } as RequestOptions : undefined;
-    this.msg.respond(payload, reqOpts);
-  }
+  // next(subj: string, opts: Partial<PullOptions> = { batch: 1 }) {
+  //   const args: Partial<PullOptions> = {};
+  //   args.batch = opts.batch || 1;
+  //   args.no_wait = opts.no_wait || false;
+  //   if (opts.expires && opts.expires > 0) {
+  //     args.expires = nanos(opts.expires);
+  //   }
+  //   const data = new TextEncoder().encode(JSON.stringify(args));
+  //   const payload = DataBuffer.concat(NXT, SPACE, data);
+  //   const reqOpts = subj ? { reply: subj } as RequestOptions : undefined;
+  //   this.msg.respond(payload, reqOpts);
+  // }
 
   term(reason = "") {
     let term = TERM;

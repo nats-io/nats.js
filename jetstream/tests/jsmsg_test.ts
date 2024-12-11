@@ -16,6 +16,7 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertNotEquals,
   assertRejects,
   fail,
 } from "jsr:@std/assert";
@@ -317,6 +318,32 @@ Deno.test("jsmsg - time and timestamp", async () => {
   const date = m?.time;
   assertExists(date);
   assertEquals(date.toISOString(), m?.timestamp!);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsmsg - reply/sid", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a.>"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a.a", "hello");
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    ack_policy: AckPolicy.None,
+  });
+  const oc = await js.consumers.get("A");
+  const m = await oc.next() as JsMsgImpl;
+  assertNotEquals(m.reply, "");
+  assert(m.sid > 0);
+  assertEquals(m.data, new TextEncoder().encode("hello"));
 
   await cleanup(ns, nc);
 });

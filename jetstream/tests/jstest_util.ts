@@ -13,23 +13,11 @@
  * limitations under the License.
  */
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
-import type { JsMsg, PubAck, StreamConfig } from "../src/mod.ts";
+import type { PubAck, StreamConfig } from "../src/mod.ts";
 
-import { assert } from "jsr:@std/assert";
 import { Empty, nanos, nuid } from "@nats-io/nats-core";
 
-import type { NatsConnection, QueuedIterator } from "@nats-io/nats-core";
-
-export async function consume(iter: QueuedIterator<JsMsg>): Promise<JsMsg[]> {
-  const buf: JsMsg[] = [];
-  await (async () => {
-    for await (const m of iter) {
-      m.ack();
-      buf.push(m);
-    }
-  })();
-  return buf;
-}
+import type { NatsConnection } from "@nats-io/nats-core";
 
 export async function initStream(
   nc: NatsConnection,
@@ -94,55 +82,4 @@ export function fill(
   });
 
   return Promise.all(a);
-}
-
-export function time(): Mark {
-  return new Mark();
-}
-
-export class Mark {
-  measures: [number, number][];
-  constructor() {
-    this.measures = [];
-    this.measures.push([Date.now(), 0]);
-  }
-
-  mark() {
-    const now = Date.now();
-    const idx = this.measures.length - 1;
-    if (this.measures[idx][1] === 0) {
-      this.measures[idx][1] = now;
-    } else {
-      this.measures.push([now, 0]);
-    }
-  }
-
-  duration(): number {
-    const idx = this.measures.length - 1;
-    if (this.measures[idx][1] === 0) {
-      this.measures.pop();
-    }
-    const times = this.measures.map((v) => v[1] - v[0]);
-    return times.reduce((result, item) => {
-      return result + item;
-    });
-  }
-
-  assertLess(target: number) {
-    const d = this.duration();
-    assert(
-      target >= d,
-      `duration ${d} not in range - ${target} ≥ ${d}`,
-    );
-  }
-
-  assertInRange(target: number) {
-    const min = .50 * target;
-    const max = 1.50 * target;
-    const d = this.duration();
-    assert(
-      d >= min && max >= d,
-      `duration ${d} not in range - ${min} ≥ ${d} && ${max} ≥ ${d}`,
-    );
-  }
 }

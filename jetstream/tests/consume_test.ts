@@ -19,6 +19,7 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertFalse,
   assertRejects,
 } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
@@ -35,6 +36,8 @@ import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 import {
   AckPolicy,
   DeliverPolicy,
+  isPullConsumer,
+  isPushConsumer,
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
@@ -49,6 +52,9 @@ Deno.test("consumers - consume", async () => {
 
   const js = jetstream(nc, { timeout: 30_000 });
   const c = await js.consumers.get(stream, consumer);
+  assert(isPullConsumer(c));
+  assertFalse(isPushConsumer(c));
+
   const ci = await c.info();
   assertEquals(ci.num_pending, count);
   const start = Date.now();

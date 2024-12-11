@@ -859,7 +859,7 @@ Deno.test("ordered consumers - name prefix", async () => {
       return js.consumers.get("A", { name_prefix: "one.two" });
     },
     Error,
-    "invalid name_prefix name - name_prefix name cannot contain '.'",
+    "name_prefix name ('one.two') cannot contain '.'",
   );
 
   await cleanup(ns, nc);
