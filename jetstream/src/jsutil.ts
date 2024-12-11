@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+import { InvalidNameError } from "./jserrors.ts";
+
 export function validateDurableName(name?: string) {
   return minValidation("durable", name);
 }
@@ -43,8 +45,8 @@ export function minValidation(context: string, name = "") {
         default:
           // nothing
       }
-      throw Error(
-        `invalid ${context} name - ${context} name cannot contain '${v}'`,
+      throw new InvalidNameError(
+        `${context} name ('${name}') cannot contain '${v}'`,
       );
     }
   });

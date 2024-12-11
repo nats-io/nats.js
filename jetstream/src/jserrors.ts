@@ -193,8 +193,8 @@ export function isMessageNotFound(err: Error): boolean {
 }
 
 export class InvalidNameError extends Error {
-  constructor(name: string, message: string = "", opts?: ErrorOptions) {
-    super(`'${name} ${message}`, opts);
+  constructor(message: string = "", opts?: ErrorOptions) {
+    super(message, opts);
     this.name = "InvalidNameError";
   }
 }

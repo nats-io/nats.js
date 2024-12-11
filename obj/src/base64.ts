@@ -46,7 +46,7 @@ export class Base64UrlPaddedCodec {
   }
 
   static decode(s: string, binary = false): Uint8Array | string {
-    return Base64UrlPaddedCodec.decode(
+    return Base64UrlCodec.decode(
       Base64UrlPaddedCodec.fromB64URLEncoding(s),
       binary,
     );

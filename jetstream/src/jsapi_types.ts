@@ -14,7 +14,6 @@
  */
 
 import type { Nanos } from "@nats-io/nats-core";
-import { nanos } from "@nats-io/nats-core";
 import type { StoredMsg } from "./types.ts";
 
 export type ApiPaged = {
@@ -1051,19 +1050,6 @@ export type ConsumerUpdateConfig = PriorityGroups & {
 export enum PriorityPolicy {
   None = "none",
   Overflow = "overflow",
-}
-
-export function defaultConsumer(
-  name: string,
-  opts: Partial<ConsumerConfig> = {},
-): ConsumerConfig {
-  return Object.assign({
-    name: name,
-    deliver_policy: DeliverPolicy.All,
-    ack_policy: AckPolicy.Explicit,
-    ack_wait: nanos(30 * 1000),
-    replay_policy: ReplayPolicy.Instant,
-  }, opts);
 }
 
 export type OverflowMinPending = {
