@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-47",
+  "version": "3.0.0-48",
   "files": [
     "lib/",
     "LICENSE",
