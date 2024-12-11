@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [2.0.x]
-        node-version: [22.x]
+        node-version: [23.x]
 
     steps:
       - name: Git Checkout Sources
