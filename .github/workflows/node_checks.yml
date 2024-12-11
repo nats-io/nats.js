@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [2.0.x]
-        node-version: [22.x]
+        node-version: [23.x]
 
     steps:
       - name: Git Checkout Sources
@@ -42,4 +42,13 @@ jobs:
         run: |
           npm install --workspaces
           npm run prepack --workspaces
-          npm test --workspace transport-node
+          npm run coverage --workspace transport-node
+
+      - name: Upload coverage
+        uses: coverallsapp/github-action@v2
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          flag-name: transport-node
+          file: ./transport-node/out.lcov
+
