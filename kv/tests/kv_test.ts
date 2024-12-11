@@ -887,19 +887,16 @@ Deno.test("kv - mem and file", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
   const d = await new Kvm(js).create("default") as Bucket;
-  assertEquals((await d.status()).backingStore, StorageType.File);
   assertEquals((await d.status()).storage, StorageType.File);
 
   const f = await new Kvm(js).create("file", {
     storage: StorageType.File,
   }) as Bucket;
-  assertEquals((await f.status()).backingStore, StorageType.File);
   assertEquals((await f.status()).storage, StorageType.File);
 
   const m = await new Kvm(js).create("mem", {
     storage: StorageType.Memory,
   }) as Bucket;
-  assertEquals((await m.status()).backingStore, StorageType.Memory);
   assertEquals((await m.status()).storage, StorageType.Memory);
 
   await cleanup(ns, nc);

@@ -120,12 +120,6 @@ export type KvLimits = {
   sources?: StreamSource[];
 
   /**
-   * deprecated: use storage
-   * FIXME: remove this on 1.8
-   */
-  backingStore: StorageType;
-
-  /**
    * Sets the compression level of the KV. This feature is only supported in
    * servers 2.10.x and better.
    */
