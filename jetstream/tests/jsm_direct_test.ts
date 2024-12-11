@@ -49,6 +49,40 @@ import {
   TimeoutError,
 } from "@nats-io/nats-core/internal";
 
+Deno.test("direct - version checks", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  assertExists(nc.info);
+  nc.info.version = "2.0.0";
+
+  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
+
+  await assertRejects(
+    () => {
+      return jsm.direct.getMessage("A", { start_time: new Date() });
+    },
+    Error,
+    "start_time direct option require server 2.11.0",
+  );
+
+  await assertRejects(
+    () => {
+      return jsm.direct.getBatch("A", { seq: 1, batch: 100 });
+    },
+    Error,
+    "batch direct require server 2.11.0",
+  );
+
+  await assertRejects(
+    () => {
+      return jsm.direct.getBatch("A", { seq: 1, batch: 100 });
+    },
+    Error,
+    "batch direct require server 2.11.0",
+  );
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("direct - decoder", async (t) => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.9.0")) {

@@ -14,7 +14,8 @@
  */
 
 import type { Nanos } from "@nats-io/nats-core";
-import type { StoredMsg } from "./types.ts";
+import { nanos } from "@nats-io/nats-core";
+import type { MaxBytes, StoredMsg } from "./types.ts";
 
 export type ApiPaged = {
   total: number;
@@ -513,6 +514,12 @@ export type CompletionResult = { err?: Error };
 export type BatchCallback<T> = (done: CompletionResult | null, d: T) => void;
 export type StartSeq = { seq?: number };
 export type StartTime = { start_time?: Date | string };
+
+export type DirectBatch = {
+  batch: number;
+};
+export type DirectMaxBytes = MaxBytes;
+
 export type DirectBatchLimits = {
   batch?: number;
   max_bytes?: number;
@@ -520,7 +527,7 @@ export type DirectBatchLimits = {
 };
 export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
 export type DirectBatchStartTime = StartTime & DirectBatchLimits;
-export type DirectBatchOptions = DirectBatchStartSeq | DirectBatchStartTime;
+export type DirectBatchOptions = DirectBatchStartSeq & DirectBatchStartTime;
 
 export type DirectLastFor = {
   multi_last: string[];
@@ -1050,6 +1057,19 @@ export type ConsumerUpdateConfig = PriorityGroups & {
 export enum PriorityPolicy {
   None = "none",
   Overflow = "overflow",
+}
+
+export function defaultConsumer(
+  name: string,
+  opts: Partial<ConsumerConfig> = {},
+): ConsumerConfig {
+  return Object.assign({
+    name: name,
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    ack_wait: nanos(30 * 1000),
+    replay_policy: ReplayPolicy.Instant,
+  }, opts);
 }
 
 export type OverflowMinPending = {

@@ -679,6 +679,13 @@ export class StoredMsgImpl implements StoredMsg {
   constructor(smr: StreamMsgResponse) {
     this.smr = smr;
   }
+  get pending(): number {
+    return 0;
+  }
+
+  get lastSequence(): number {
+    return 0;
+  }
 
   get subject(): string {
     return this.smr.message.subject;
