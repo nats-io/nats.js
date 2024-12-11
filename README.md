@@ -2,6 +2,8 @@
 
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/)
+![example workflow](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.js/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.js?branch=main)
 
 > [!IMPORTANT]
 >
