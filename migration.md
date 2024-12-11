@@ -189,6 +189,9 @@ Removed deprecated KV apis (`KvRemove` - `remove(k)=>Promise<void>`,
 `close()=>Promise<void>`) and options (`maxBucketSize`,
 `placementCluster`,`bucket_location`)
 
+Removed the deprecated option `backingStore` from `KvOptions` and `KvStatus`.
+Use `KvOptions.storage` and `KvStatus.storage`.
+
 ## Changes to ObjectStore
 
 > [!CAUTION]
