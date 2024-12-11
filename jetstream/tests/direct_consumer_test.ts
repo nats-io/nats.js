@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 
 import { jetstreamManager, type StoredMsg } from "../src/mod.ts";
 import {
@@ -125,6 +125,23 @@ Deno.test("direct consumer - consume", async () => {
     new DirectStreamAPIImpl(nc),
     { seq: 0 },
   );
+
+  dc.debug();
+
+  let nexts = 0;
+
+  (async () => {
+    for await (const s of dc.status()) {
+      switch (s.type) {
+        case "next":
+          nexts += s.options.batch;
+          break;
+        default:
+          // nothing
+      }
+    }
+  })().catch();
+
   const iter = await dc.consume({ batch: 7 });
   for await (const m of iter) {
     if (m.pending === 0) {
@@ -133,6 +150,7 @@ Deno.test("direct consumer - consume", async () => {
   }
 
   assertEquals(iter.getProcessed(), 100);
+  assert(nexts > 100);
 
   await cleanup(ns, nc);
 });

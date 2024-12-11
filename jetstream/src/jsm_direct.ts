@@ -130,7 +130,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
   ): Promise<QueuedIterator<StoredMsg>> {
     const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
     if (!ok) {
-      throw new Error(`batch direct require server ${min}`);
+      return Promise.reject(new Error(`batch direct require server ${min}`));
     }
     validateStreamName(stream);
     const callback = typeof opts.callback === "function" ? opts.callback : null;
