@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [2.0.x]
-        node-version: [22.x]
+        node-version: [23.x]
     permissions:
       contents: read
       id-token: write
