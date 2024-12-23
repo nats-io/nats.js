@@ -18,6 +18,7 @@ import type {
   MsgHdrs,
   MsgImpl,
   ProtocolHandler,
+  RequestOptions,
 } from "@nats-io/nats-core/internal";
 import {
   DataBuffer,
@@ -25,7 +26,6 @@ import {
   millis,
   nanos,
   RequestOne,
-  RequestOptions,
 } from "@nats-io/nats-core/internal";
 import type { DeliveryInfo, PullOptions } from "./jsapi_types.ts";
 
