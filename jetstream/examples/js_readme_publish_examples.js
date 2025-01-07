@@ -15,7 +15,6 @@
 
 import { connect, Empty } from "@nats-io/transport-deno";
 import { jetstream, jetstreamManager } from "@nats-io/jetstream";
-import type { PubAck } from "../src/mod.ts";
 
 const nc = await connect();
 const jsm = await jetstreamManager(nc);
@@ -52,7 +51,7 @@ pa = await js.publish("a.b", Empty, { expect: { streamName: "a" } });
 
 // now if you have a stream with different subjects, you can also
 // assert that the last recorded sequence on subject on the stream matches
-const buf: Promise<PubAck>[] = [];
+const buf = [];
 for (let i = 0; i < 100; i++) {
   buf.push(js.publish("a.a", Empty));
 }

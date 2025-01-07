@@ -15,25 +15,30 @@
 
 import { connect } from "@nats-io/transport-deno";
 import { jetstream } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.ts";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
 const nc = await connect();
 
 // create a stream with a random name with some messages and a consumer
-const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
 const c = await js.consumers.get(stream, consumer);
 
-// with fetch the consumer can manually control the buffering
-for (let i = 0; i < 3; i++) {
-  const messages = await c.fetch({ max_messages: 4, expires: 2000 });
-  for await (const m of messages) {
-    m.ack();
+// the consumer is wrapped in loop because this way, if there's some failure
+// it will re-setup consume, and carry on.
+// this is the basic pattern for processing messages forever
+while (true) {
+  console.log("waiting for messages");
+  const messages = await c.consume();
+  try {
+    for await (const m of messages) {
+      console.log(m.seq);
+      m.ack();
+    }
+  } catch (err) {
+    console.log(`consume failed: ${err.message}`);
   }
-  console.log(`batch completed: ${messages.getProcessed()} msgs processed`);
 }
-
-await nc.close();

@@ -14,8 +14,8 @@
  */
 
 import { connect } from "@nats-io/transport-deno";
-import { ConsumerEvents, jetstream } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.ts";
+import { jetstream } from "@nats-io/jetstream";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
 const nc = await connect();
@@ -25,30 +25,13 @@ const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
-
 const c = await js.consumers.get(stream, consumer);
-while (true) {
-  const messages = await c.consume({ max_messages: 1 });
 
-  // watch the to see if the consume operation misses heartbeats
-  (async () => {
-    for await (const s of messages.status()) {
-      if (s.type === ConsumerEvents.HeartbeatsMissed) {
-        // you can decide how many heartbeats you are willing to miss
-        const n = s.data as number;
-        console.log(`${n} heartbeats missed`);
-        if (n === 2) {
-          // by calling `stop()` the message processing loop ends.
-          // in this case this is wrapped by a loop, so it attempts
-          // to re-setup the consume
-          messages.stop();
-        }
-      }
-    }
-  })();
-
-  for await (const m of messages) {
-    console.log(`${m.seq} ${m?.subject}`);
+// we can consume using callbacks too
+console.log("waiting for messages");
+await c.consume({
+  callback: (m) => {
+    console.log(m.seq);
     m.ack();
-  }
-}
+  },
+});

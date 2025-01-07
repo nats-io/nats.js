@@ -16,8 +16,7 @@
 import { connect, delay } from "@nats-io/transport-deno";
 import { SimpleMutex } from "@nats-io/nats-core/internal";
 import { jetstream } from "@nats-io/jetstream";
-import type { JsMsg } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.ts";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
 const nc = await connect();
@@ -37,7 +36,7 @@ const messages = await c.consume({ max_messages: 10 });
 // and then only allowing additional processing as others complete
 const rl = new SimpleMutex(5);
 
-async function schedule(m: JsMsg): Promise<void> {
+async function schedule(m) {
   // pretend to do work
   await delay(1000);
   m.ack();

@@ -14,7 +14,6 @@
  */
 
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
-import { setupStreamAndConsumer } from "../examples/util.ts";
 import {
   assert,
   assertEquals,
@@ -22,7 +21,7 @@ import {
   assertFalse,
   assertRejects,
 } from "jsr:@std/assert";
-import { initStream } from "./jstest_util.ts";
+import { initStream, setupStreamAndConsumer } from "./jstest_util.ts";
 import {
   deadline,
   deferred,

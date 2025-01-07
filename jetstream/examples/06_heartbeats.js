@@ -15,26 +15,38 @@
 
 import { connect } from "@nats-io/transport-deno";
 import { jetstream } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.ts";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
-const nc = await connect();
+const nc = await connect({ debug: true });
 
 // create a stream with a random name with some messages and a consumer
 const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
+
 const c = await js.consumers.get(stream, consumer);
+while (true) {
+  const messages = await c.consume({
+    max_messages: 1,
+  });
 
-// the consumer is simply asked for one message by default
-// this will resolve in 30s or null is returned
-const m = await c.next();
-if (m) {
-  console.log(m.subject);
-  m.ack();
-} else {
-  console.log(`didn't get a message`);
+  // watch the to see if the consume operation misses heartbeats
+  (async () => {
+    for await (const s of messages.status()) {
+      switch (s.type) {
+        case "heartbeats_missed":
+          console.log(`${s.count} heartbeats missed`);
+          if (s.count === 2) {
+            messages.stop();
+          }
+      }
+    }
+  })();
+
+  for await (const m of messages) {
+    console.log(`${m.seq} ${m?.subject}`);
+    m.ack();
+  }
 }
-
-await nc.close();
