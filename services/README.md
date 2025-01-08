@@ -2,8 +2,8 @@
 ![jetstream](https://github.com/nats-io/nats.js/actions/workflows/services.yml/badge.svg)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/services/index.html)
 
-[![JSR](https://jsr.io/badges/@nats-io/kv)](https://jsr.io/@nats-io/services)
-[![JSR](https://jsr.io/badges/@nats-io/kv/score)](https://jsr.io/@nats-io/services)
+[![JSR](https://jsr.io/badges/@nats-io/services)](https://jsr.io/@nats-io/services)
+[![JSR](https://jsr.io/badges/@nats-io/services/score)](https://jsr.io/@nats-io/services)
 
 [![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Fservices)](https://www.npmjs.com/package/@nats-io/services)
 ![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fservices)
