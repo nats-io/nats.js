@@ -107,7 +107,7 @@ Deno.test("next - listener leaks", async () => {
     const m = await consumer.next();
     if (m) {
       m.nak();
-      if (m.info?.redeliveryCount > 100) {
+      if (m.info?.deliveryCount > 100) {
         break;
       }
     }
@@ -200,6 +200,36 @@ Deno.test("next - consumer bind", async () => {
 
   assertEquals(msg, null);
   assertEquals(sub.getProcessed(), 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("next - delivery count", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["hello"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    max_deliver: 2,
+    ack_wait: nanos(1000),
+  });
+
+  const js = jetstream(nc);
+  await js.publish("hello");
+
+  const c = await js.consumers.get("A", "a");
+  let m = await c.next();
+  assertEquals(m?.info.deliveryCount, 1);
+  await delay(1500);
+  m = await c.next();
+  await delay(1500);
+  assertEquals(m?.info.deliveryCount, 2);
+  m = await c.next({ expires: 1000 });
+  assertEquals(m, null);
 
   await cleanup(ns, nc);
 });

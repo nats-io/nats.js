@@ -730,7 +730,7 @@ Deno.test("jetstream - backoff", async () => {
   const iter = await c.consume({
     callback: (m) => {
       when.push(Date.now());
-      if (m.info.redeliveryCount === 4) {
+      if (m.info.deliveryCount === 4) {
         iter.stop();
       }
     },
@@ -779,7 +779,7 @@ Deno.test("jetstream - redelivery", async () => {
       if (m.redelivered) {
         redeliveries++;
       }
-      if (m.info.redeliveryCount === 4) {
+      if (m.info.deliveryCount === 4) {
         setTimeout(() => {
           iter.stop();
         }, 2000);

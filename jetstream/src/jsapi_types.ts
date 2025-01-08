@@ -979,7 +979,8 @@ export type ConsumerUpdateConfig = PriorityGroups & {
    */
   "ack_wait"?: Nanos;
   /**
-   * The number of times a message will be redelivered to consumers if not acknowledged in time
+   * The maximum number of times a message will be delivered to consumers if not acknowledged in time.
+   * Default is -1 (will redeliver until acknowledged).
    */
   "max_deliver"?: number;
   /**
@@ -1163,9 +1164,9 @@ export type DeliveryInfo = {
    */
   consumer: string;
   /**
-   * The number of times the message has been redelivered.
+   * The number of times the message has been delivered.
    */
-  redeliveryCount: number;
+  deliveryCount: number;
   /**
    * The sequence number of the message in the stream
    */

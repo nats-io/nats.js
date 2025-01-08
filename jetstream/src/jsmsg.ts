@@ -171,8 +171,8 @@ export function parseInfo(s: string): DeliveryInfo {
   di.account_hash = tokens[3];
   di.stream = tokens[4];
   di.consumer = tokens[5];
-  di.redeliveryCount = parseInt(tokens[6], 10);
-  di.redelivered = di.redeliveryCount > 1;
+  di.deliveryCount = parseInt(tokens[6], 10);
+  di.redelivered = di.deliveryCount > 1;
   di.streamSequence = parseInt(tokens[7], 10);
   di.deliverySequence = parseInt(tokens[8], 10);
   di.timestampNanos = parseInt(tokens[9], 10);
@@ -216,7 +216,7 @@ export class JsMsgImpl implements JsMsg {
   }
 
   get redelivered(): boolean {
-    return this.info.redeliveryCount > 1;
+    return this.info.deliveryCount > 1;
   }
 
   get reply(): string {

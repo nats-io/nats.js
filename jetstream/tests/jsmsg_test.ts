@@ -48,7 +48,7 @@ Deno.test("jsmsg - parse", () => {
   const info = parseInfo(rs);
   assertEquals(info.stream, "streamname");
   assertEquals(info.consumer, "consumername");
-  assertEquals(info.redeliveryCount, 2);
+  assertEquals(info.deliveryCount, 2);
   assertEquals(info.streamSequence, 3);
   assertEquals(info.pending, 100);
 });
@@ -63,7 +63,7 @@ Deno.test("jsmsg - parse long", () => {
   assertEquals(info.account_hash, "account");
   assertEquals(info.stream, "streamname");
   assertEquals(info.consumer, "consumername");
-  assertEquals(info.redeliveryCount, 2);
+  assertEquals(info.deliveryCount, 2);
   assertEquals(info.streamSequence, 3);
   assertEquals(info.pending, 100);
 });

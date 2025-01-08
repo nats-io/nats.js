@@ -144,6 +144,8 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - The `ConsumerEvents` and `ConsumerDebugEvents` enum has been removed and
   replaced with `ConsumerNotification` which have a discriminating field `type`.
   The status objects provide a more specific API for querying those events.
+- `JsMsg.info.redeliveryCount` was renamed to `JsMsg.info.deliveryCount` as it
+  tracks all delivery attempts, not just redeliveries
 
 ## Changes to KV
 
