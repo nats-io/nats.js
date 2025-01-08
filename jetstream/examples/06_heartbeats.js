@@ -13,12 +13,13 @@
  * limitations under the License.
  */
 
-import { connect } from "@nats-io/transport-deno";
-import { jetstream } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.js";
+import { wsconnect } from "https://esm.run/@nats-io/nats-core";
+import { jetstream } from "https://esm.run/@nats-io/jetstream";
+import { setupStreamAndConsumer } from "./util.js"
 
 // create a connection
-const nc = await connect({ debug: true });
+const server = "ws://127.0.0.1:9222"
+const nc = await wsconnect({ servers: server, debug: true })
 
 // create a stream with a random name with some messages and a consumer
 const { stream, consumer } = await setupStreamAndConsumer(nc);

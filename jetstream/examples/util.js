@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { nuid } from "@nats-io/nats-core";
-import { AckPolicy, jetstreamManager } from "@nats-io/jetstream";
+import { nuid } from "https://esm.run/@nats-io/nats-core";
+import { AckPolicy, jetstreamManager } from "https://esm.run/@nats-io/jetstream";
 
 export async function setupStreamAndConsumer(
   nc,
