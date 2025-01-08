@@ -15,23 +15,25 @@
 
 import { connect } from "@nats-io/transport-deno";
 import { jetstream } from "@nats-io/jetstream";
-import { setupStreamAndConsumer } from "./util.ts";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
 const nc = await connect();
 
 // create a stream with a random name with some messages and a consumer
-const { stream, consumer } = await setupStreamAndConsumer(nc);
+const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
 const c = await js.consumers.get(stream, consumer);
 
-// we can consume using callbacks too
-console.log("waiting for messages");
-await c.consume({
-  callback: (m) => {
-    console.log(m.seq);
+// with fetch the consumer can manually control the buffering
+for (let i = 0; i < 3; i++) {
+  const messages = await c.fetch({ max_messages: 4, expires: 2000 });
+  for await (const m of messages) {
     m.ack();
-  },
-});
+  }
+  console.log(`batch completed: ${messages.getProcessed()} msgs processed`);
+}
+
+await nc.close();

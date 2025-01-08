@@ -623,16 +623,17 @@ while (true) {
   // watch the to see if the consume operation misses heartbeats
   (async () => {
     for await (const s of await messages.status()) {
-      if (s.type === ConsumerEvents.HeartbeatsMissed) {
-        // you can decide how many heartbeats you are willing to miss
-        const n = s.data as number;
-        console.log(`${n} heartbeats missed`);
-        if (n === 2) {
-          // by calling `stop()` the message processing loop ends
-          // in this case this is wrapped by a loop, so it attempts
-          // to re-setup the consume
-          messages.stop();
-        }
+      switch (s.type) {
+        case "heartbeats_missed":
+          // you can decide how many heartbeats you are willing to miss
+          const n = s.data as number;
+          console.log(`${s.count} heartbeats missed`);
+          if (s.count === 2) {
+            // by calling `stop()` the message processing loop ends
+            // in this case this is wrapped by a loop, so it attempts
+            // to re-setup the consume
+            messages.stop();
+          }
       }
     }
   })();

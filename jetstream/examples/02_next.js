@@ -14,47 +14,27 @@
  */
 
 import { connect } from "@nats-io/transport-deno";
-import { setupStreamAndConsumer } from "./util.ts";
 import { jetstream } from "@nats-io/jetstream";
+import { setupStreamAndConsumer } from "./util.js";
 
 // create a connection
 const nc = await connect();
 
 // create a stream with a random name with some messages and a consumer
-const { stream, consumer } = await setupStreamAndConsumer(nc, 10000);
+const { stream, consumer } = await setupStreamAndConsumer(nc);
 
 // retrieve an existing consumer
 const js = jetstream(nc);
 const c = await js.consumers.get(stream, consumer);
 
-// this example uses a consume that processes the stream
-// creating a frequency table based on the subjects found
-const messages = await c.consume();
-
-const data = new Map<string, number>();
-for await (const m of messages) {
-  const chunks = m.subject.split(".");
-  const v = data.get(chunks[1]) || 0;
-  data.set(chunks[1], v + 1);
+// the consumer is simply asked for one message by default
+// this will resolve in 30s or null is returned
+const m = await c.next();
+if (m) {
+  console.log(m.subject);
   m.ack();
-
-  // if no pending, then we have processed the stream
-  // and we can break
-  if (m.info.pending === 0) {
-    break;
-  }
+} else {
+  console.log(`didn't get a message`);
 }
-
-// we can safely delete the consumer
-await c.delete();
-
-const keys = [];
-for (const k of data.keys()) {
-  keys.push(k);
-}
-keys.sort();
-keys.forEach((k) => {
-  console.log(`${k}: ${data.get(k)}`);
-});
 
 await nc.close();

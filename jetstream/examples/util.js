@@ -13,18 +13,34 @@
  * limitations under the License.
  */
 
-import { createConsumer, fill, initStream } from "../tests/jstest_util.ts";
-import type { NatsConnection } from "@nats-io/nats-core";
 import { nuid } from "@nats-io/nats-core";
+import { AckPolicy, jetstreamManager } from "@nats-io/jetstream";
 
 export async function setupStreamAndConsumer(
-  nc: NatsConnection,
+  nc,
   messages = 100,
-): Promise<{ stream: string; consumer: string }> {
+) {
   const stream = nuid.next();
-  await initStream(nc, stream, { subjects: [`${stream}.*`] });
-  await fill(nc, stream, messages, { randomize: true });
-  const consumer = await createConsumer(nc, stream);
+  const jsm = await jetstreamManager(nc);
+  const js = jsm.jetstream();
+  await jsm.streams.add({ name: stream, subjects: [`${stream}.*`] });
+  const buf = [];
+  for (let i = 0; i < messages; i++) {
+    buf.push(js.publish(`${stream}.${i}`, `${i}`));
+    if (buf.length % 500 === 0) {
+      await Promise.all(buf);
+      buf.length = 0;
+    }
+  }
+  if (buf.length > 0) {
+    await Promise.all(buf);
+    buf.length = 0;
+  }
+
+  const consumer = await jsm.consumers.add(stream, {
+    name: stream,
+    ack_policy: AckPolicy.Explicit,
+  });
 
   return { stream, consumer };
 }
