@@ -43,18 +43,18 @@ import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { errors } from "../../core/src/mod.ts";
 
 Deno.test("jsmsg - parse", () => {
-  // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
+  // "$JS.ACK.<stream>.<consumer>.<deliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
   const rs = `$JS.ACK.streamname.consumername.2.3.4.${nanos(Date.now())}.100`;
   const info = parseInfo(rs);
   assertEquals(info.stream, "streamname");
   assertEquals(info.consumer, "consumername");
-  assertEquals(info.redeliveryCount, 2);
+  assertEquals(info.deliveryCount, 2);
   assertEquals(info.streamSequence, 3);
   assertEquals(info.pending, 100);
 });
 
 Deno.test("jsmsg - parse long", () => {
-  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<redeliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
+  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<deliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
   const rs = `$JS.ACK.domain.account.streamname.consumername.2.3.4.${
     nanos(Date.now())
   }.100.rand`;
@@ -63,7 +63,7 @@ Deno.test("jsmsg - parse long", () => {
   assertEquals(info.account_hash, "account");
   assertEquals(info.stream, "streamname");
   assertEquals(info.consumer, "consumername");
-  assertEquals(info.redeliveryCount, 2);
+  assertEquals(info.deliveryCount, 2);
   assertEquals(info.streamSequence, 3);
   assertEquals(info.pending, 100);
 });
@@ -100,7 +100,7 @@ Deno.test("jsmsg - acks", async () => {
         fail(err.message);
       }
       msg.respond(Empty, {
-        // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
+        // "$JS.ACK.<stream>.<consumer>.<deliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
         reply:
           `MY.TEST.streamname.consumername.1.${counter}.${counter}.${Date.now()}.0`,
       });

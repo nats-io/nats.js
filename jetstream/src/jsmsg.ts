@@ -162,17 +162,17 @@ export function parseInfo(s: string): DeliveryInfo {
   }
 
   // old
-  // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
+  // "$JS.ACK.<stream>.<consumer>.<deliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
   // new
-  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<redeliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
+  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<deliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
   const di = {} as DeliveryInfo;
   // if domain is "_", replace with blank
   di.domain = tokens[2] === "_" ? "" : tokens[2];
   di.account_hash = tokens[3];
   di.stream = tokens[4];
   di.consumer = tokens[5];
-  di.redeliveryCount = parseInt(tokens[6], 10);
-  di.redelivered = di.redeliveryCount > 1;
+  di.deliveryCount = parseInt(tokens[6], 10);
+  di.redelivered = di.deliveryCount > 1;
   di.streamSequence = parseInt(tokens[7], 10);
   di.deliverySequence = parseInt(tokens[8], 10);
   di.timestampNanos = parseInt(tokens[9], 10);
@@ -216,7 +216,7 @@ export class JsMsgImpl implements JsMsg {
   }
 
   get redelivered(): boolean {
-    return this.info.redeliveryCount > 1;
+    return this.info.deliveryCount > 1;
   }
 
   get reply(): string {
