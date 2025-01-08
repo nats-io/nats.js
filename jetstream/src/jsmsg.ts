@@ -162,9 +162,9 @@ export function parseInfo(s: string): DeliveryInfo {
   }
 
   // old
-  // "$JS.ACK.<stream>.<consumer>.<redeliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
+  // "$JS.ACK.<stream>.<consumer>.<deliveryCount><streamSeq><deliverySequence>.<timestamp>.<pending>"
   // new
-  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<redeliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
+  // $JS.ACK.<domain>.<accounthash>.<stream>.<consumer>.<deliveryCount>.<streamSeq>.<deliverySequence>.<timestamp>.<pending>.<random>
   const di = {} as DeliveryInfo;
   // if domain is "_", replace with blank
   di.domain = tokens[2] === "_" ? "" : tokens[2];
