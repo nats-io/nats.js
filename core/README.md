@@ -41,6 +41,9 @@ configuration as the port for WebSocket protocol is NOT 4222.
 
 # Installation
 
+For a quick overview of the libraries and how to install them, see
+[runtimes.md](../runtimes.md).
+
 If you are not implementing a NATS client compatible module, you can use this
 repository to view the documentation of the NATS core functionality. Your NATS
 client instance already uses and re-exports the module implemented here, so

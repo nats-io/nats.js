@@ -11,6 +11,9 @@
 
 # Services
 
+For a quick overview of the libraries and how to install them, see
+[runtimes.md](../runtimes.md).
+
 The Services module introduces a higher-level API for implementing services with
 NATS. NATS has always been a strong technology on which to build services, as
 they are easy to write, are location and DNS independent and can be scaled up or
