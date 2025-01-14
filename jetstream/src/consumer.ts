@@ -171,6 +171,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
 
+    this.consumer.api.nc.closed().then(() => {
+      this._push(() => {
+        this.stop();
+      });
+    });
+
     this.start();
   }
 
@@ -309,16 +315,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       },
     });
 
-    this.sub.closed.then(() => {
-      // for ordered consumer we cannot break the iterator
-      if ((this.sub as SubscriptionImpl).draining) {
-        // @ts-ignore: we are pushing the pull fn
-        this._push(() => {
-          this.stop();
-        });
-      }
-    });
-
     if (idle_heartbeat) {
       this.monitor = new IdleHeartbeatMonitor(
         idle_heartbeat,
@@ -380,6 +376,16 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         }
       }
     })();
+
+    this.sub.closed.then(() => {
+      // for ordered consumer we cannot break the iterator
+      if ((this.sub as SubscriptionImpl).draining) {
+        // @ts-ignore: we are pushing the pull fn
+        this._push(() => {
+          this.stop();
+        });
+      }
+    });
 
     // this is the initial pull
     this.pull(this.pullOptions());
@@ -550,6 +556,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         this.pull(this.pullOptions());
         return true;
       } catch (err) {
+        if (err instanceof errors.ClosedConnectionError) {
+          this.stop(err);
+          return false;
+        }
+
         // game over
         if ((err as Error).message === "stream not found") {
           streamNotFound++;

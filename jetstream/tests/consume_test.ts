@@ -438,7 +438,7 @@ Deno.test("consume - consumer bind", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("consume - timer is based on idle_hb", async () => {
+Deno.test("consume - connection close exits", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 
   const jsm = await jetstreamManager(nc);
@@ -454,37 +454,16 @@ Deno.test("consume - timer is based on idle_hb", async () => {
   await js.publish("a");
   const c = await js.consumers.get("A", "a");
 
-  const iter = await c.fetch({
+  const iter = await c.consume({
     expires: 2000,
     max_messages: 10,
+    callback: (m) => {
+      m.ack();
+    },
   }) as PullConsumerMessagesImpl;
 
-  let hbm = false;
-  (async () => {
-    for await (const s of iter.status()) {
-      if (s.type === "heartbeats_missed") {
-        hbm = true;
-      }
-    }
-  })().then();
-
-  const buf = [];
-  await assertRejects(
-    async () => {
-      for await (const m of iter) {
-        buf.push(m);
-        m.ack();
-        // make the subscription now fail
-        const nci = nc as NatsConnectionImpl;
-        nci._resub(iter.sub, "foo");
-      }
-    },
-    Error,
-    "heartbeats missed",
-  );
-
-  assertEquals(buf.length, 1);
-  assertEquals(hbm, true);
+  await nc.close();
+  await deadline(iter.closed(), 1000);
 
   await cleanup(ns, nc);
 });

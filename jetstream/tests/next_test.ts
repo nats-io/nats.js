@@ -233,3 +233,32 @@ Deno.test("next - delivery count", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("next - connection close exits", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a");
+  const c = await js.consumers.get("A", "a");
+
+  assertRejects(
+    () => {
+      return c.next({ expires: 30_000 });
+    },
+    Error,
+    "closed connection",
+  );
+
+  await nc.close();
+
+  await cleanup(ns, nc);
+});

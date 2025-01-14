@@ -16,7 +16,13 @@
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
-import { delay, Empty, nanos, syncIterator } from "@nats-io/nats-core";
+import {
+  deadline,
+  delay,
+  Empty,
+  nanos,
+  syncIterator,
+} from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import {
   AckPolicy,
@@ -24,6 +30,7 @@ import {
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
+import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 
 Deno.test("fetch - no messages", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -257,6 +264,91 @@ Deno.test("fetch - exceeding max_messages will stop", async () => {
     Error,
     "exceeded maxrequestbatch of 100",
   );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fetch - timer is based on idle_hb", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a");
+  const c = await js.consumers.get("A", "a");
+
+  const iter = await c.fetch({
+    expires: 2000,
+    max_messages: 10,
+  }) as PullConsumerMessagesImpl;
+
+  let hbm = false;
+  (async () => {
+    for await (const s of iter.status()) {
+      console.log(s);
+      if (s.type === "heartbeats_missed") {
+        hbm = true;
+      }
+    }
+  })().then();
+
+  const buf = [];
+  await assertRejects(
+    async () => {
+      for await (const m of iter) {
+        buf.push(m);
+        m.ack();
+        // make the subscription now fail
+        const nci = nc as NatsConnectionImpl;
+        nci._resub(iter.sub, "foo");
+      }
+    },
+    Error,
+    "heartbeats missed",
+  );
+
+  assertEquals(buf.length, 1);
+  assertEquals(hbm, true);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fetch - connection close exits", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a");
+  const c = await js.consumers.get("A", "a");
+
+  const iter = await c.fetch({
+    expires: 30_000,
+    max_messages: 10,
+  }) as PullConsumerMessagesImpl;
+
+  const done = (async () => {
+    for await (const _ of iter) {
+      // nothing
+    }
+  })();
+
+  await nc.close();
+  await deadline(done, 1000);
 
   await cleanup(ns, nc);
 });
