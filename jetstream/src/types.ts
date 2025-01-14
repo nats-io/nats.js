@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 The NATS Authors
+ * Copyright 2023-2025 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -806,6 +806,17 @@ export type Consumers = {
       | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
 
+  /**
+   * Returns a PullConsumer configured for the specified ConsumerInfo.
+   * Note this API doesn't create or check that the consumer exists. It
+   * simply returns a Consumer that you can use to process messages.
+   * This method should only be used when avoiding extra ConsumerInfo.
+   * If the underlying consumer doesn't exist, the consumer will raise
+   * heartbeat_missed notifications.
+   * @param ci
+   */
+  getConsumerFromInfo(ci: ConsumerInfo): Consumer;
+
   getPushConsumer(
     stream: string,
     name?:
@@ -978,6 +989,12 @@ export type Stream = {
 
   best(): Promise<Stream>;
 
+  /**
+   * Returns the named consumer pull consumer. If instead of a name
+   * an OrderedConsumerOptions configuration is passed, an
+   * ordered pull consumer is created and returned.
+   * @param name
+   */
   getConsumer(
     name?: string | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;

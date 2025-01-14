@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2024 The NATS Authors
+ * Copyright 2022-2025 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,6 +16,7 @@ import { initStream } from "./jstest_util.ts";
 import {
   assertEquals,
   assertExists,
+  assertFalse,
   assertRejects,
   assertStringIncludes,
 } from "jsr:@std/assert";
@@ -530,6 +531,50 @@ Deno.test("consumers - processed", async () => {
   await iter.closed();
   assertEquals(iter.getProcessed(), 2);
   assertEquals(iter.getReceived(), 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("consumers - getConsumerFromInfo doesn't do info", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf(), {
+    inboxPrefix: "x",
+  });
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["hello"] });
+
+  const js = jetstream(nc);
+  await js.publish("hello");
+  await js.publish("hello");
+
+  const ci = await jsm.consumers.add("messages", {
+    durable_name: "c",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    ack_wait: nanos(3000),
+    max_waiting: 500,
+  });
+
+  let heardInfo = false;
+  nc.subscribe("$JS.API.CONSUMER.INFO.messages.c", {
+    callback: () => {
+      heardInfo = true;
+    },
+  });
+
+  const consumer = js.consumers.getConsumerFromInfo(ci);
+  const iter = await consumer.consume({
+    callback: (m) => {
+      m.ack();
+      if (m.info.pending === 0) {
+        iter.stop();
+      }
+    },
+  });
+
+  await iter.closed();
+  assertEquals(iter.getProcessed(), 2);
+  assertEquals(iter.getReceived(), 2);
+  assertFalse(heardInfo);
 
   await cleanup(ns, nc);
 });
