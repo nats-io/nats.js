@@ -556,7 +556,7 @@ Deno.test("consumers - getConsumerFromInfo doesn't do info", async () => {
 
   let heardInfo = false;
   nc.subscribe("$JS.API.CONSUMER.INFO.messages.c", {
-    callback: (_, m) => {
+    callback: () => {
       heardInfo = true;
     },
   });
