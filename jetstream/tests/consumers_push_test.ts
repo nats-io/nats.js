@@ -16,7 +16,7 @@ import {
   assertFalse,
 } from "jsr:@std/assert";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
-import { delay } from "@nats-io/nats-core/internal";
+import { deadline, delay } from "@nats-io/nats-core/internal";
 
 Deno.test("push consumers - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -213,6 +213,35 @@ Deno.test("push consumers - connection status iterator closes", async () => {
   assertExists(msgs.statusIterator);
   await msgs.close();
   assert(msgs.statusIterator.done);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("push consumers - connection close closes", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+  const js = jetstream(nc);
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["A.*"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "B",
+    deliver_subject: "here",
+    idle_heartbeat: nanos(1000),
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const c = await js.consumers.getPushConsumer("A", "B");
+  const iter = await c.consume({
+    callback: (m) => {
+      m.ack();
+    },
+  }) as PushConsumerMessagesImpl;
+
+  await nc.close();
+  await deadline(iter.closed(), 1000);
 
   await cleanup(ns, nc);
 });
