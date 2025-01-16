@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "doc": "npm run core; npm run jetstream; npm run kv; npm run obj; npm run services",
+    "core": "(cd ../core; npm run build && typedoc --out ../docs/core && touch ../docs/core/.nojekyll)",
+    "jetstream": "(cd ../jetstream; npm run build && typedoc --out ../docs/jetstream && touch ../docs/jetstream/.nojekyll)",
+    "kv": "(cd ../kv; npm run build && typedoc --out ../docs/kv && touch ../docs/kv/.nojekyll)",
+    "obj": "(cd ../obj; npm run build && typedoc --out ../docs/obj && touch ../docs/obj/.nojekyll)",
+    "services": "(cd ../services; npm run build && typedoc --out ../docs/services && touch ../docs/services/.nojekyll)"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "typedoc": "^0.27.6"
+  }
+}
