@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-48",
+  "version": "3.0.0-49",
   "files": [
     "lib/",
     "LICENSE",
@@ -23,7 +23,6 @@
     "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
     "build-cjs": "npm run pre-process && tsc",
     "build": "npm run build-cjs",
-    "doc": "npm run build && typedoc --out ../docs/core && touch ../docs/core/.nojekyll",
     "prepack": "npm run build",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
     "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
@@ -34,13 +33,12 @@
   },
   "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
   "dependencies": {
-    "@nats-io/nkeys": "2.0.0-3",
-    "@nats-io/nuid": "2.0.1-2"
+    "@nats-io/nkeys": "2.0.2",
+    "@nats-io/nuid": "2.0.3"
   },
   "devDependencies": {
-    "@types/node": "^22.7.6",
+    "@types/node": "22.10.7",
     "shx": "^0.3.4",
-    "typedoc": "^0.26.10",
-    "typescript": "^5.5.4"
+    "typescript": "5.6.3"
   }
 }
