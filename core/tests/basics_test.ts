@@ -867,7 +867,8 @@ Deno.test("basics - subs pending count", async () => {
     for await (const _m of sub) {
       count++;
       assertEquals(count, sub.getProcessed());
-      assertEquals(sub.getProcessed() + sub.getPending(), 12);
+      console.log({ processed: sub.getProcessed(), pending: sub.getPending() });
+      assertEquals(sub.getProcessed() + sub.getPending(), 10);
     }
   })();
 
@@ -1547,7 +1548,7 @@ Deno.test("basics - slow", async () => {
     for await (const m of nc.status()) {
       //@ts-ignore: test
       if (m.type === "slowConsumer") {
-        console.log(m);
+        console.log(`sub: ${m.sub.getID()}`);
         slow++;
       }
     }
@@ -1567,37 +1568,45 @@ Deno.test("basics - slow", async () => {
 
   // send one more, no more notifications until we drop below 10
   nc.publish("test", "");
-  await delay(100); // 12
+  await nc.flush(); // 12
+  await delay(100);
   assertEquals(sub.getPending(), 12);
   assertEquals(slow, 0);
 
-  await s.next(); // 12
   await s.next(); // 11
   await s.next(); // 10
-
-  nc.publish("test", ""); // 11
-  await delay(100);
-  assertEquals(sub.getPending(), 11);
-  assertEquals(slow, 0);
-
-  // now this will notify
-  await s.next(); // 11
-  await s.next(); // 10
-  await delay(100);
-  assertEquals(sub.getPending(), 9);
-
   await s.next(); // 9
-  nc.publish("test", "");
-  await delay(100);
-  assertEquals(sub.getPending(), 9);
-  assertEquals(slow, 0);
 
   nc.publish("test", ""); // 10
+  await nc.flush();
   await delay(100);
   assertEquals(sub.getPending(), 10);
   assertEquals(slow, 0);
 
+  // now this will notify
+  await s.next(); // 9
+  await s.next(); // 8
+  await nc.flush();
+  await delay(100);
+  assertEquals(sub.getPending(), 8);
+
+  await s.next(); // 7
+  nc.publish("test", ""); // 8
+  await nc.flush();
+  await delay(100);
+  assertEquals(sub.getPending(), 8);
+  assertEquals(slow, 0);
+
+  nc.publish("test", ""); // 9
+  nc.publish("test", ""); // 10
+  await nc.flush();
+  await delay(100);
+
+  assertEquals(sub.getPending(), 10);
+  assertEquals(slow, 0);
+
   nc.publish("test", ""); // 11
+  await nc.flush();
   await delay(100);
   assertEquals(sub.getPending(), 11);
   assertEquals(slow, 1);

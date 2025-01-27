@@ -467,3 +467,36 @@ Deno.test("consume - connection close exits", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("consume - one pending is none", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const js = jsm.jetstream();
+  const buf = [];
+  for (let i = 0; i < 100; i++) {
+    buf.push(js.publish("a", `${i}`));
+  }
+  await Promise.all(buf);
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const c = await js.consumers.get("A", "a");
+  const iter = await c.consume({ bind: true, max_messages: 1 });
+  for await (const m of iter) {
+    assertEquals(iter.getPending(), 0);
+    assertEquals(iter.getReceived(), m.seq);
+    m.ack();
+    if (m.info.pending === 0) {
+      break;
+    }
+  }
+
+  await cleanup(ns, nc);
+});

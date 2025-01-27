@@ -77,6 +77,9 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
       }
       return;
     }
+    if (typeof v === "function") {
+      this.pendingFiltered++;
+    }
     this.yields.push(v);
     this.signal.resolve();
   }
@@ -104,6 +107,7 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
         this.yields = [];
         for (let i = 0; i < yields.length; i++) {
           if (typeof yields[i] === "function") {
+            this.pendingFiltered--;
             const fn = yields[i] as CallbackFn;
             try {
               fn();
@@ -120,11 +124,10 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
           }
 
           this.processed++;
+          this.inflight--;
           const start = this.profile ? Date.now() : 0;
           yield yields[i] as T;
           this.time = this.profile ? Date.now() - start : 0;
-
-          this.inflight--;
         }
         // yielding could have paused and microtask
         // could have added messages. Prevent allocations
