@@ -367,7 +367,6 @@ export class NodeTransport implements Transport {
   }
 
   async *iterate(): AsyncIterableIterator<Uint8Array> {
-    const debug = this.options.debug;
     while (true) {
       if (this.yields.length === 0) {
         await this.signal;
@@ -376,7 +375,7 @@ export class NodeTransport implements Transport {
       this.yields = [];
 
       for (let i = 0; i < yields.length; i++) {
-        if (debug) {
+        if (this.options.debug) {
           console.info(`> ${render(yields[i])}`);
         }
         yield yields[i];
