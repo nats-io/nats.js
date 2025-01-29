@@ -152,7 +152,7 @@ export class Objm {
   }
 
   /**
-   * Returns a list of ObjectStoreInfo for all streams that are identified as
+   * Returns a list of ObjectStoreStatus for all streams that are identified as
    * being a ObjectStore (that is having names that have the prefix `OBJ_`)
    */
   list(): Lister<ObjectStoreStatus> {
