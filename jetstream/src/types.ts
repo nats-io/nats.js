@@ -463,7 +463,7 @@ export type IdleHeartbeat = {
   idle_heartbeat?: number;
 };
 
-export type ConsumerCallbackFn = (r: JsMsg) => void;
+export type ConsumerCallbackFn = (r: JsMsg) => void | Promise<never>;
 export type ConsumeCallback = {
   /**
    * Process messages using a callback instead of an iterator. Note that when using callbacks,
