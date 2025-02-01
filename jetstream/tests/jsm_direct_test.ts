@@ -522,3 +522,56 @@ Deno.test("direct - last message for", async (t) => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("direct - batch next_by_subj", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  const jsm = await jetstreamManager(nci) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a", "b"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const js = jsm.jetstream();
+
+  const buf = [];
+  for (let i = 0; i < 50; i++) {
+    buf.push(js.publish(`a`), buf.push(js.publish(`b`)));
+  }
+  await Promise.all(buf);
+
+  const msgs = [];
+  let iter = await jsm.direct.getBatch("A", {
+    seq: 0,
+    batch: 100,
+    next_by_subj: "a",
+  });
+  for await (const m of iter) {
+    msgs.push(m.subject);
+  }
+  assertEquals(msgs.length, 50);
+  for (let i = 0; i < 50; i++) {
+    assertEquals(msgs[i], "a");
+  }
+
+  msgs.length = 0;
+  iter = await jsm.direct.getBatch("A", {
+    seq: 50,
+    batch: 100,
+    next_by_subj: "b",
+  });
+  for await (const m of iter) {
+    msgs.push(m.subject);
+  }
+  assertEquals(msgs.length, 26);
+  for (let i = 0; i < 26; i++) {
+    assertEquals(msgs[i], "b");
+  }
+
+  await cleanup(ns, nc);
+});
