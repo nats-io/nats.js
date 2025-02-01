@@ -524,6 +524,7 @@ export type DirectBatchLimits = {
   batch?: number;
   max_bytes?: number;
   callback?: BatchCallback<StoredMsg>;
+  next_by_subj?: string;
 };
 export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
 export type DirectBatchStartTime = StartTime & DirectBatchLimits;
