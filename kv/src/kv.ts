@@ -899,6 +899,19 @@ export class Bucket implements KV {
       },
     });
 
+    (async () => {
+      for await (const s of iter.status()) {
+        switch (s.type) {
+          // if we get a heartbeat we got all the keys
+          case "heartbeat":
+            keys.push(() => {
+              keys.stop();
+            });
+            break;
+        }
+      }
+    })().then();
+
     iter.closed().then(() => {
       keys.push(() => {
         keys.stop();
