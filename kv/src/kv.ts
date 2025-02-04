@@ -733,7 +733,7 @@ export class Bucket implements KV {
       return this.fullKeyName(ek);
     });
 
-    let deliver_policy = DeliverPolicy.LastPerSubject;
+    let deliver_policy: DeliverPolicy = DeliverPolicy.LastPerSubject;
     if (content === KvWatchInclude.AllHistory) {
       deliver_policy = DeliverPolicy.All;
     }
@@ -822,7 +822,7 @@ export class Bucket implements KV {
     const co = {} as Partial<ConsumerConfig>;
     co.headers_only = opts.headers_only || false;
 
-    let content = KvWatchInclude.LastValue;
+    let content: KvWatchInclude = KvWatchInclude.LastValue;
     if (opts.include === KvWatchInclude.AllHistory) {
       content = KvWatchInclude.AllHistory;
     } else if (opts.include === KvWatchInclude.UpdatesOnly) {
