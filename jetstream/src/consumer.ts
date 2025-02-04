@@ -69,11 +69,14 @@ import type {
 import { JetStreamError, JetStreamStatus } from "./jserrors.ts";
 import { minValidation } from "./jsutil.ts";
 
-enum PullConsumerType {
-  Unset = -1,
-  Consume,
-  Fetch,
-}
+export const PullConsumerType = {
+  Unset: "",
+  Consume: "consume",
+  Fetch: "fetch",
+} as const;
+
+export type PullConsumerType =
+  typeof PullConsumerType[keyof typeof PullConsumerType];
 
 export type OrderedConsumerState = {
   namePrefix: string;
