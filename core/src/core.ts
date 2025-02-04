@@ -77,7 +77,10 @@ export type Status =
   | SlowConsumerStatus
   | ForceReconnectStatus;
 
-export type MsgCallback<T> = (err: Error | null, msg: T) => void;
+export type MsgCallback<T> = (
+  err: Error | null,
+  msg: T,
+) => void | Promise<never>;
 
 /**
  * Subscription Options

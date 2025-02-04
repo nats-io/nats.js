@@ -1181,9 +1181,8 @@ Deno.test("basics - request many waits for timer late response", async () => {
 
   const subj = createInbox();
   nc.subscribe(subj, {
-    callback: async (_err, msg) => {
-      await delay(1750);
-      msg.respond();
+    callback: (_err, msg) => {
+      delay(1759).then(() => msg.respond());
     },
   });
 

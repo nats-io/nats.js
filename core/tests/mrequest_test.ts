@@ -204,9 +204,10 @@ async function requestTimerLateResponse(noMux = false): Promise<void> {
 
   const subj = createInbox();
   nc.subscribe(subj, {
-    callback: async (_err, msg) => {
-      await delay(1750);
-      msg.respond();
+    callback: (_err, msg) => {
+      delay(1750).then(() => {
+        msg.respond();
+      });
     },
   });
 
