@@ -797,6 +797,19 @@ export class Bucket implements KV {
       qi.push(fn);
     });
 
+    (async () => {
+      for await (const s of iter.status()) {
+        switch (s.type) {
+          // if we get a heartbeat we got all the keys
+          case "heartbeat":
+            qi.push(() => {
+              qi.stop();
+            });
+            break;
+        }
+      }
+    })().then();
+
     // if they break from the iterator stop the consumer
     qi.iterClosed.then(() => {
       iter.stop();
@@ -898,6 +911,19 @@ export class Bucket implements KV {
         }
       },
     });
+
+    (async () => {
+      for await (const s of iter.status()) {
+        switch (s.type) {
+          // if we get a heartbeat we got all the keys
+          case "heartbeat":
+            keys.push(() => {
+              keys.stop();
+            });
+            break;
+        }
+      }
+    })().then();
 
     iter.closed().then(() => {
       keys.push(() => {
