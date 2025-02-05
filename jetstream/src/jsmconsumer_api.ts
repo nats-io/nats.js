@@ -55,7 +55,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   async add(
     stream: string,
     cfg: ConsumerConfig,
-    action = ConsumerApiAction.Create,
+    action: ConsumerApiAction = ConsumerApiAction.Create,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
 

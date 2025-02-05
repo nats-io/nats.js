@@ -187,7 +187,7 @@ export class MsgHdrsImpl implements MsgHdrs {
     return keys;
   }
 
-  findKeys(k: string, match = Match.Exact): string[] {
+  findKeys(k: string, match: Match = Match.Exact): string[] {
     const keys = this.keys();
     switch (match) {
       case Match.Exact:
@@ -230,16 +230,16 @@ export class MsgHdrsImpl implements MsgHdrs {
     return "";
   }
 
-  has(k: string, match = Match.Exact): boolean {
+  has(k: string, match: Match = Match.Exact): boolean {
     return this.findKeys(k, match).length > 0;
   }
 
-  set(k: string, v: string, match = Match.Exact): void {
+  set(k: string, v: string, match: Match = Match.Exact): void {
     this.delete(k, match);
     this.append(k, v, match);
   }
 
-  append(k: string, v: string, match = Match.Exact): void {
+  append(k: string, v: string, match: Match = Match.Exact): void {
     // validate the key
     const ck = canonicalMIMEHeaderKey(k);
     if (match === Match.CanonicalMIME) {
@@ -259,7 +259,7 @@ export class MsgHdrsImpl implements MsgHdrs {
     a.push(value);
   }
 
-  values(k: string, match = Match.Exact): string[] {
+  values(k: string, match: Match = Match.Exact): string[] {
     const buf: string[] = [];
     const keys = this.findKeys(k, match);
     keys.forEach((v) => {
@@ -271,7 +271,7 @@ export class MsgHdrsImpl implements MsgHdrs {
     return buf;
   }
 
-  delete(k: string, match = Match.Exact): void {
+  delete(k: string, match: Match = Match.Exact): void {
     const keys = this.findKeys(k, match);
     keys.forEach((v) => {
       this.headers.delete(v);

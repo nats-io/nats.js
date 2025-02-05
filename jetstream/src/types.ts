@@ -960,22 +960,24 @@ export type Advisory = {
 /**
  * The different kinds of Advisories
  */
-export enum AdvisoryKind {
-  API = "api_audit",
-  StreamAction = "stream_action",
-  ConsumerAction = "consumer_action",
-  SnapshotCreate = "snapshot_create",
-  SnapshotComplete = "snapshot_complete",
-  RestoreCreate = "restore_create",
-  RestoreComplete = "restore_complete",
-  MaxDeliver = "max_deliver",
-  Terminated = "terminated",
-  Ack = "consumer_ack",
-  StreamLeaderElected = "stream_leader_elected",
-  StreamQuorumLost = "stream_quorum_lost",
-  ConsumerLeaderElected = "consumer_leader_elected",
-  ConsumerQuorumLost = "consumer_quorum_lost",
-}
+export const AdvisoryKind = {
+  API: "api_audit",
+  StreamAction: "stream_action",
+  ConsumerAction: "consumer_action",
+  SnapshotCreate: "snapshot_create",
+  SnapshotComplete: "snapshot_complete",
+  RestoreCreate: "restore_create",
+  RestoreComplete: "restore_complete",
+  MaxDeliver: "max_deliver",
+  Terminated: "terminated",
+  Ack: "consumer_ack",
+  StreamLeaderElected: "stream_leader_elected",
+  StreamQuorumLost: "stream_quorum_lost",
+  ConsumerLeaderElected: "consumer_leader_elected",
+  ConsumerQuorumLost: "consumer_quorum_lost",
+} as const;
+
+export type AdvisoryKind = typeof AdvisoryKind[keyof typeof AdvisoryKind];
 
 export type Stream = {
   name: string;
@@ -1018,73 +1020,78 @@ export type Stream = {
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
 };
 
-export enum JsHeaders {
+export const JsHeaders = {
   /**
    * Set if message is from a stream source - format is `stream seq`
    */
-  StreamSourceHdr = "Nats-Stream-Source",
+  StreamSourceHdr: "Nats-Stream-Source",
   /**
    * Set for heartbeat messages
    */
-  LastConsumerSeqHdr = "Nats-Last-Consumer",
+  LastConsumerSeqHdr: "Nats-Last-Consumer",
   /**
    * Set for heartbeat messages
    */
-  LastStreamSeqHdr = "Nats-Last-Stream",
+  LastStreamSeqHdr: "Nats-Last-Stream",
   /**
    * Set for heartbeat messages if the consumer is stalled
    */
-  ConsumerStalledHdr = "Nats-Consumer-Stalled",
+  ConsumerStalledHdr: "Nats-Consumer-Stalled",
   /**
    * Set for headers_only consumers indicates the number of bytes in the payload
    */
-  MessageSizeHdr = "Nats-Msg-Size",
+  MessageSizeHdr: "Nats-Msg-Size",
   // rollup header
-  RollupHdr = "Nats-Rollup",
+  RollupHdr: "Nats-Rollup",
   // value for rollup header when rolling up a subject
-  RollupValueSubject = "sub",
+  RollupValueSubject: "sub",
   // value for rollup header when rolling up all subjects
-  RollupValueAll = "all",
+  RollupValueAll: "all",
   /**
    * Set on protocol messages to indicate pull request message count that
    * was not honored.
    */
-  PendingMessagesHdr = "Nats-Pending-Messages",
+  PendingMessagesHdr: "Nats-Pending-Messages",
   /**
    * Set on protocol messages to indicate pull request byte count that
    * was not honored
    */
-  PendingBytesHdr = "Nats-Pending-Bytes",
-}
+  PendingBytesHdr: "Nats-Pending-Bytes",
+} as const;
+export type JsHeaders = typeof JsHeaders[keyof typeof JsHeaders];
 
-export enum DirectMsgHeaders {
-  Stream = "Nats-Stream",
-  Sequence = "Nats-Sequence",
-  TimeStamp = "Nats-Time-Stamp",
-  Subject = "Nats-Subject",
-  LastSequence = "Nats-Last-Sequence",
-  NumPending = "Nats-Num-Pending",
-}
+export const DirectMsgHeaders = {
+  Stream: "Nats-Stream",
+  Sequence: "Nats-Sequence",
+  TimeStamp: "Nats-Time-Stamp",
+  Subject: "Nats-Subject",
+  LastSequence: "Nats-Last-Sequence",
+  NumPending: "Nats-Num-Pending",
+} as const;
+export type DirectMsgHeaders =
+  typeof DirectMsgHeaders[keyof typeof DirectMsgHeaders];
 
-export enum RepublishHeaders {
+export const RepublishHeaders = {
   /**
    * The source stream of the message
    */
-  Stream = "Nats-Stream",
+  Stream: "Nats-Stream",
   /**
    * The original subject of the message
    */
-  Subject = "Nats-Subject",
+  Subject: "Nats-Subject",
   /**
    * The sequence of the republished message
    */
-  Sequence = "Nats-Sequence",
+  Sequence: "Nats-Sequence",
   /**
    * The stream sequence id of the last message ingested to the same original subject (or 0 if none or deleted)
    */
-  LastSequence = "Nats-Last-Sequence",
+  LastSequence: "Nats-Last-Sequence",
   /**
    * The size in bytes of the message's body - Only if {@link Republish#headers_only} is set.
    */
-  Size = "Nats-Msg-Size",
-}
+  Size: "Nats-Msg-Size",
+} as const;
+export type RepublishHeaders =
+  typeof RepublishHeaders[keyof typeof RepublishHeaders];
