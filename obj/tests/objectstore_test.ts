@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2024 The NATS Authors
+ * Copyright 2022-2025 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -38,8 +38,8 @@ import type { ObjectInfo, ObjectStoreMeta } from "../src/types.ts";
 import { jetstreamManager, StorageType } from "@nats-io/jetstream";
 import { equals } from "https://deno.land/std@0.221.0/bytes/mod.ts";
 import { digestType, Objm } from "../src/objectstore.ts";
-import { SHA256 } from "../src/sha256.ts";
 import { Base64UrlPaddedCodec } from "../src/base64.ts";
+import { sha256 } from "js-sha256";
 
 function readableStreamFrom(data: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -85,12 +85,10 @@ function makeData(n: number): Uint8Array {
 }
 
 function digest(data: Uint8Array): string {
-  const sha = new SHA256();
+  const sha = sha256.create();
   sha.update(data);
-  const digest = sha.digest("base64");
-  const pad = digest.length % 3;
-  const padding = pad > 0 ? "=".repeat(pad) : "";
-  return `${digestType}${digest}${padding}`;
+  const digest = Base64UrlPaddedCodec.encode(Uint8Array.from(sha.digest()));
+  return `${digestType}${digest}`;
 }
 
 Deno.test("objectstore - basics", async () => {
