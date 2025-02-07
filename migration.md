@@ -89,7 +89,8 @@ these modules for cross-runtime consumption.
   make a request, the request could fail with a RequestError or TimeoutError.
   The RequestError in turn will contain the `cause` such as `NoRespondersError`.
   This also means that in TypeScript, the callback signature has been relaxed to
-  just `(Error, Msg)=>void`. For more information see the JsDocs.
+  just `(Error, Msg)=>void | Promise<never>`. For more information see the
+  JsDocs.
 - Previous versions of the client provided the enums `Events` and `DebugEvents`
   for the `type` values in the notification received via
   `status(): AsyncIterable<Status>` iterator. Starting with this release,
@@ -102,7 +103,8 @@ these modules for cross-runtime consumption.
 - RequestStrategy "Jitter" is now called "stall" to adopt the term used by new
   implementations in other clients and the RequestStrategy enum is now a type
   alias to simple strings "timer", "count", "stall", "sentinel".
-- `SHA256` a support type for object store has been moved to @nats-io/obj
+- `SHA256` a support type for object store has been removed. Client replaced
+  this library with a dependency.
 - `Base64Codec`, `Base64UrlCodec`, `Base64UrlPaddedCodec` support types for
   object store have been moved to @nats-io/obj.
 
@@ -205,6 +207,24 @@ Use `KvOptions.storage` and `KvStatus.storage`.
 >   const c = require("crypto");
 >   global.crypto = c.webcrypto;
 > }
+> ```
+
+> [!IMPORTANT]
+>
+> Clients that use @nats-io/obj prior to 3.0.0-34, potentially generated sha-256
+> digests that were incorrect due to a bug on a 3rd party library bundled in the
+> client. The library has been replaced with npm:js-sha256. Errors in the
+> digests usually affected 500 MB or larger objects.
+>
+> If you are upgrading from a previous pre-release or from the previous
+> generation clients (these were also updated) you may want to re-put your
+> objects or use the tool
+> [fix-os-hashes](https://github.com/nats-io/nats.deno/blob/main/bin/fix-os-hashes.ts)
+> to be compatible with 3.0.0-34 and beyond (and other NATS tools). To run the
+> tool install [deno](https://deno.com/) and:
+>
+> ```
+> deno run -A https://github.com/nats-io/nats.deno/blob/main/bin/fix-os-hashes.ts -h
 > ```
 
 To use ObjectStore, you must install and import `@nats-io/obj`.
