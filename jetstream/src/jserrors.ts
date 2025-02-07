@@ -179,13 +179,16 @@ export class JetStreamStatus {
   }
 }
 
-export enum JetStreamApiCodes {
-  ConsumerNotFound = 10014,
-  StreamNotFound = 10059,
-  JetStreamNotEnabledForAccount = 10039,
-  StreamWrongLastSequence = 10071,
-  NoMessageFound = 10037,
-}
+export const JetStreamApiCodes = {
+  ConsumerNotFound: 10014,
+  StreamNotFound: 10059,
+  JetStreamNotEnabledForAccount: 10039,
+  StreamWrongLastSequence: 10071,
+  NoMessageFound: 10037,
+} as const;
+
+export type JetStreamApiCodes =
+  typeof JetStreamApiCodes[keyof typeof JetStreamApiCodes];
 
 export function isMessageNotFound(err: Error): boolean {
   return err instanceof JetStreamApiError &&

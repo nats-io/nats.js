@@ -184,21 +184,22 @@ export type KvOptions = KvLimits & {
   metadata?: Record<string, string>;
 };
 
-export enum KvWatchInclude {
+export const KvWatchInclude = {
   /**
    * Include the last value for all the keys
    */
-  LastValue = "",
+  LastValue: "",
   /**
    * Include all available history for all keys
    */
-  AllHistory = "history",
+  AllHistory: "history",
   /**
    * Don't include history or last values, only notify
    * of updates
    */
-  UpdatesOnly = "updates",
-}
+  UpdatesOnly: "updates",
+} as const;
+export type KvWatchInclude = typeof KvWatchInclude[keyof typeof KvWatchInclude];
 
 export type KvWatchOptions = {
   /**

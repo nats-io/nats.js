@@ -37,24 +37,26 @@ export function compare(a: SemVer, b: SemVer): number {
   return 0;
 }
 
-export enum Feature {
-  JS_KV = "js_kv",
-  JS_OBJECTSTORE = "js_objectstore",
-  JS_PULL_MAX_BYTES = "js_pull_max_bytes",
-  JS_NEW_CONSUMER_CREATE_API = "js_new_consumer_create",
-  JS_ALLOW_DIRECT = "js_allow_direct",
-  JS_MULTIPLE_CONSUMER_FILTER = "js_multiple_consumer_filter",
-  JS_SIMPLIFICATION = "js_simplification",
-  JS_STREAM_CONSUMER_METADATA = "js_stream_consumer_metadata",
-  JS_CONSUMER_FILTER_SUBJECTS = "js_consumer_filter_subjects",
-  JS_STREAM_FIRST_SEQ = "js_stream_first_seq",
-  JS_STREAM_SUBJECT_TRANSFORM = "js_stream_subject_transform",
-  JS_STREAM_SOURCE_SUBJECT_TRANSFORM = "js_stream_source_subject_transform",
-  JS_STREAM_COMPRESSION = "js_stream_compression",
-  JS_DEFAULT_CONSUMER_LIMITS = "js_default_consumer_limits",
-  JS_BATCH_DIRECT_GET = "js_batch_direct_get",
-  JS_PRIORITY_GROUPS = "js_priority_groups",
-}
+export const Feature = {
+  JS_KV: "js_kv",
+  JS_OBJECTSTORE: "js_objectstore",
+  JS_PULL_MAX_BYTES: "js_pull_max_bytes",
+  JS_NEW_CONSUMER_CREATE_API: "js_new_consumer_create",
+  JS_ALLOW_DIRECT: "js_allow_direct",
+  JS_MULTIPLE_CONSUMER_FILTER: "js_multiple_consumer_filter",
+  JS_SIMPLIFICATION: "js_simplification",
+  JS_STREAM_CONSUMER_METADATA: "js_stream_consumer_metadata",
+  JS_CONSUMER_FILTER_SUBJECTS: "js_consumer_filter_subjects",
+  JS_STREAM_FIRST_SEQ: "js_stream_first_seq",
+  JS_STREAM_SUBJECT_TRANSFORM: "js_stream_subject_transform",
+  JS_STREAM_SOURCE_SUBJECT_TRANSFORM: "js_stream_source_subject_transform",
+  JS_STREAM_COMPRESSION: "js_stream_compression",
+  JS_DEFAULT_CONSUMER_LIMITS: "js_default_consumer_limits",
+  JS_BATCH_DIRECT_GET: "js_batch_direct_get",
+  JS_PRIORITY_GROUPS: "js_priority_groups",
+} as const;
+
+export type Feature = typeof Feature[keyof typeof Feature];
 
 type FeatureVersion = {
   ok: boolean;
@@ -63,8 +65,8 @@ type FeatureVersion = {
 
 export class Features {
   server!: SemVer;
-  features: Map<Feature, FeatureVersion>;
-  disabled: Feature[];
+  features: Map<string, FeatureVersion>;
+  disabled: string[];
   constructor(v: SemVer) {
     this.features = new Map<Feature, FeatureVersion>();
     this.disabled = [];

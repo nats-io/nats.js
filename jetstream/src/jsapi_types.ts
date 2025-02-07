@@ -362,110 +362,121 @@ export type Placement = {
   tags: string[];
 };
 
-export enum RetentionPolicy {
+export const RetentionPolicy = {
   /**
    * Retain messages until the limits are reached, then trigger the discard policy.
    */
-  Limits = "limits",
+  Limits: "limits",
   /**
    * Retain messages while there is consumer interest on the particular subject.
    */
-  Interest = "interest",
+  Interest: "interest",
   /**
    * Retain messages until acknowledged
    */
-  Workqueue = "workqueue",
-}
+  Workqueue: "workqueue",
+} as const;
 
-export enum DiscardPolicy {
+export type RetentionPolicy =
+  typeof RetentionPolicy[keyof typeof RetentionPolicy];
+
+export const DiscardPolicy = {
   /**
    * Discard old messages to make room for the new ones
    */
-  Old = "old",
+  Old: "old",
   /**
    * Discard the new messages
    */
-  New = "new",
-}
+  New: "new",
+} as const;
 
-export enum StorageType {
+export type DiscardPolicy = typeof DiscardPolicy[keyof typeof DiscardPolicy];
+
+export const StorageType = {
   /**
    * Store persistently on files
    */
-  File = "file",
+  File: "file",
   /**
    * Store in server memory - doesn't survive server restarts
    */
-  Memory = "memory",
-}
+  Memory: "memory",
+} as const;
+export type StorageType = typeof StorageType[keyof typeof StorageType];
 
-export enum DeliverPolicy {
+export const DeliverPolicy = {
   /**
    * Deliver all messages
    */
-  All = "all",
+  All: "all",
   /**
    * Deliver starting with the last message
    */
-  Last = "last",
+  Last: "last",
   /**
    * Deliver starting with new messages
    */
-  New = "new",
+  New: "new",
   /**
    * Deliver starting with the specified sequence
    */
-  StartSequence = "by_start_sequence",
+  StartSequence: "by_start_sequence",
   /**
    * Deliver starting with the specified time
    */
-  StartTime = "by_start_time",
+  StartTime: "by_start_time",
   /**
    * Deliver starting with the last messages for every subject
    */
-  LastPerSubject = "last_per_subject",
-}
+  LastPerSubject: "last_per_subject",
+} as const;
+export type DeliverPolicy = typeof DeliverPolicy[keyof typeof DeliverPolicy];
 
-export enum AckPolicy {
+export const AckPolicy = {
   /**
    * Messages don't need to be Ack'ed.
    */
-  None = "none",
+  None: "none",
   /**
    * Ack, acknowledges all messages with a lower sequence
    */
-  All = "all",
+  All: "all",
   /**
    * All sequences must be explicitly acknowledged
    */
-  Explicit = "explicit",
+  Explicit: "explicit",
   /**
    * @ignore
    */
-  NotSet = "",
-}
+  NotSet: "",
+} as const;
+export type AckPolicy = typeof AckPolicy[keyof typeof AckPolicy];
 
-export enum ReplayPolicy {
+export const ReplayPolicy = {
   /**
    * Replays messages as fast as possible
    */
-  Instant = "instant",
+  Instant: "instant",
   /**
    * Replays messages following the original delay between messages
    */
-  Original = "original",
-}
+  Original: "original",
+} as const;
+export type ReplayPolicy = typeof ReplayPolicy[keyof typeof ReplayPolicy];
 
-export enum StoreCompression {
+export const StoreCompression = {
   /**
    * No compression
    */
-  None = "none",
+  None: "none",
   /**
    * S2 compression
    */
-  S2 = "s2",
-}
+  S2: "s2",
+} as const;
+export type StoreCompression =
+  typeof StoreCompression[keyof typeof StoreCompression];
 
 /**
  * Options for StreamAPI info requests
@@ -703,11 +714,13 @@ export type PurgeResponse = Success & {
   purged: number;
 };
 
-export enum ConsumerApiAction {
-  CreateOrUpdate = "",
-  Update = "update",
-  Create = "create",
-}
+export const ConsumerApiAction = {
+  CreateOrUpdate: "",
+  Update: "update",
+  Create: "create",
+} as const;
+export type ConsumerApiAction =
+  typeof ConsumerApiAction[keyof typeof ConsumerApiAction];
 
 export type CreateConsumerRequest = {
   "stream_name": string;
@@ -1056,10 +1069,11 @@ export type ConsumerUpdateConfig = PriorityGroups & {
   metadata?: Record<string, string>;
 };
 
-export enum PriorityPolicy {
-  None = "none",
-  Overflow = "overflow",
-}
+export const PriorityPolicy = {
+  None: "none",
+  Overflow: "overflow",
+} as const;
+export type PriorityPolicy = typeof PriorityPolicy[keyof typeof PriorityPolicy];
 
 export function defaultConsumer(
   name: string,
@@ -1191,10 +1205,11 @@ export type DeliveryInfo = {
   redelivered: boolean;
 };
 
-export enum PubHeaders {
-  MsgIdHdr = "Nats-Msg-Id",
-  ExpectedStreamHdr = "Nats-Expected-Stream",
-  ExpectedLastSeqHdr = "Nats-Expected-Last-Sequence",
-  ExpectedLastMsgIdHdr = "Nats-Expected-Last-Msg-Id",
-  ExpectedLastSubjectSequenceHdr = "Nats-Expected-Last-Subject-Sequence",
-}
+export const PubHeaders = {
+  MsgIdHdr: "Nats-Msg-Id",
+  ExpectedStreamHdr: "Nats-Expected-Stream",
+  ExpectedLastSeqHdr: "Nats-Expected-Last-Sequence",
+  ExpectedLastMsgIdHdr: "Nats-Expected-Last-Msg-Id",
+  ExpectedLastSubjectSequenceHdr: "Nats-Expected-Last-Subject-Sequence",
+} as const;
+export type PubHeaders = typeof PubHeaders[keyof typeof PubHeaders];

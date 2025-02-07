@@ -249,14 +249,16 @@ export interface ServersChanged {
   readonly deleted: string[];
 }
 
-export enum Match {
-  // Exact option is case sensitive
-  Exact = 0,
-  // Case sensitive, but key is transformed to Canonical MIME representation
-  CanonicalMIME,
-  // Case insensitive matches
-  IgnoreCase,
-}
+export const Match = {
+  // Exact option is case-sensitive
+  Exact: "exact",
+  // Case-sensitive, but key is transformed to Canonical MIME representation
+  CanonicalMIME: "canonical",
+  // Case-insensitive matches
+  IgnoreCase: "insensitive",
+} as const;
+
+export type Match = typeof Match[keyof typeof Match];
 
 export interface MsgHdrs extends Iterable<[string, string[]]> {
   hasError: boolean;

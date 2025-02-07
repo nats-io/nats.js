@@ -95,11 +95,14 @@ export type ServiceMetadata = {
   metadata?: Record<string, string>;
 };
 
-export enum ServiceResponseType {
-  STATS = "io.nats.micro.v1.stats_response",
-  INFO = "io.nats.micro.v1.info_response",
-  PING = "io.nats.micro.v1.ping_response",
-}
+export const ServiceResponseType = {
+  STATS: "io.nats.micro.v1.stats_response",
+  INFO: "io.nats.micro.v1.info_response",
+  PING: "io.nats.micro.v1.ping_response",
+} as const;
+
+export type ServiceResponseType =
+  typeof ServiceResponseType[keyof typeof ServiceResponseType];
 
 export interface ServiceResponse {
   /**
@@ -290,11 +293,12 @@ export class ServiceError extends Error {
   }
 }
 
-export enum ServiceVerb {
-  PING = "PING",
-  STATS = "STATS",
-  INFO = "INFO",
-}
+export const ServiceVerb = {
+  PING: "PING",
+  STATS: "STATS",
+  INFO: "INFO",
+} as const;
+export type ServiceVerb = typeof ServiceVerb[keyof typeof ServiceVerb];
 
 export interface ServiceClient {
   /**
