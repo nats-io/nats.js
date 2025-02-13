@@ -23,6 +23,9 @@ resources.
 
 ## Installation
 
+For a quick overview of the libraries and how to install them, see
+[runtimes.md](../runtimes.md).
+
 Note that this library is distributed in two different registries:
 
 - npm a node-specific library supporting CJS (`require`) and ESM (`import`)
