@@ -16,6 +16,4 @@ export { StorageType } from "./types.ts";
 
 export { Objm } from "./objectstore.ts";
 
-export { SHA256, sha256 } from "./sha256.ts";
-
 export { Base64Codec, Base64UrlCodec, Base64UrlPaddedCodec } from "./base64.ts";

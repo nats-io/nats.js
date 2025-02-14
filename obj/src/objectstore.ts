@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2024 The NATS Authors
+ * Copyright 2022-2025 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -68,8 +68,9 @@ import type {
   ObjectStoreStatus,
   ObjectWatchInfo,
 } from "./types.ts";
-import { SHA256 } from "./sha256.ts";
 import { Base64UrlPaddedCodec } from "./base64.ts";
+import { sha256 } from "js-sha256";
+import { checkSha256, parseSha256 } from "./sha_digest.parser.ts";
 
 export const osPrefix = "OBJ_";
 export const digestType = "SHA-256=";
@@ -470,7 +471,7 @@ export class ObjectStoreImpl implements ObjectStore {
     const db = new DataBuffer();
     try {
       const reader = rs ? rs.getReader() : null;
-      const sha = new SHA256();
+      const sha = sha256.create();
 
       while (true) {
         const { done, value } = reader
@@ -491,10 +492,11 @@ export class ObjectStoreImpl implements ObjectStore {
 
           // prepare the metadata
           info.mtime = new Date().toISOString();
-          const digest = sha.digest("base64");
-          const pad = digest.length % 3;
-          const padding = pad > 0 ? "=".repeat(pad) : "";
-          info.digest = `${digestType}${digest}${padding}`;
+          const digest = Base64UrlPaddedCodec.encode(
+            Uint8Array.from(sha.digest()),
+          );
+          info.digest = `${digestType}${digest}`;
+
           info.deleted = false;
 
           // trailing md for the object
@@ -640,6 +642,16 @@ export class ObjectStoreImpl implements ObjectStore {
       return os.get(ln);
     }
 
+    if (!info.digest.startsWith(digestType)) {
+      return Promise.reject(new Error(`unknown digest type: ${info.digest}`));
+    }
+    const digest = parseSha256(info.digest.substring(8));
+    if (digest === null) {
+      return Promise.reject(
+        new Error(`unable to parse digest: ${info.digest}`),
+      );
+    }
+
     const d = deferred<Error | null>();
 
     const r: Partial<ObjectResult> = {
@@ -652,7 +664,7 @@ export class ObjectStoreImpl implements ObjectStore {
       return Promise.resolve(r as ObjectResult);
     }
 
-    const sha = new SHA256();
+    const sha = sha256.create();
     let controller: ReadableStreamDefaultController;
 
     const cc: Partial<ConsumerConfig> = {};
@@ -667,12 +679,8 @@ export class ObjectStoreImpl implements ObjectStore {
           controller!.enqueue(jm.data);
         }
         if (jm.info.pending === 0) {
-          const hash = sha.digest("base64");
-          // go pads the hash - which should be multiple of 3 - otherwise pads with '='
-          const pad = hash.length % 3;
-          const padding = pad > 0 ? "=".repeat(pad) : "";
-          const digest = `${digestType}${hash}${padding}`;
-          if (digest !== info.digest) {
+          const digest = Uint8Array.from(sha.digest());
+          if (!checkSha256(digest, Uint8Array.from(sha.digest()))) {
             controller!.error(
               new Error(
                 `received a corrupt object, digests do not match received: ${info.digest} calculated ${digest}`,
