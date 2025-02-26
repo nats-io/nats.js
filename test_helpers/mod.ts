@@ -13,11 +13,8 @@
  * limitations under the License.
  */
 
-import type {
-  ConnectionOptions,
-  NatsConnection,
-} from "../core/src/internal_mod.ts";
-import { compare, parseSemVer } from "../core/src/internal_mod.ts";
+import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
+import { compare, parseSemVer } from "@nats-io/nats-core/internal";
 
 import { NatsServer } from "./launcher.ts";
 import { red, yellow } from "jsr:@std/fmt/colors";

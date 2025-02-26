@@ -1,1 +1,1 @@
-export { connect } from "../transport-deno/src/mod.ts";
+export { connect } from "@nats-io/transport-deno";

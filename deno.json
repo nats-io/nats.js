@@ -53,7 +53,7 @@
     "*": {
       "@nats-io/nats-core": "./core/src/mod.ts",
       "@nats-io/nats-core/internal": "./core/src/internal_mod.ts",
-      "@nats-io/nats-transport-deno": "./transport-deno/src/mod.ts",
+      "@nats-io/transport-deno": "./transport-deno/src/mod.ts",
       "@nats-io/jetstream": "./jetstream/src/mod.ts",
       "@nats-io/jetstream/internal": "./jetstream/src/internal_mod.ts",
       "@nats-io/kv": "./kv/src/mod.ts",
@@ -70,7 +70,8 @@
     "./jetstream",
     "./kv",
     "./obj",
-    "./services"
+    "./services",
+    "./test_helpers"
   ],
   "nodeModulesDir": "none"
 }

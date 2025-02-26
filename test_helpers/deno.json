@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "strict": true
+  },
+  "imports": {
+    "@nats-io/nats-core": "../core/src/mod.ts",
+    "@nats-io/nats-core/internal": "../core/src/internal_mod.ts",
+    "@nats-io/transport-deno": "../transport-deno/src/mod.ts",
+    "@nats-io/jetstream": "../jetstream/src/mod.ts",
+    "@nats-io/jetstream/internal": "../jetstream/src/internal_mod.ts",
+    "@nats-io/kv": "../kv/src/mod.ts",
+    "@nats-io/kv/internal": "../kv/src/internal_mod.ts",
+    "@nats-io/obj": "../obj/src/mod.ts",
+    "@nats-io/obj/internal": "../obj/src/internal_mod.ts",
+    "@nats-io/services": "../services/src/mod.ts",
+    "@nats-io/services/internal": "../services/src/internal_mod.ts"
+  }
+}

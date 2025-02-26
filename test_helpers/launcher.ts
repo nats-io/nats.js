@@ -16,16 +16,17 @@
 import { join, resolve } from "jsr:@std/path";
 import { rgb24 } from "jsr:@std/fmt/colors";
 import { check, jsopts } from "./mod.ts";
-import { extend, timeout } from "../core/src/util.ts";
-import type { Deferred } from "../core/src/util.ts";
 import {
   ConnectionOptions,
+  Deferred,
   deferred,
   delay,
+  extend,
   NatsConnection,
   nuid,
+  timeout,
   wsconnect,
-} from "../core/src/mod.ts";
+} from "@nats-io/nats-core/internal";
 import { Certs } from "./certs.ts";
 import { connect } from "./connect.ts";
 
