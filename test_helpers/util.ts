@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { deferred, timeout } from "../core/src/internal_mod.ts";
+import { deferred, timeout } from "@nats-io/nats-core/internal";
 import { assert } from "jsr:@std/assert";
 
 export function consume<T>(iter: Iterable<T>, ms = 1000): Promise<T[]> {

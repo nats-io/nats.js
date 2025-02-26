@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { NatsServer } from "./mod.ts";
+import { NatsServer } from "./launcher.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { rgb24 } from "jsr:@std/fmt/colors";
 

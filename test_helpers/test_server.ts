@@ -12,8 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type { Deferred } from "../core/src/internal_mod.ts";
-import { deferred } from "../core/src/internal_mod.ts";
+import { type Deferred, deferred } from "@nats-io/nats-core/internal";
 
 export class Connection {
   conn: Deno.Conn | null;
