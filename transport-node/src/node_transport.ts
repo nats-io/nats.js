@@ -240,7 +240,9 @@ export class NodeTransport implements Transport {
     } = {
       servername: this.tlsName,
     };
-    const { rejectUnauthorized } = this.options.tls || {};
+    const { rejectUnauthorized } = this.options.tls || {
+      rejectUnauthorized: true,
+    };
     if (this.socket) {
       tlsOpts.socket = this.socket;
     }
@@ -293,7 +295,9 @@ export class NodeTransport implements Transport {
       socket: this.socket,
       servername: this.tlsName,
     };
-    const { rejectUnauthorized } = this.options.tls || {};
+    const { rejectUnauthorized } = this.options.tls || {
+      rejectUnauthorized: true
+    };
     if (typeof this.options.tls === "object") {
       try {
         const certOpts = await this.loadClientCerts() || {};
