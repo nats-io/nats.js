@@ -965,6 +965,12 @@ export interface TlsOptions {
    * handshakeFirst option requires the server to be configured with `handshakeFirst: true`.
    */
   handshakeFirst?: boolean;
+  /**
+   * rejectUnauthorized option enforces that the server's certificate is signed by a trusted CA.
+   * 
+   * @default true
+   */
+  rejectUnauthorized?: boolean;
   certFile?: string;
   cert?: string;
   caFile?: string;

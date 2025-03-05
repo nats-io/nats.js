@@ -898,15 +898,16 @@ The following is the list of connection options and default values.
 
 ### TlsOptions
 
-| Option           | Default | Description                                                                                                                     |
-| ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `ca`             | N/A     | CA certificate                                                                                                                  |
-| `caFile`         |         | CA certificate filepath                                                                                                         |
-| `cert`           | N/A     | Client certificate                                                                                                              |
-| `certFile`       | N/A     | Client certificate file path                                                                                                    |
-| `key`            | N/A     | Client key                                                                                                                      |
-| `keyFile`        | N/A     | Client key file path                                                                                                            |
-| `handshakeFirst` | false   | Connects to the server directly as TLS rather than upgrade the connection. Note that the server must be configured accordingly. |
+| Option                | Default | Description                                                                                                                     |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ca`                 | N/A     | CA certificate                                                                                                                  |
+| `caFile`             |         | CA certificate filepath                                                                                                         |
+| `cert`               | N/A     | Client certificate                                                                                                              |
+| `certFile`           | N/A     | Client certificate file path                                                                                                    |
+| `key`                | N/A     | Client key                                                                                                                      |
+| `keyFile`            | N/A     | Client key file path                                                                                                            |
+| `handshakeFirst`     | false   | Connects to the server directly as TLS rather than upgrade the connection. Note that the server must be configured accordingly. |
+| `rejectUnauthorized` | true    | If true, the client will reject the server's certificate if it is not signed by a trusted CA.                                   |
 
 In some Node and Deno clients, having the option set to an empty option,
 requires the client have a secured connection.
