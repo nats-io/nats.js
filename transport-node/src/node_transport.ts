@@ -235,9 +235,9 @@ export class NodeTransport implements Transport {
   async tlsFirst(hp: { hostname: string; port: number }): Promise<TLSSocket> {
     let tlsError: Error;
     let tlsOpts: {
-      rejectUnauthorized: boolean;
       servername: string;
       socket?: Socket;
+      rejectUnauthorized: boolean;
     } = {
       servername: this.tlsName,
       rejectUnauthorized: true,
@@ -246,6 +246,7 @@ export class NodeTransport implements Transport {
       tlsOpts.socket = this.socket;
     }
     if (typeof this.options.tls === "object") {
+      tlsOpts.rejectUnauthorized = this.options.tls.rejectUnauthorized ?? true;
       try {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);
@@ -296,6 +297,8 @@ export class NodeTransport implements Transport {
       rejectUnauthorized: true,
     };
     if (typeof this.options.tls === "object") {
+      tlsOpts.rejectUnauthorized = this.options.tls.rejectUnauthorized ?? true;
+
       try {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);
