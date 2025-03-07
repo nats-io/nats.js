@@ -39,12 +39,12 @@ The transports have also been migrated:
   support.
 
 Note that when installing `@nats-io/transport-node` or
-`@nats-io/transport-deno`, the `@nats-io/core` APIs are also made available.
+`@nats-io/transport-deno`, the `@nats-io/nats-core` APIs are also made available.
 
 Your library selection process will start by selecting your runtime, and
 importing any additional functionality you may be interested in. The
 `@nats-io/transport-node`, `@nats-io/transport-deno` depend on and re-export
-`@nats-io/core`.
+`@nats-io/nats-core`.
 
 To use the extended functionality (JetStream, KV, ObjectStore, Services) you
 will need to install and import from the other libraries to access those APIs.
