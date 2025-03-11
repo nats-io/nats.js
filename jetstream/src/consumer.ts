@@ -128,6 +128,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   inboxPrefix: string;
   inbox!: string;
   cancelables: Delay[];
+  inReset: boolean;
 
   // callback: ConsumerCallbackFn;
   constructor(
@@ -141,6 +142,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.cancelables = [];
     this.inboxPrefix = createInbox(this.consumer.api.nc.options.inboxPrefix);
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
+    this.inReset = false;
 
     if (this.consumer.ordered) {
       if (isOverflowOptions(opts)) {
@@ -258,6 +260,17 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
                 // proportionally to 2 missed heartbeats
                 break;
               }
+              case 503:
+                this.notify({ type: "no_responders", code });
+                if (this.consumer.ordered) {
+                  const ocs = this.consumer.orderedConsumerState!;
+                  ocs.needsReset = true;
+                }
+                if (!this.isConsume) {
+                  this.stop(status.toError());
+                  return;
+                }
+                break;
               default:
                 this.notify(
                   { type: "debug", code, description },
@@ -520,8 +533,17 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
   }
 
-  resetPending(): Promise<boolean> {
-    return this.bind ? this.resetPendingNoInfo() : this.resetPendingWithInfo();
+  async resetPending(): Promise<boolean> {
+    if (this.inReset) {
+      return Promise.resolve(true);
+    }
+    this.inReset = true;
+    const v = this.bind
+      ? this.resetPendingNoInfo()
+      : this.resetPendingWithInfo();
+    const tf = await v;
+    this.inReset = false;
+    return tf;
   }
 
   resetPendingNoInfo(): Promise<boolean> {
@@ -537,14 +559,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   async resetPendingWithInfo(): Promise<boolean> {
     let notFound = 0;
     let streamNotFound = 0;
-    const bo = backoff();
+    const bo = backoff([this.opts.expires || 30_000]);
     let attempt = 0;
     while (true) {
       if (this.done) {
         return false;
       }
       if (this.consumer.api.nc.isClosed()) {
-        console.error("aborting resetPending - connection is closed");
         return false;
       }
       try {
@@ -563,7 +584,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           this.stop(err);
           return false;
         }
-
         // game over
         if ((err as Error).message === "stream not found") {
           streamNotFound++;
@@ -577,6 +597,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           this.notify({
             type: "consumer_not_found",
             name: this.consumer.name,
+            stream: this.consumer.stream,
             count: notFound,
           });
           if (!this.isConsume || this.abortOnMissingResource) {

@@ -21,7 +21,12 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "jsr:@std/assert";
-import { DeliverPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
+import {
+  type ConsumerNotification,
+  DeliverPolicy,
+  jetstream,
+  jetstreamManager,
+} from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import {
   cleanup,
@@ -36,7 +41,6 @@ import type {
 } from "../src/consumer.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
 import { flakyTest } from "../../test_helpers/mod.ts";
-import { ConsumerNotFoundError } from "../src/jserrors.ts";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -1069,7 +1073,8 @@ Deno.test(
       () => {
         return c.next({ expires: 1000 });
       },
-      ConsumerNotFoundError,
+      Error,
+      "no responders",
     );
 
     // but now it will be created in line
@@ -1132,6 +1137,119 @@ Deno.test("ordered consumer - deliver all policy", async () => {
 
   const js = jetstream(nc);
   await js.consumers.get("A", { deliver_policy: DeliverPolicy.All });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered - consume stream not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+
+  const c = await jsm.jetstream().consumers.get("messages");
+  await jsm.streams.delete("messages");
+  const iter = await c.consume({ expires: 5_000 });
+
+  const hbmP = deferred();
+
+  const buf: ConsumerNotification[] = [];
+  (async () => {
+    for await (const s of await iter.status()) {
+      console.log(s);
+      buf.push(s);
+      if (s.type === "heartbeats_missed" && s.count === 3) {
+        hbmP.resolve();
+      }
+    }
+  })().then();
+
+  const nextP = deferred();
+  (async () => {
+    for await (const _ of iter) {
+      nextP.resolve();
+    }
+  })().then();
+
+  await hbmP;
+  const snfs = buf.filter((s) => s.type === "stream_not_found").length;
+  const nrs = buf.filter((s) => s.type === "no_responders").length;
+
+  assert(snfs > 0);
+  assert(nrs > 0);
+
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.jetstream().publish("m");
+  await nextP;
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered - fetch stream not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+
+  const c = await jsm.jetstream().consumers.get("messages");
+  await jsm.streams.delete("messages");
+
+  await assertRejects(
+    async () => {
+      const iter = await c.fetch({ expires: 5_000 });
+      for await (const _ of iter) {
+        // will fail
+      }
+    },
+    Error,
+    "no responders",
+  );
+
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.jetstream().publish("m");
+
+  const mP = deferred();
+  (async () => {
+    const iter = await c.fetch({ expires: 5_000 });
+    for await (const _ of iter) {
+      mP.resolve();
+      break;
+    }
+  })().then();
+
+  await mP;
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered - next stream not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+
+  const c = await jsm.jetstream().consumers.get("messages");
+  await jsm.streams.delete("messages");
+
+  await assertRejects(
+    () => {
+      return c.next();
+    },
+    Error,
+    "no responders",
+  );
+
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.jetstream().publish("m");
+
+  const m = await c.next();
+  assertExists(m);
 
   await cleanup(ns, nc);
 });

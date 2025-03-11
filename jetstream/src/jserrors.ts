@@ -74,8 +74,10 @@ export class JetStreamStatus {
 
   get description(): string {
     if (this._description === "") {
-      this._description = this.msg.headers?.description?.toLowerCase() ||
-        "unknown";
+      this._description = this.msg.headers?.description?.toLowerCase() || "";
+      if (this._description === "") {
+        this._description = this.code === 503 ? "no responders" : "unknown";
+      }
     }
     return this._description;
   }

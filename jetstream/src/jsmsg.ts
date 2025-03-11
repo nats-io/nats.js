@@ -326,7 +326,9 @@ export class JsMsgImpl implements JsMsg {
   term(reason = "") {
     let term = TERM;
     if (reason?.length > 0) {
-      term = new TextEncoder().encode(`+TERM ${reason}`);
+      term = new TextEncoder().encode(`+TERM ${reason}`) as Uint8Array<
+        ArrayBuffer
+      >;
     }
     this.doAck(term);
   }
