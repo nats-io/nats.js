@@ -39,7 +39,8 @@ The transports have also been migrated:
   support.
 
 Note that when installing `@nats-io/transport-node` or
-`@nats-io/transport-deno`, the `@nats-io/nats-core` APIs are also made available.
+`@nats-io/transport-deno`, the `@nats-io/nats-core` APIs are also made
+available.
 
 Your library selection process will start by selecting your runtime, and
 importing any additional functionality you may be interested in. The

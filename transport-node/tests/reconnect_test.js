@@ -16,13 +16,55 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert").strict;
 const {
   connect,
+  wsconnect,
 } = require("../index");
 const { NatsServer } = require("./helpers/launcher");
 const {
   createInbox,
   deferred,
+  delay,
 } = require("@nats-io/nats-core/internal");
 const { Lock } = require("./helpers/lock");
+
+describe("websocket reconnect", { timeout: 20_000, forceExit: true }, () => {
+  it("reconnect websocket - disconnect reconnects", async () => {
+    let srv = await NatsServer.start({
+      logfile: "/tmp/nats-server.log",
+      websocket: {
+        port: -1,
+        no_tls: true,
+      },
+    });
+
+    const d = deferred();
+    const nc = await wsconnect({
+      debug: true,
+      servers: [`ws://127.0.0.1:${srv.websocket}`],
+    });
+
+    const port = srv.websocket;
+    (async () => {
+      for await (const e of nc.status()) {
+        if (e.type === "reconnect") {
+          d.resolve();
+        }
+      }
+    })();
+
+    await delay(1000);
+    await srv.stop();
+    srv = await NatsServer.start({
+      websocket: {
+        port,
+        no_tls: true,
+      },
+    });
+
+    await d;
+    await nc.close();
+    await srv.stop();
+  });
+});
 
 describe(
   "reconnect",

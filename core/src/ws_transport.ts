@@ -136,17 +136,12 @@ export class WsTransport implements Transport {
 
     // @ts-ignore: CloseEvent is provided in browsers
     this.socket.onclose = (evt: CloseEvent) => {
-      this.socketClosed = true;
       let reason: Error | undefined;
       if (!evt.wasClean && evt.reason !== "") {
         reason = new Error(evt.reason);
       }
       this._closed(reason);
-      this.socket.onopen = null;
-      this.socket.onmessage = null;
-      this.socket.onerror = null;
-      this.socket.onclose = null;
-      this.closedNotification.resolve(this.closeError);
+      this._cleanup();
     };
 
     // @ts-ignore: signature can be any
@@ -161,8 +156,22 @@ export class WsTransport implements Transport {
       } else {
         this._closed(err);
       }
+      this._cleanup();
     };
     return ok;
+  }
+
+  _cleanup() {
+    if (this.socketClosed === false) {
+      // node seems to not emit closed if there's an error
+      // all other runtimes do.
+      this.socketClosed = true;
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      this.socket.onerror = null;
+      this.socket.onclose = null;
+      this.closedNotification.resolve(this.closeError);
+    }
   }
 
   disconnect(): void {

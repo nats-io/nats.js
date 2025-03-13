@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/obj",
-  "version": "3.0.0-34",
+  "version": "3.0.0-36",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -33,8 +33,8 @@
     "test": "deno test -A --parallel --reload --quiet tests/ --import-map=import_map.json"
   },
   "imports": {
-    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-51",
-    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-38",
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-54",
+    "@nats-io/jetstream": "jsr:@nats-io/jetstream@~3.0.0-40",
     "js-sha256": "npm:js-sha256@0.11.0"
   }
 }
