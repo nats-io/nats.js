@@ -178,6 +178,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<PubAck> {
     opts = opts || {};
+    opts = { ...opts };
     opts.expect = opts.expect || {};
     const mh = opts?.headers || headers();
     if (opts) {

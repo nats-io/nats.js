@@ -414,6 +414,7 @@ export class PushConsumerImpl implements PushConsumer {
   consume(
     userOptions: Partial<PushConsumerOptions> = {},
   ): Promise<ConsumerMessages> {
+    userOptions = { ...userOptions };
     if (this.started) {
       return Promise.reject(
         new errors.InvalidOperationError("consumer already started"),
