@@ -108,6 +108,11 @@ these modules for cross-runtime consumption.
   this library with a dependency.
 - `Base64Codec`, `Base64UrlCodec`, `Base64UrlPaddedCodec` support types for
   object store have been moved to @nats-io/obj.
+- `MsgCallback` - `(err: Error|null, msg: T) => void` has changed to be
+  `(err: Error|null, msg:T) => void | Promise<never>` to indicate that they
+  cannot contain `await`. If you want to perform async handling, it must be
+  done inside an async iterator, or outside the callback.
+- 
 
 ## Changes in JetStream
 
@@ -148,7 +153,11 @@ To use JetStream, you must install and import `@nats/jetstream`.
   replaced with `ConsumerNotification` which have a discriminating field `type`.
   The status objects provide a more specific API for querying those events.
 - `JsMsg.info.redeliveryCount` was renamed to `JsMsg.info.deliveryCount` as it
-  tracks all delivery attempts, not just redeliveries
+  tracks all delivery attempts, not just redeliveries.
+- `ConsumerCallbackFn` - `(m: JsMsg) => void` has changed to be
+  `(m: JsMsg) => void | Promise<never>` to indicate that they
+  cannot contain `await`. If you want to perform async handling, it must be
+  done inside an async iterator, or outside the callback.
 
 ## Changes to KV
 
