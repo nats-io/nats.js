@@ -193,7 +193,7 @@ Deno.test("next - consumer bind", async () => {
       });
     },
     JetStreamError,
-    "heartbeats missed",
+    "no responders",
   );
 
   await nc.flush();
@@ -259,6 +259,77 @@ Deno.test("next - connection close exits", async () => {
   );
 
   await nc.close();
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("next - stream not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+
+  const c = await jsm.jetstream().consumers.get("messages", "c");
+  await jsm.streams.delete("messages");
+
+  await assertRejects(
+    () => {
+      return c.next({ expires: 5_000 });
+    },
+    Error,
+    "no responder",
+  );
+
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+  await jsm.jetstream().publish("m");
+
+  const m = await c.next();
+  assertExists(m);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("next - consumer not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+
+  const c = await jsm.jetstream().consumers.get("messages", "c");
+  await jsm.consumers.delete("messages", "c");
+
+  await assertRejects(
+    () => {
+      return c.next({ expires: 5_000 });
+    },
+    Error,
+    "no responders",
+  );
+
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+  await jsm.jetstream().publish("m");
+
+  const m = await c.next();
+  assertExists(m);
 
   await cleanup(ns, nc);
 });

@@ -489,7 +489,8 @@ export type ConsumerNotification =
   | Reset
   | Next
   | Heartbeat
-  | FlowControl;
+  | FlowControl
+  | NoResponders;
 
 /**
  * Notification that heartbeats were missed. This notification is informational.
@@ -512,6 +513,7 @@ export type HeartbeatsMissed = {
 export type ConsumerNotFound = {
   type: "consumer_not_found";
   name: string;
+  stream: string;
   count: number;
 };
 /**
@@ -537,6 +539,15 @@ export type ConsumerDeleted = {
   code: number;
   description: string;
 };
+/**
+ * Notification that a JetStream request didn't get a response due to a timeout
+ * or JetStream not being available.
+ */
+export type NoResponders = {
+  type: "no_responders";
+  code: number;
+};
+
 /**
  * This notification is specific of ordered consumers and will be notified whenever
  * the consumer is recreated. The argument is the name of the newly created consumer.

@@ -500,3 +500,114 @@ Deno.test("consume - one pending is none", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("consume - stream not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+
+  const c = await jsm.jetstream().consumers.get("messages", "c");
+  await jsm.streams.delete("messages");
+  const iter = await c.consume({ expires: 5_000 });
+
+  const hbmP = deferred();
+
+  const buf: ConsumerNotification[] = [];
+  (async () => {
+    for await (const s of await iter.status()) {
+      console.log(s);
+      buf.push(s);
+      if (s.type === "heartbeats_missed" && s.count === 3) {
+        hbmP.resolve();
+      }
+    }
+  })().then();
+
+  const nextP = deferred();
+  (async () => {
+    for await (const _ of iter) {
+      nextP.resolve();
+    }
+  })().then();
+
+  await hbmP;
+  const snfs = buf.filter((s) => s.type === "stream_not_found").length;
+  const nrs = buf.filter((s) => s.type === "no_responders").length;
+
+  assert(snfs > 0);
+  assert(nrs > 0);
+
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.jetstream().publish("m");
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+
+  await nextP;
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - consumer not found and no responders", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf(),
+  );
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "messages", subjects: ["m"] });
+  await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+
+  const c = await jsm.jetstream().consumers.get("messages", "c");
+  await jsm.consumers.delete("messages", "c");
+  const iter = await c.consume({ expires: 5_000 });
+
+  const hbmP = deferred();
+
+  const buf: ConsumerNotification[] = [];
+  (async () => {
+    for await (const s of await iter.status()) {
+      console.log(s);
+      buf.push(s);
+      if (s.type === "heartbeats_missed" && s.count === 3) {
+        hbmP.resolve();
+      }
+    }
+  })().then();
+
+  const nextP = deferred();
+  (async () => {
+    for await (const _ of iter) {
+      nextP.resolve();
+    }
+  })().then();
+
+  await hbmP;
+  const snfs = buf.filter((s) => s.type === "consumer_not_found").length;
+  const nrs = buf.filter((s) => s.type === "no_responders").length;
+
+  assert(snfs > 0);
+  assert(nrs > 0);
+
+  await jsm.jetstream().publish("m");
+
+  const ci = await jsm.consumers.add("messages", {
+    name: "c",
+    deliver_policy: DeliverPolicy.All,
+  });
+  console.log(ci);
+
+  await nextP;
+
+  await cleanup(ns, nc);
+});

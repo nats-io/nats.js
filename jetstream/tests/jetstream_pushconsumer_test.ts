@@ -475,6 +475,7 @@ Deno.test("jetstream - idle heartbeats", async () => {
   const status = messages.status();
 
   for await (const s of status) {
+    console.log(s);
     if (s.type === "heartbeat") {
       assertEquals(s.lastConsumerSequence, 1);
       assertEquals(s.lastStreamSequence, 1);
