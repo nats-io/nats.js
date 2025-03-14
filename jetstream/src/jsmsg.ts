@@ -80,6 +80,11 @@ export type JsMsg = {
   timestamp: string;
 
   /**
+   * Represents the message timestamp in nanoseconds as a BigInt.
+   */
+  timestampNanos: bigint;
+
+  /**
    * Indicate to the JetStream server that the message was processed
    * successfully.
    */
@@ -180,6 +185,20 @@ export function parseInfo(s: string): DeliveryInfo {
   return di;
 }
 
+function parseTimestampNanos(s: string): bigint {
+  const tokens = s.split(".");
+  if (tokens.length === 9) {
+    tokens.splice(2, 0, "_", "");
+  }
+
+  if (
+    (tokens.length < 11) || tokens[0] !== "$JS" || tokens[1] !== "ACK"
+  ) {
+    throw new Error(`unable to parse delivery info - not a jetstream message`);
+  }
+  return BigInt(tokens[9]);
+}
+
 export class JsMsgImpl implements JsMsg {
   msg: Msg;
   di?: DeliveryInfo;
@@ -234,6 +253,10 @@ export class JsMsgImpl implements JsMsg {
 
   get timestamp(): string {
     return this.time.toISOString();
+  }
+
+  get timestampNanos(): bigint {
+    return parseTimestampNanos(this.reply);
   }
 
   doAck(payload: Uint8Array) {
