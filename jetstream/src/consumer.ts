@@ -826,6 +826,7 @@ export class PullConsumerImpl implements Consumer {
       expires: 30_000,
     } as ConsumeMessages,
   ): Promise<ConsumerMessages> {
+    opts = { ...opts };
     if (this.ordered) {
       if (opts.bind) {
         return Promise.reject(
@@ -859,6 +860,7 @@ export class PullConsumerImpl implements Consumer {
       expires: 30_000,
     } as FetchMessages,
   ): Promise<ConsumerMessages> {
+    opts = { ...opts };
     if (this.ordered) {
       if (opts.bind) {
         return Promise.reject(
@@ -904,6 +906,7 @@ export class PullConsumerImpl implements Consumer {
   async next(
     opts: NextOptions = { expires: 30_000 },
   ): Promise<JsMsg | null> {
+    opts = { ...opts };
     const fopts = opts as FetchMessages;
     fopts.max_messages = 1;
 
