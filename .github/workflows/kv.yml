@@ -11,7 +11,7 @@ on:
 jobs:
   test:
     name: test kv with released dependencies
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latests
     strategy:
       matrix:
         deno-version: [2.2.x]
