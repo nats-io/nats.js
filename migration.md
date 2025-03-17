@@ -110,9 +110,9 @@ these modules for cross-runtime consumption.
   object store have been moved to @nats-io/obj.
 - `MsgCallback` - `(err: Error|null, msg: T) => void` has changed to be
   `(err: Error|null, msg:T) => void | Promise<never>` to indicate that they
-  cannot contain `await`. If you want to perform async handling, it must be done
-  inside an async iterator, or outside the callback.
--
+  cannot contain `await`. If you want to perform async handling, it must be
+  done inside an async iterator, or outside the callback.
+- 
 
 ## Changes in JetStream
 
@@ -155,9 +155,9 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - `JsMsg.info.redeliveryCount` was renamed to `JsMsg.info.deliveryCount` as it
   tracks all delivery attempts, not just redeliveries.
 - `ConsumerCallbackFn` - `(m: JsMsg) => void` has changed to be
-  `(m: JsMsg) => void | Promise<never>` to indicate that they cannot contain
-  `await`. If you want to perform async handling, it must be done inside an
-  async iterator, or outside the callback.
+  `(m: JsMsg) => void | Promise<never>` to indicate that they
+  cannot contain `await`. If you want to perform async handling, it must be
+  done inside an async iterator, or outside the callback.
 
 ## Changes to KV
 
