@@ -5,7 +5,7 @@ import {
   connect,
   Metric,
   Nuid,
-} from "jsr:@nats-io/transport-deno@3.0.0-22";
+} from "jsr:@nats-io/transport-deno@3.0.0-23";
 const defaults = {
   s: "127.0.0.1:4222",
   c: 100000,

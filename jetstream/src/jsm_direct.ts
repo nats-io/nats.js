@@ -128,6 +128,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     stream: string,
     opts: DirectBatchOptions | DirectLastFor,
   ): Promise<QueuedIterator<StoredMsg>> {
+    opts = { ...opts };
     const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
     if (!ok) {
       return Promise.reject(new Error(`batch direct require server ${min}`));
