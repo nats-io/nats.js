@@ -27,6 +27,7 @@ import {
 
 import type {
   MsgHdrs,
+  Nanos,
   NatsConnection,
   NatsConnectionImpl,
   Payload,
@@ -408,7 +409,7 @@ export class Bucket implements KV {
 
     sc.num_replicas = bo.replicas;
     if (bo.ttl) {
-      sc.max_age = nanos(bo.ttl);
+      sc.max_age = bo.ttl;
     }
     sc.allow_rollup_hdrs = true;
 
@@ -977,8 +978,8 @@ export class KvStatusImpl implements KvStatus {
     return this.si.config.max_msgs_per_subject;
   }
 
-  get ttl(): number {
-    return millis(this.si.config.max_age);
+  get ttl(): Nanos {
+    return this.si.config.max_age;
   }
 
   get bucket_location(): string {

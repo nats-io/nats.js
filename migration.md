@@ -110,9 +110,9 @@ these modules for cross-runtime consumption.
   object store have been moved to @nats-io/obj.
 - `MsgCallback` - `(err: Error|null, msg: T) => void` has changed to be
   `(err: Error|null, msg:T) => void | Promise<never>` to indicate that they
-  cannot contain `await`. If you want to perform async handling, it must be
-  done inside an async iterator, or outside the callback.
-- 
+  cannot contain `await`. If you want to perform async handling, it must be done
+  inside an async iterator, or outside the callback.
+-
 
 ## Changes in JetStream
 
@@ -155,14 +155,35 @@ To use JetStream, you must install and import `@nats/jetstream`.
 - `JsMsg.info.redeliveryCount` was renamed to `JsMsg.info.deliveryCount` as it
   tracks all delivery attempts, not just redeliveries.
 - `ConsumerCallbackFn` - `(m: JsMsg) => void` has changed to be
-  `(m: JsMsg) => void | Promise<never>` to indicate that they
-  cannot contain `await`. If you want to perform async handling, it must be
-  done inside an async iterator, or outside the callback.
+  `(m: JsMsg) => void | Promise<never>` to indicate that they cannot contain
+  `await`. If you want to perform async handling, it must be done inside an
+  async iterator, or outside the callback.
 
 ## Changes to KV
 
-To use KV, you must install and import `@nats-io/kv`, and create an instance of
-Kvm:
+- To use KV, you must install and import `@nats-io/kv`
+
+- `Bucket#ttl` and `KvStatus#ttl` have changed from millis to Nanos. This change
+  aligns ObjectStore and JetStream streams on consistent units.
+
+- `KvWatchOption.initializedFn` has been removed. Previous versions of
+  `Kv.watch()` allowed the client to specify a function that was called when the
+  watch was done providing history values. In this version, you can find out if
+  a watch is yielding an update by examining the `isUpdate` property. Note that
+  an empty Kv will not yield any watch information. You can test for this
+  initial condition, by getting the status of the KV, and inspecting the
+  `values` property, which will state the number of entries in the Kv. Also note
+  that watches with the option to do updates only, cannot notify until there's
+  an update.
+
+- Removed deprecated KV apis (`KvRemove` - `remove(k)=>Promise<void>`,
+  `close()=>Promise<void>`) and options (`maxBucketSize`,
+  `placementCluster`,`bucket_location`)
+
+- Removed the deprecated option `backingStore` from `KvOptions` and `KvStatus`.
+  Use `KvOptions.storage` and `KvStatus.storage`.
+
+To create a KV, create an instance of Kvm:
 
 ```typescript
 import { connect } from "@nats-io/transport-deno";
@@ -183,26 +204,6 @@ await kvm.create("mykv");
 // To access a KV but fail if it doesn't exist:
 await kvm.open("mykv");
 ```
-
-### KvWatchOption.initializedFn has been removed
-
-Previous versions of `Kv.watch()` allowed the client to specify a function that
-was called when the watch was done providing history values. In this version,
-you can find out if a watch is yielding an update by examining the `isUpdate`
-property. Note that an empty Kv will not yield any watch information. You can
-test for this initial condition, by getting the status of the KV, and inspecting
-the `values` property, which will state the number of entries in the Kv. Also
-note that watches with the option to do updates only, cannot notify until
-there's an update.
-
-### Removal of deprecations
-
-Removed deprecated KV apis (`KvRemove` - `remove(k)=>Promise<void>`,
-`close()=>Promise<void>`) and options (`maxBucketSize`,
-`placementCluster`,`bucket_location`)
-
-Removed the deprecated option `backingStore` from `KvOptions` and `KvStatus`.
-Use `KvOptions.storage` and `KvStatus.storage`.
 
 ## Changes to ObjectStore
 

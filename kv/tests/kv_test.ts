@@ -586,7 +586,9 @@ Deno.test("kv - ttl", async () => {
   }
 
   const js = jetstream(nc);
-  const b = await new Kvm(js).create(nuid.next(), { ttl: 1000 }) as Bucket;
+  const b = await new Kvm(js).create(nuid.next(), {
+    ttl: nanos(1000),
+  }) as Bucket;
 
   const jsm = await jetstreamManager(nc);
   const si = await jsm.streams.info(b.stream);
@@ -1413,9 +1415,9 @@ Deno.test("kv - ttl is in nanos", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
-  const b = await new Kvm(js).create("a", { ttl: 1000 });
+  const b = await new Kvm(js).create("a", { ttl: nanos(1000) });
   const status = await b.status();
-  assertEquals(status.ttl, 1000);
+  assertEquals(status.ttl, nanos(1000));
   assertEquals(status.size, 0);
 
   const jsm = await jetstreamManager(nc);
@@ -1428,7 +1430,7 @@ Deno.test("kv - size", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   const js = jetstream(nc);
 
-  const b = await new Kvm(js).create("a", { ttl: 1000 });
+  const b = await new Kvm(js).create("a", { ttl: nanos(1000) });
   let status = await b.status();
   assertEquals(status.size, 0);
   assertEquals(status.size, status.streamInfo.state.bytes);

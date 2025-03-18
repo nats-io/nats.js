@@ -19,7 +19,7 @@ import type {
   StreamInfo,
   StreamSource,
 } from "@nats-io/jetstream";
-import type { Payload, QueuedIterator } from "@nats-io/nats-core";
+import type { Nanos, Payload, QueuedIterator } from "@nats-io/nats-core";
 
 export type KvEntry = {
   bucket: string;
@@ -92,12 +92,12 @@ export type KvLimits = {
    */
   maxValueSize: number;
   /**
-   * The maximum number of millis the key should live
+   * The maximum number of nanos the key should live
    * in the KV. The server will automatically remove
    * keys older than this amount. Note that deletion of
    * delete markers are not performed.
    */
-  ttl: number; // millis
+  ttl: Nanos;
   /**
    * The backing store of the stream hosting the KV
    */
