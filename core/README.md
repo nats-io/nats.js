@@ -320,7 +320,7 @@ const sub = nc.subscribe("time");
 (async (sub: Subscription) => {
   console.log(`listening for ${sub.getSubject()} requests...`);
   for await (const m of sub) {
-    if (m.respond(sc.encode(new Date().toISOString()))) {
+    if (m.respond(new Date().toISOString())) {
       console.info(`[time] handled #${sub.getProcessed()}`);
     } else {
       console.log(`[time] #${sub.getProcessed()} ignored - no reply subject`);
@@ -346,10 +346,10 @@ const msub = nc.subscribe("admin.*");
     switch (chunks[1]) {
       case "uptime":
         // send the number of millis since up
-        m.respond(sc.encode(`${Date.now() - started}`));
+        m.respond(`${Date.now() - started}`);
         break;
       case "stop": {
-        m.respond(sc.encode(`[admin] #${sub.getProcessed()} stopping....`));
+        m.respond((`[admin] #${sub.getProcessed()} stopping....`);
         // gracefully shutdown
         nc.drain()
           .catch((err) => {
@@ -382,20 +382,17 @@ Here's a simple example of a client making a simple request from the service
 above:
 
 ```typescript
-import { connect, Empty, StringCodec } from "../../src/types.ts";
+import { connect, Empty } from "../../src/types.ts";
 
 // create a connection
 const nc = await connect({ servers: "demo.nats.io:4222" });
-
-// create an encoder
-const sc = StringCodec();
 
 // the client makes a request and receives a promise for a message
 // by default the request times out after 1s (1000 millis) and has
 // no payload.
 await nc.request("time", Empty, { timeout: 1000 })
   .then((m) => {
-    console.log(`got response: ${sc.decode(m.data)}`);
+    console.log(`got response: ${m.string()}`);
   })
   .catch((err) => {
     console.log(`problem with request: ${err.message}`);

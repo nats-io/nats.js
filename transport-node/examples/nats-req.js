@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { connect, StringCodec, headers, credsAuthenticator, delay } = require(
+const { connect, headers, credsAuthenticator, delay } = require(
   "../index",
 );
 const fs = require("node:fs");
@@ -51,8 +51,6 @@ if (argv.h || argv.help || !subject) {
   process.exit(1);
 }
 
-const sc = StringCodec();
-
 (async () => {
   let nc;
   try {
@@ -80,11 +78,11 @@ const sc = StringCodec();
   for (let i = 1; i <= count; i++) {
     await nc.request(
       subject,
-      sc.encode(payload),
+      payload,
       { timeout: argv.t, headers: hdrs },
     )
       .then((m) => {
-        console.log(`[${i}]: ${sc.decode(m.data)}`);
+        console.log(`[${i}]: ${m.string()}`);
         if (argv.headers && m.headers) {
           const h = [];
           for (const [key, value] of m.headers) {
