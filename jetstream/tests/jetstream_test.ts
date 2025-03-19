@@ -839,9 +839,7 @@ Deno.test(
     await delay(1000);
 
     await js.publish(subj, Empty, {
-      //@ts-ignore: testing
       retries: 15,
-      retry_delay: 1000,
       timeout: 15000,
     });
 

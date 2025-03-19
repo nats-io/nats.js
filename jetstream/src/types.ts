@@ -141,6 +141,12 @@ export type JetStreamPublishOptions = {
      */
     lastSubjectSequence: number;
   }>;
+
+  /**
+   * Continue to attempt to publish if the publish fails due to a no responders error.
+   * Default is 1.
+   */
+  retries?: number;
 };
 
 /**
