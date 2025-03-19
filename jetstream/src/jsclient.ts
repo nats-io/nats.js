@@ -19,6 +19,7 @@ import {
   backoff,
   delay,
   Empty,
+  nanos,
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
 
@@ -198,6 +199,12 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         mh.set(
           PubHeaders.ExpectedLastSubjectSequenceHdr,
           `${opts.expect.lastSubjectSequence}`,
+        );
+      }
+      if (opts.ttl) {
+        mh.set(
+          PubHeaders.MessageTTL,
+          `${opts.ttl}`,
         );
       }
     }
