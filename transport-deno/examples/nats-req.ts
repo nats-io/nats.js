@@ -3,13 +3,10 @@
 import { parse } from "jsr:@std/flags";
 import {
   connect,
+  type ConnectionOptions,
   credsAuthenticator,
   delay,
-  StringCodec,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-import type {
-  ConnectionOptions,
-} from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+} from "jsr:@nats-io/transport-deno@3.0.0-24";
 
 const argv = parse(
   Deno.args,
@@ -56,7 +53,6 @@ if (argv.creds) {
   opts.authenticator = credsAuthenticator(data);
 }
 
-const sc = StringCodec();
 const nc = await connect(opts);
 nc.closed()
   .then((err) => {
@@ -66,9 +62,9 @@ nc.closed()
   });
 
 for (let i = 1; i <= count; i++) {
-  await nc.request(subject, sc.encode(payload), { timeout: argv.t as number })
+  await nc.request(subject, payload, { timeout: argv.t as number })
     .then((m) => {
-      console.log(`[${i}]: ${sc.decode(m.data)}`);
+      console.log(`[${i}]: ${m.string()}`);
       if (argv.headers && m.headers) {
         const h = [];
         for (const [key, value] of m.headers) {

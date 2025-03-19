@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { connect, StringCodec, headers, credsAuthenticator } = require(
+const { connect, headers, credsAuthenticator } = require(
   "../index",
 );
 const fs = require("node:fs");
@@ -62,7 +62,6 @@ if (argv.h || argv.help || !subject || (argv._[1] && argv.q)) {
       }
     });
 
-  const sc = StringCodec();
   const sub = nc.subscribe(subject, { queue: argv.q });
   console.info(`${argv.q !== "" ? "queue " : ""}listening to ${subject}`);
   for await (const m of sub) {
@@ -71,10 +70,14 @@ if (argv.h || argv.help || !subject || (argv._[1] && argv.q)) {
       hdrs.set("sequence", sub.getProcessed().toString());
       hdrs.set("time", Date.now().toString());
     }
-    if (m.respond(argv.e ? m.data : sc.encode(payload), { headers: hdrs })) {
-      console.log(`[${sub.getProcessed()}]: ${m.reply}: ${m.data}`);
+    if (m.respond(argv.e ? m.data : payload, { headers: hdrs })) {
+      console.log(
+        `[${sub.getProcessed()}]: ${m.subject} ${m.reply}: ${m.data}`,
+      );
     } else {
-      console.log(`[${sub.getProcessed()}]: ignored - no reply subject`);
+      console.log(
+        `[${sub.getProcessed()}]: ${m.subject} ignored - no reply subject`,
+      );
     }
   }
 })();

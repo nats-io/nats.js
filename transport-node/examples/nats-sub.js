@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { connect, StringCodec, credsAuthenticator } = require("../index");
+const { connect, credsAuthenticator } = require("../index");
 const fs = require("node:fs");
 const process = require("node:process");
 
@@ -57,11 +57,10 @@ if (argv.h || argv.help || !subject) {
       }
     });
 
-  const sc = StringCodec();
   const sub = nc.subscribe(subject, { queue: argv.q });
   console.info(`${argv.q !== "" ? "queue " : ""}listening to ${subject}`);
   for await (const m of sub) {
-    console.log(`[${sub.getProcessed()}]: ${m.subject}: ${sc.decode(m.data)}`);
+    console.log(`[${sub.getProcessed()}]: ${m.subject}: ${m.string()}`);
     if (argv.headers && m.headers) {
       const h = [];
       for (const [key, value] of m.headers) {

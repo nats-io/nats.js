@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const parse = require("minimist");
-const { connect, StringCodec, headers, credsAuthenticator, delay } = require(
+const { connect, headers, credsAuthenticator, delay } = require(
   "../index",
 );
 const fs = require("node:fs");
@@ -76,10 +76,8 @@ if (argv.h || argv.help || !subject) {
     pubopts.headers = hdrs;
   }
 
-  const sc = StringCodec();
-
   for (let i = 1; i <= count; i++) {
-    nc.publish(subject, sc.encode(String(payload)), pubopts);
+    nc.publish(subject, payload, pubopts);
     console.log(`[${i}] ${subject}: ${payload}`);
     if (interval) {
       await delay(interval);
