@@ -57,7 +57,7 @@ discovery for free.
 To invoke the service, it is a simple NATS request:
 
 ```typescript
-const response = await nc.request("max", JSONCodec().encode([1, 2, 3]));
+const response = await nc.request("max", JSON.stringify([1, 2, 3]));
 ```
 
 ## Discovery and Monitoring
@@ -125,13 +125,13 @@ const sums = g.addEndpoint("sum");
 (async () => {
   for await (const m of sums) {
     // decode the message payload into an array of numbers
-    const numbers = JSONCodec<number[]>().decode(m.data);
+    const numbers = m.json<number[]>();
     // add them together
     const s = numbers.reduce((sum, v) => {
       return sum + v;
     });
     // return a number
-    m.respond(JSONCodec().encode(s));
+    m.respond(JSON.stringify(s));
   }
 })();
 ```
