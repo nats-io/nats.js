@@ -11,7 +11,7 @@ on:
 jobs:
   test:
     name: test jetstream with released dependencies
-    runs-on: ubuntu-latests
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         deno-version: [2.2.x]

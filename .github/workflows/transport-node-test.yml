@@ -22,7 +22,7 @@ jobs:
         node-version: [23.x]
 
     name: test node transport with local dependencies
-    runs-on: ubuntu-latests
+    runs-on: ubuntu-latest
 
     steps:
       - name: Git Checkout Core
