@@ -13,15 +13,13 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
-
-import type { QueuedIterator } from "jsr:@nats-io/nats-transport-deno@3.0.0-5";
+import { connect, type QueuedIterator } from "jsr:@nats-io/transport-deno";
 
 import {
   ServiceError,
   ServiceErrorCodeHeader,
   ServiceErrorHeader,
-  Svc,
+  Svcm,
 } from "../src/mod.ts";
 import type { ServiceMsg, ServiceStats } from "../src/mod.ts";
 import { assertEquals } from "jsr:@std/assert";
@@ -42,7 +40,7 @@ const statsHandler = (): Promise<unknown> => {
 };
 
 // create a service - using the statsHandler
-const svc = new Svc(nc);
+const svc = new Svcm(nc);
 const service = await svc.add({
   name: "max",
   version: "0.0.1",
@@ -131,7 +129,7 @@ function decoder(r: ServiceMsg): Promise<number[]> {
     // otherwise we are good
     return Promise.resolve(a);
   } catch (err) {
-    // this is JSON.parse() - in JSONCodec failing to parse JSON
+    // this is JSON.parse() - failing to parse JSON
     return Promise.reject(new ServiceError(400, (err as Error).message));
   }
 }
@@ -139,13 +137,13 @@ function decoder(r: ServiceMsg): Promise<number[]> {
 // Now we switch gears and look at a client making a request:
 
 // we call the service without any payload and expect some errors
-await nc.request("max").then((r) => {
+await nc.request("max").then((r: ServiceMsg) => {
   // errors are really these two headers set on the message
   assertEquals(r.headers?.get(ServiceErrorHeader), "Bad JSON");
   assertEquals(r.headers?.get(ServiceErrorCodeHeader), "400");
 });
 // call it with an empty array also expecting an error response
-await nc.request("max", JSON.stringify([])).then((r) => {
+await nc.request("max", JSON.stringify([])).then((r: ServiceMsg) => {
   // Here's an alternative way of checking if the response is an error response
   assertEquals(ServiceError.isServiceError(r), true);
   const se = ServiceError.toServiceError(r);
@@ -154,7 +152,7 @@ await nc.request("max", JSON.stringify([])).then((r) => {
 });
 
 // call it with valid arguments
-await nc.request("max", JSON.stringify([1, 10, 100])).then((r) => {
+await nc.request("max", JSON.stringify([1, 10, 100])).then((r: ServiceMsg) => {
   // no error headers
   assertEquals(ServiceError.isServiceError(r), false);
   // and the response is on the payload, so we process the JSON we
