@@ -6,7 +6,7 @@ on: workflow_dispatch
 jobs:
   build:
     name: version bump
-    runs-on: ubuntu-latests
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
