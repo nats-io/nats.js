@@ -32,8 +32,14 @@ jobs:
           deno-version: ${{ matrix.deno-version }}
       - name: Set tag
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-      - run: deno publish --allow-dirty
-      - run: npm run real-clean --workspaces
-      - run: npm publish --provenance --access public --tag=latest --workspaces
+      - name: Dry run
+        run: |
+          deno publish --allow-dirty --dry-run
+          npm publish --provenance --access public --tag=latest --workspaces --dry-run
+          npm run clean --workspaces
+      - name: Publish JSR
+        run: deno publish --allow-dirty
+      - name: Publish NPM
+        run: npm publish --provenance --access public --tag=latest --workspaces
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
