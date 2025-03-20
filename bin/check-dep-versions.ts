@@ -82,7 +82,7 @@ class ImportMap {
       const haveInternal = this.has(internalModule);
       if (haveInternal && version.compare(haveInternal) !== 0) {
         this.data.imports[internalModule] =
-          `jsr:${module}@~${version.string()}/internal`;
+          `jsr:${module}@${version.string()}/internal`;
         changed = true;
       }
       return changed;
