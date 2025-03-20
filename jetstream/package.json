@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/jetstream",
-  "version": "3.0.0-40",
+  "version": "3.0.0-RC1",
   "files": [
     "lib/",
     "LICENSE",
@@ -33,7 +33,7 @@
   },
   "description": "jetstream library - this library implements all the base functionality for NATS JetStream for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "3.0.0-54"
+    "@nats-io/nats-core": "3.0.0-RC1"
   },
   "devDependencies": {
     "@types/node": "^22.10.10",
