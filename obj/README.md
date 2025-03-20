@@ -87,7 +87,6 @@ const objm = new Objm(js);
 ```
 
 ```typescript
-const sc = StringCodec();
 // create the named ObjectStore or bind to it if it exists:
 const objm = new Objm(nc);
 const os = await objm.create("testing", { storage: StorageType.File });

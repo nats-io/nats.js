@@ -1,9 +1,9 @@
 {
   "imports": {
-    "@nats-io/nkeys": "jsr:@nats-io/nkeys@~2.0.2",
-    "@nats-io/nuid": "jsr:@nats-io/nuid@~2.0.3",
-    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-54",
-    "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@~3.0.0-54/internal",
+    "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.0.3",
+    "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.3",
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@~3.0.0-RC2",
+    "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@~3.0.0-RC2/internal",
     "test_helpers": "../test_helpers/mod.ts",
     "@std/io": "jsr:@std/io@0.225.0"
   }

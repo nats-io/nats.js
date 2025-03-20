@@ -75,7 +75,7 @@ class ImportMap {
     if (this.data.imports) {
       const have = this.has(module);
       if (have && version.compare(have) !== 0) {
-        this.data.imports[module] = `jsr:${module}@~${version.string()}`;
+        this.data.imports[module] = `jsr:${module}@${version.string()}`;
         changed = true;
       }
       const internalModule = `${module}/internal`;
@@ -152,7 +152,7 @@ class DenoModule extends BaseModule {
     if (this.data.imports) {
       const have = this.has(module);
       if (have && version.compare(have) !== 0) {
-        this.data.imports[module] = `jsr:${module}@~${version.string()}`;
+        this.data.imports[module] = `jsr:${module}@${version.string()}`;
         this.changed = true;
         return true;
       }

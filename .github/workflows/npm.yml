@@ -1,0 +1,41 @@
+name: NPM/JSR release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        node-version: [23.x]
+        deno-version: [2.1.x]
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout nats.js
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: "https://registry.npmjs.org"
+      - name: Use Deno Version ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+      - run: npm install -g npm
+      - run: npm ci
+      - name: Set tag
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      - run: npm run clean
+      - run: npm publish --provenance --access public --tag=next
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npx jsr publish --allow-dirty
