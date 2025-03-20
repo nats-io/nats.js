@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.0-RC1",
+  "version": "3.0.0-RC2",
   "files": [
     "lib/",
     "LICENSE",
@@ -33,12 +33,12 @@
   },
   "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
   "dependencies": {
-    "@nats-io/nkeys": "2.0.2",
+    "@nats-io/nkeys": "2.0.3",
     "@nats-io/nuid": "2.0.3"
   },
   "devDependencies": {
-    "@types/node": "^22.10.10",
-    "shx": "^0.3.4",
+    "@types/node": "^22.13.10",
+    "shx": "^0.4.0",
     "typescript": "^5.8.2"
   }
 }
