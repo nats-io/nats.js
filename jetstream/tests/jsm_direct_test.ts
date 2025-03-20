@@ -43,16 +43,16 @@ import { JetStreamStatusError } from "../src/jserrors.ts";
 
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import type { DirectBatchOptions, DirectLastFor } from "../src/jsapi_types.ts";
-import {
-  type NatsConnectionImpl,
-  type QueuedIteratorImpl,
-  TimeoutError,
+import type {
+  NatsConnectionImpl,
+  QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
 
 Deno.test("direct - version checks", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   assertExists(nc.info);
   nc.info.version = "2.0.0";
+  (nc as NatsConnectionImpl).features.update("2.0.0");
 
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
 
@@ -217,7 +217,7 @@ Deno.test("direct - get", async (t) => {
   await cleanup(ns, nc);
 });
 
-Deno.test("direct callback", async (t) => {
+Deno.test("direct - callback", async (t) => {
   const { ns, nc } = await setup(jetstreamServerConf());
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
@@ -232,13 +232,13 @@ Deno.test("direct callback", async (t) => {
       seq: 1,
       callback: (done, _) => {
         assertExists(done);
-        assertIsError(done.err, TimeoutError);
+        assertIsError(done.err, Error, "no responders");
         d.resolve();
       },
     }) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
-    assertIsError(err, TimeoutError);
+    assertIsError(err, Error, "no responders");
   });
 
   await t.step("message not found", async () => {
