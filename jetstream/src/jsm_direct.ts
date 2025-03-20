@@ -339,7 +339,7 @@ export class DirectConsumer {
     if (this.cursor.last === 0) {
       // we have never pulled, honor initial request options
       if (isDirectBatchStartTime(this.start)) {
-        dbo.start_time = this.start.start_time;
+        dbo.start_time = this.start.start_time!;
       } else {
         dbo.seq = this.start.seq || 1;
       }
@@ -353,7 +353,7 @@ export class DirectConsumer {
       dbo.batch = opts.batch ?? 100;
     }
 
-    return dbo;
+    return dbo as DirectBatchOptions;
   }
 
   status(): AsyncIterable<ConsumerNotification> {

@@ -66,7 +66,10 @@ Deno.test("direct - version checks", async () => {
 
   await assertRejects(
     () => {
-      return jsm.direct.getBatch("A", { seq: 1, batch: 100 });
+      return jsm.direct.getBatch(
+        "A",
+        { seq: 1, batch: 100 } as DirectBatchOptions,
+      );
     },
     Error,
     "batch direct require server 2.11.0",
@@ -74,7 +77,10 @@ Deno.test("direct - version checks", async () => {
 
   await assertRejects(
     () => {
-      return jsm.direct.getBatch("A", { seq: 1, batch: 100 });
+      return jsm.direct.getBatch(
+        "A",
+        { seq: 1, batch: 100 } as DirectBatchOptions,
+      );
     },
     Error,
     "batch direct require server 2.11.0",
@@ -228,14 +234,13 @@ Deno.test("direct - callback", async (t) => {
   await t.step("no stream", async () => {
     const d = deferred();
     const iter = await jsm.direct.getBatch("hello", {
-      //@ts-ignore: test
       seq: 1,
       callback: (done, _) => {
         assertExists(done);
         assertIsError(done.err, Error, "no responders");
         d.resolve();
       },
-    }) as QueuedIteratorImpl<StoredMsg>;
+    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertIsError(err, Error, "no responders");
@@ -256,7 +261,7 @@ Deno.test("direct - callback", async (t) => {
         assertExists(done);
         assertIsError(done.err, JetStreamStatusError, "message not found");
       },
-    }) as QueuedIteratorImpl<StoredMsg>;
+    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertIsError(err, JetStreamStatusError, "message not found");
@@ -292,7 +297,7 @@ Deno.test("direct - callback", async (t) => {
         }
         buf.push(sm);
       },
-    }) as QueuedIteratorImpl<StoredMsg>;
+    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertEquals(err, undefined);
@@ -368,7 +373,7 @@ Deno.test("direct - batch", async (t) => {
         return assertBatch({
           opts: {
             batch: 3,
-          },
+          } as DirectBatchOptions,
           expect: [],
         });
       },
@@ -550,7 +555,7 @@ Deno.test("direct - batch next_by_subj", async () => {
     seq: 0,
     batch: 100,
     next_by_subj: "a",
-  });
+  } as DirectBatchOptions);
   for await (const m of iter) {
     msgs.push(m.subject);
   }
@@ -564,7 +569,7 @@ Deno.test("direct - batch next_by_subj", async () => {
     seq: 50,
     batch: 100,
     next_by_subj: "b",
-  });
+  } as DirectBatchOptions);
   for await (const m of iter) {
     msgs.push(m.subject);
   }
