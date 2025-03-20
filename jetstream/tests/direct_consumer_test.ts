@@ -21,7 +21,11 @@ import {
   notCompatible,
   setup,
 } from "test_helpers";
-import { DirectConsumer, DirectStreamAPIImpl } from "../src/jsm_direct.ts";
+import {
+  DirectConsumer,
+  type DirectStartOptions,
+  DirectStreamAPIImpl,
+} from "../src/jsm_direct.ts";
 
 Deno.test("direct consumer - next", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -38,7 +42,11 @@ Deno.test("direct consumer - next", async () => {
     js.publish("a"),
   ]);
 
-  const dc = new DirectConsumer("A", new DirectStreamAPIImpl(nc), { seq: 0 });
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
 
   const m = await dc.next();
   assertEquals(m?.seq, 1);
@@ -68,7 +76,7 @@ Deno.test("direct consumer - batch", async () => {
   const dc = new DirectConsumer(
     "A",
     new DirectStreamAPIImpl(nc),
-    { seq: 0 },
+    { seq: 0 } as DirectStartOptions,
   );
 
   let iter = await dc.fetch({ batch: 5 });
@@ -123,7 +131,7 @@ Deno.test("direct consumer - consume", async () => {
   const dc = new DirectConsumer(
     "A",
     new DirectStreamAPIImpl(nc),
-    { seq: 0 },
+    { seq: 0 } as DirectStartOptions,
   );
 
   dc.debug();

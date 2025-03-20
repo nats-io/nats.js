@@ -523,8 +523,6 @@ export type DirectMsgRequest =
 
 export type CompletionResult = { err?: Error };
 export type BatchCallback<T> = (done: CompletionResult | null, d: T) => void;
-export type StartSeq = { seq?: number };
-export type StartTime = { start_time?: Date | string };
 
 export type DirectBatch = {
   batch: number;
@@ -532,20 +530,26 @@ export type DirectBatch = {
 export type DirectMaxBytes = MaxBytes;
 
 export type DirectBatchLimits = {
-  batch?: number;
-  max_bytes?: number;
-  callback?: BatchCallback<StoredMsg>;
+  batch: number;
+  max_bytes: number;
+  callback: BatchCallback<StoredMsg>;
   next_by_subj?: string;
 };
-export type DirectBatchStartSeq = StartSeq & DirectBatchLimits;
-export type DirectBatchStartTime = StartTime & DirectBatchLimits;
-export type DirectBatchOptions = DirectBatchStartSeq & DirectBatchStartTime;
+export type DirectBatchStartSeq = Partial<DirectBatchLimits> & {
+  seq: number;
+  start_time: never;
+};
+export type DirectBatchStartTime = Partial<DirectBatchLimits> & {
+  start_time: Date | string;
+  seq: never;
+};
+export type DirectBatchOptions = DirectBatchStartSeq | DirectBatchStartTime;
 
 export type DirectLastFor = {
   multi_last: string[];
   up_to_time?: Date | string;
   up_to_seq?: number;
-} & DirectBatchLimits;
+} & Partial<DirectBatchLimits>;
 
 export type StreamState = {
   /**

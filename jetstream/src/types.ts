@@ -323,6 +323,14 @@ export type JetStreamManager = {
    * JetStream API to interact with Streams
    */
   streams: StreamAPI;
+  /**
+   * API for accessing messages in a stream without using a Consumer.
+   * This API can retrieve values from any of the stream replicas,
+   * which means that it may not reflect inflight changes to the stream.
+   * Direct APIs require the stream to have the `direct` option
+   * enabled.
+   */
+  direct: DirectStreamAPI;
 
   /**
    * Returns JetStreamAccountStats for the current client account.
@@ -852,14 +860,22 @@ export type Consumers = {
  * The Direct stream API is a bit more performant for retrieving messages,
  * but requires the stream to have enabled direct access.
  * See {@link StreamConfig.allow_direct}.
+ *
+ * These APIs are intended to support other APIs in the library.
+ *
+ * Note that these APIs are marked as non-stable, this means that
+ * these APIs are subject to change.
+ *
+ * Note that these API can retrieve values from any replica, so it is possible
+ * for a lookup after an update to not include the message that was just added.
  */
 export type DirectStreamAPI = {
   /**
    * Retrieves the message matching the specified query. Messages can be
    * retrieved by sequence number or by last sequence matching a subject, or
    * by looking for the next message sequence that matches a subject.
-   * @param stream
-   * @param query
+   *
+   * This API is Non-Stable and subject to change.
    */
   getMessage(
     stream: string,
@@ -867,9 +883,10 @@ export type DirectStreamAPI = {
   ): Promise<StoredMsg | null>;
 
   /**
-   * Retrieves all last subject messages for the specified subjects
-   * @param stream
-   * @param opts
+   * Retrieves a batch of messages with an optional filter starting at a specific
+   * sequence or start time. Note that only a single subject filter is supported.
+   *
+   * This API is Non-Stable and subject to change.
    */
   getBatch(
     stream: string,
@@ -882,8 +899,8 @@ export type DirectStreamAPI = {
    * Care should be given on the specified filters to ensure that
    * the results match what the client is expecting and to avoid missing
    * expected data.
-   * @param stream
-   * @param opts
+   *
+   * This API is Non-Stable and subject to change.
    */
   getLastMessagesFor(
     stream: string,
