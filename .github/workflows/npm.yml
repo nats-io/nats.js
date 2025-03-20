@@ -35,6 +35,7 @@ jobs:
       - name: Dry run
         run: |
           deno publish --allow-dirty --dry-run
+          npm install --workspaces
           npm publish --provenance --access public --tag=latest --workspaces --dry-run
           npm run clean --workspaces
       - name: Publish JSR
