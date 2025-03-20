@@ -887,6 +887,7 @@ export type DirectStreamAPI = {
    * sequence or start time. Note that only a single subject filter is supported.
    *
    * This API is Non-Stable and subject to change.
+   * This API requires server 2.11.0 or better
    */
   getBatch(
     stream: string,
@@ -901,6 +902,7 @@ export type DirectStreamAPI = {
    * expected data.
    *
    * This API is Non-Stable and subject to change.
+   * This API requires server 2.10.0 or better
    */
   getLastMessagesFor(
     stream: string,
