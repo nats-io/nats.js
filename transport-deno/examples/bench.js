@@ -1,11 +1,6 @@
 #!/usr/bin/env deno run --allow-all --unstable
 import { parse } from "jsr:@std/flags";
-import {
-  Bench,
-  connect,
-  Metric,
-  Nuid,
-} from "jsr:@nats-io/transport-deno@3.0.0-24";
+import { Bench, connect, Metric, Nuid } from "jsr:@nats-io/transport-deno";
 const defaults = {
   s: "127.0.0.1:4222",
   c: 100000,

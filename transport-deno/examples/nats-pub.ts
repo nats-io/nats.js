@@ -8,7 +8,7 @@ import {
   delay,
   headers,
   type MsgHdrs,
-} from "jsr:@nats-io/transport-deno@3.0.0-24";
+} from "jsr:@nats-io/transport-deno";
 
 const argv = parse(
   Deno.args,
