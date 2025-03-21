@@ -11,12 +11,6 @@
 > nats.deno), into multiple modules, and on-boards the supported transports
 > (Deno, Node/Bun, and WebSocket).
 >
-> While there have been some important refactorings and minor API changes to
-> address the split into multiple modules, the code is stable and you are
-> welcomed to on-board it into your own projects, with the caveat that
-> additional API changes are forthcoming. These changes will be advertised
-> properly.
->
 > This repository now supersedes:
 >
 > - [nats.deno](https://github.com/nats-io/nats.deno)
