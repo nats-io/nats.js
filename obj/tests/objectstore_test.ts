@@ -15,7 +15,9 @@
 
 import {
   cleanup,
+  connect,
   jetstreamServerConf,
+  NatsServer,
   notCompatible,
   setup,
 } from "test_helpers";
@@ -1262,4 +1264,17 @@ Deno.test("os - objm open", async () => {
   assertEquals(oi.name, "hello");
 
   await cleanup(ns, nc);
+});
+
+Deno.test("os - objm creates right number of replicas", async () => {
+  const servers = await NatsServer.jetstreamCluster(3);
+  const nc = await connect({ port: servers[0].port });
+  const objm = new Objm(nc);
+
+  const obj = await objm.create("test", { replicas: 3 });
+  const status = await obj.status();
+  assertEquals(status.replicas, 3);
+
+  await nc.close();
+  await NatsServer.stopAll(servers, true);
 });
