@@ -40,7 +40,39 @@ jobs:
           npm run clean --workspaces
       - name: Publish JSR
         run: deno publish --allow-dirty
-      - name: Publish NPM
-        run: npm publish --provenance --access public --tag=latest --workspaces
+
+      - name: Publish NPM core
+        run: npm publish --provenance --access public --tag=latest --workspaces core
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish NPM jetstream
+        run: npm publish --provenance --access public --tag=latest --workspaces jetstream
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish NPM kv
+        run: npm publish --provenance --access public --tag=latest --workspaces kv
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish NPM obj
+        run: npm publish --provenance --access public --tag=latest --workspaces obj
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish NPM services
+        run: npm publish --provenance --access public --tag=latest --workspaces services
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish NPM transport-node
+        run: npm publish --provenance --access public --tag=latest --workspaces transport-node
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
