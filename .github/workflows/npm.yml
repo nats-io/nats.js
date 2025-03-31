@@ -3,6 +3,7 @@ name: NPM/JSR release
 on:
   release:
     types: [created]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -38,41 +39,57 @@ jobs:
           npm install --workspaces
           npm publish --provenance --access public --tag=latest --workspaces --dry-run
           npm run clean --workspaces
+
       - name: Publish JSR
         run: deno publish --allow-dirty
 
+      - name: Build Bundles
+        run:  npm run build --workspaces
+
       - name: Publish NPM core
-        run: npm publish --provenance --access public --tag=latest --workspaces core
+        run: |
+          cd core
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM jetstream
-        run: npm publish --provenance --access public --tag=latest --workspaces jetstream
+        run: |
+          cd jetstream
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM kv
-        run: npm publish --provenance --access public --tag=latest --workspaces kv
+        run: |
+          cd kv
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM obj
-        run: npm publish --provenance --access public --tag=latest --workspaces obj
+        run: |
+          cd obj
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM services
-        run: npm publish --provenance --access public --tag=latest --workspaces services
+        run: | 
+          cd services
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM transport-node
-        run: npm publish --provenance --access public --tag=latest --workspaces transport-node
+        run: |
+          cd transport-node
+          npm publish --provenance --access public --tag=latest
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
