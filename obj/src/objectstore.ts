@@ -917,6 +917,7 @@ export class ObjectStoreImpl implements ObjectStore {
     sc.name = this.stream;
     sc.allow_direct = true;
     sc.allow_rollup_hdrs = true;
+    sc.num_replicas = opts.replicas || 1;
     sc.discard = DiscardPolicy.New;
     sc.subjects = [`$O.${this.name}.C.>`, `$O.${this.name}.M.>`];
     if (opts.placement) {
