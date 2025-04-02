@@ -226,8 +226,8 @@ export class JetStreamClientImpl extends BaseApiClientImpl
       } catch (err) {
         const re = err instanceof RequestError ? err as RequestError : null;
         if (
-          err instanceof errors.TimeoutError ||
-          re?.isNoResponders() && i + 1 < retries
+          (err instanceof errors.TimeoutError || re?.isNoResponders()) &&
+          i + 1 < retries
         ) {
           await delay(bo.backoff(i));
         } else {
