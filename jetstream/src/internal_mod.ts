@@ -95,6 +95,8 @@ export type {
   ThresholdMessages,
 } from "./types.ts";
 
+export type { PushConsumerMessagesImpl } from "./pushconsumer.ts";
+
 export type { StreamNames } from "./jsbaseclient_api.ts";
 export type {
   AccountLimits,

@@ -60,9 +60,9 @@
     "@nats-io/nuid": "2.0.3"
   },
   "devDependencies": {
-    "@nats-io/jetstream": "3.0.0",
+    "@nats-io/jetstream": "3.0.1-1",
     "@nats-io/kv": "3.0.0",
-    "@nats-io/obj": "3.0.0",
+    "@nats-io/obj": "3.0.2-1",
     "@types/node": "^22.10.10",
     "minimist": "^1.2.8",
     "shx": "^0.3.3",

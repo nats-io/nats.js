@@ -24,6 +24,7 @@ import {
   Feature,
   headers,
   MsgHdrsImpl,
+  nanos,
   nuid,
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
@@ -38,6 +39,7 @@ import type {
   ListerFieldFilter,
   PubAck,
   PurgeResponse,
+  PushConsumerMessagesImpl,
   StorageType,
   StreamConfig,
   StreamInfo,
@@ -467,7 +469,6 @@ export class ObjectStoreImpl implements ObjectStore {
 
     const d = deferred<ObjectInfo>();
 
-    const proms: Promise<unknown>[] = [];
     const db = new DataBuffer();
     try {
       const reader = rs ? rs.getReader() : null;
@@ -484,11 +485,8 @@ export class ObjectStoreImpl implements ObjectStore {
             sha.update(payload);
             info.chunks!++;
             info.size! += payload.length;
-            proms.push(this.js.publish(chunkSubj, payload, { timeout }));
+            await this.js.publish(chunkSubj, payload, { timeout });
           }
-          // wait for all the chunks to write
-          await Promise.all(proms);
-          proms.length = 0;
 
           // prepare the metadata
           info.mtime = new Date().toISOString();
@@ -541,9 +539,7 @@ export class ObjectStoreImpl implements ObjectStore {
             info.size! += maxChunk;
             const payload = db.drain(meta.options.max_chunk_size);
             sha.update(payload);
-            proms.push(
-              this.js.publish(chunkSubj, payload, { timeout }),
-            );
+            await this.js.publish(chunkSubj, payload, { timeout });
           }
         }
       }
@@ -669,8 +665,19 @@ export class ObjectStoreImpl implements ObjectStore {
 
     const cc: Partial<ConsumerConfig> = {};
     cc.filter_subject = `$O.${this.name}.C.${info.nuid}`;
+    cc.idle_heartbeat = nanos(30_000);
+    cc.flow_control = true;
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
-    const iter = await oc.consume();
+    const iter = await oc.consume() as PushConsumerMessagesImpl;
+    // if we get a heartbeat, that means that somehow our request is not being
+    // processed so reset it
+    (async () => {
+      for await (const s of iter.status()) {
+        if (s.type === "heartbeats_missed") {
+          iter.reset();
+        }
+      }
+    })().catch();
 
     (async () => {
       for await (const jm of iter) {

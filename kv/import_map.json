@@ -2,8 +2,8 @@
   "imports": {
     "@nats-io/nats-core": "jsr:@nats-io/nats-core@3.0.0",
     "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@~3.0.0/internal",
-    "@nats-io/jetstream": "jsr:@nats-io/jetstream@3.0.0",
-    "@nats-io/jetstream/internal": "jsr:@nats-io/jetstream@~3.0.0/internal",
+    "@nats-io/jetstream": "jsr:@nats-io/jetstream@3.0.1-1",
+    "@nats-io/jetstream/internal": "jsr:@nats-io/jetstream@3.0.1-1/internal",
     "test_helpers": "../test_helpers/mod.ts",
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.0.3",
     "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.3",
