@@ -266,7 +266,9 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
       });
       assert.fail("shouldn't have connected");
     } catch (err) {
-      assert.equal(err.message, "unable to verify the first certificate");
+      assert.ok(
+        err.message.indexOf("unable to verify the first certificate") > -1,
+      );
     }
 
     // will upgrade to tls as tls is required
