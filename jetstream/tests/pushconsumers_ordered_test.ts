@@ -13,7 +13,12 @@
  * limitations under the License.
  */
 
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertFalse,
+  assertRejects,
+} from "jsr:@std/assert";
 import { DeliverPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 import type { JsMsg } from "../src/mod.ts";
 
@@ -238,6 +243,51 @@ Deno.test("ordered push consumers - sub leak", async () => {
   nci.protocol.subscriptions.subs.forEach((s) => {
     console.log(">", s.subject);
   });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("push consumers - flow control", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+  const js = jetstream(nc);
+
+  async function checkPushConsumer(c: PushConsumerImpl) {
+    const ci = await c.info(true);
+    assertEquals(c.ordered, true);
+    assertEquals(ci.config.flow_control, true);
+  }
+
+  await (checkPushConsumer(
+    await js.consumers.getPushConsumer("test") as PushConsumerImpl,
+  ));
+  await (checkPushConsumer(
+    await js.consumers.getPushConsumer("test", {
+      headers_only: true,
+    }) as PushConsumerImpl,
+  ));
+
+  let ci = await jsm.consumers.add("test", { deliver_subject: "foo" });
+  const c = await js.consumers.getPushConsumer(
+    "test",
+    ci.name,
+  ) as PushConsumerImpl;
+  assertFalse(c.ordered);
+  ci = await c.info(true);
+  assertEquals(ci.config.flow_control, undefined);
+  assertEquals(ci.config.idle_heartbeat, undefined);
+
+  const buf = [];
+  nc.subscribe(`$JS.CONSUMER.CREATE.>`, {
+    callback: (_, msg) => {
+      buf.push(msg.subject);
+    },
+  });
+
+  await js.consumers.getBoundPushConsumer({ deliver_subject: "foo" });
+  await nc.flush();
+  assertEquals(buf.length, 0);
 
   await cleanup(ns, nc);
 });

@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/jetstream",
-  "version": "3.0.1-1",
+  "version": "3.0.1-2",
   "files": [
     "lib/",
     "LICENSE",

@@ -669,15 +669,6 @@ export class ObjectStoreImpl implements ObjectStore {
     cc.flow_control = true;
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
     const iter = await oc.consume() as PushConsumerMessagesImpl;
-    // if we get a heartbeat, that means that somehow our request is not being
-    // processed so reset it
-    (async () => {
-      for await (const s of iter.status()) {
-        if (s.type === "heartbeats_missed") {
-          iter.reset();
-        }
-      }
-    })().catch();
 
     (async () => {
       for await (const jm of iter) {
@@ -882,6 +873,20 @@ export class ObjectStoreImpl implements ObjectStore {
         }
       },
     });
+
+    (async () => {
+      for await (const s of iter.status()) {
+        switch (s.type) {
+          case "heartbeat":
+            if (historyOnly) {
+              // we got all the keys...
+              qi.push(() => {
+                qi.stop();
+              });
+            }
+        }
+      }
+    })().then();
 
     if (historyOnly && count === 0) {
       iter.stop();
