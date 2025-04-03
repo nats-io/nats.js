@@ -65,6 +65,10 @@ export type SlowConsumerStatus = {
   pending: number;
 };
 
+export type CloseStatus = {
+  type: "close";
+};
+
 export type Status =
   | DisconnectStatus
   | ReconnectStatus
@@ -75,7 +79,8 @@ export type Status =
   | ClientPingStatus
   | StaleConnectionStatus
   | SlowConsumerStatus
-  | ForceReconnectStatus;
+  | ForceReconnectStatus
+  | CloseStatus;
 
 export type MsgCallback<T> = (
   err: Error | null,
@@ -1041,4 +1046,10 @@ export type RequestInfo = {
   client_type?: string;
   client_id?: string;
   nonce?: string;
+};
+
+export type CallbackOptionalErrorFn = (err: Error | void) => void;
+
+export type ConnectionClosedListener = {
+  connectionClosedCallback: CallbackOptionalErrorFn;
 };

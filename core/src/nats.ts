@@ -26,6 +26,7 @@ import type { RequestManyOptionsInternal } from "./request.ts";
 import { RequestMany, RequestOne } from "./request.ts";
 
 import type {
+  ConnectionClosedListener,
   ConnectionOptions,
   Context,
   Msg,
@@ -48,6 +49,7 @@ export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
   protocol!: ProtocolHandler;
   draining: boolean;
+  closeListeners?: CloseListeners;
 
   private constructor(opts: ConnectionOptions) {
     this.draining = false;
@@ -533,5 +535,51 @@ export class NatsConnectionImpl implements NatsConnection {
       return Promise.reject(new errors.DrainingConnectionError());
     }
     return this.protocol.reconnect();
+  }
+
+  // internal
+  addCloseListener(listener: ConnectionClosedListener) {
+    if (this.closeListeners === undefined) {
+      this.closeListeners = new CloseListeners(this.closed());
+    }
+    this.closeListeners.add(listener);
+  }
+  // internal
+  removeCloseListener(listener: ConnectionClosedListener) {
+    if (this.closeListeners) {
+      this.closeListeners.remove(listener);
+    }
+  }
+}
+
+class CloseListeners {
+  listeners: ConnectionClosedListener[];
+
+  constructor(closed: Promise<void | Error>) {
+    this.listeners = [];
+    closed.then((err) => {
+      this.notify(err);
+    });
+  }
+
+  add(listener: ConnectionClosedListener) {
+    this.listeners.push(listener);
+  }
+
+  remove(listener: ConnectionClosedListener) {
+    this.listeners = this.listeners.filter((l) => l !== listener);
+  }
+
+  notify(err: void | Error) {
+    this.listeners.forEach((l) => {
+      if (typeof l.connectionClosedCallback === "function") {
+        try {
+          l.connectionClosedCallback(err);
+        } catch (_) {
+          // ignored
+        }
+      }
+    });
+    this.listeners = [];
   }
 }

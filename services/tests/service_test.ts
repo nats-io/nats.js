@@ -1105,3 +1105,41 @@ Deno.test("service - metadata is not editable", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("service - close listener check", async () => {
+  const { ns, nc } = await setup();
+
+  const nci = nc as NatsConnectionImpl;
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners, undefined);
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1", hello: "world" },
+    queue: "",
+  });
+
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 1);
+
+  await srv.stop();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1", hello: "world" },
+    queue: "",
+  });
+
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 1);
+  await nc.close();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  await cleanup(ns, nc);
+});

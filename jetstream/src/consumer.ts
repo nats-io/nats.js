@@ -15,6 +15,7 @@
 
 import type {
   CallbackFn,
+  ConnectionClosedListener,
   Delay,
   MsgImpl,
   QueuedIterator,
@@ -129,6 +130,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   inbox!: string;
   cancelables: Delay[];
   inReset: boolean;
+  closeListener: ConnectionClosedListener;
 
   // callback: ConsumerCallbackFn;
   constructor(
@@ -176,11 +178,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
 
-    this.consumer.api.nc.closed().then(() => {
-      this._push(() => {
-        this.stop();
-      });
-    });
+    this.closeListener = {
+      // we don't propagate the error here
+      connectionClosedCallback: () => {
+        this._push(() => {
+          this.stop();
+        });
+      },
+    };
+    this.consumer.api.nc.addCloseListener(this.closeListener);
 
     this.start();
   }
@@ -683,6 +689,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     if (this.done) {
       return;
     }
+    this.consumer.api.nc.removeCloseListener(this.closeListener);
+
     this.sub?.unsubscribe();
     this.clearTimers();
     this.statusIterator?.stop();
