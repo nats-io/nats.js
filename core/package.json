@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.2-1",
+  "version": "3.0.2",
   "files": [
     "lib/",
     "LICENSE",
@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nats-io/nats.js"
+    "url": "git+https://github.com/nats-io/nats.js.git"
   },
   "private": false,
   "scripts": {

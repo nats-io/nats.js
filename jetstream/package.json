@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/jetstream",
-  "version": "3.0.2-1",
+  "version": "3.0.2",
   "files": [
     "lib/",
     "LICENSE",
@@ -14,7 +14,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nats-io/nats.js"
+    "url": "git+https://github.com/nats-io/nats.js.git"
   },
   "private": false,
   "scripts": {
@@ -33,7 +33,7 @@
   },
   "description": "jetstream library - this library implements all the base functionality for NATS JetStream for javascript clients",
   "dependencies": {
-    "@nats-io/nats-core": "3.0.2-1"
+    "@nats-io/nats-core": "3.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
