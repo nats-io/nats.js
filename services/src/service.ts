@@ -22,11 +22,13 @@ import {
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
 import type {
+  ConnectionClosedListener,
   Deferred,
   Msg,
   MsgHdrs,
   Nanos,
   NatsConnection,
+  NatsConnectionImpl,
   Payload,
   PublishOptions,
   QueuedIterator,
@@ -256,6 +258,7 @@ export class ServiceImpl implements Service {
   _stopped: boolean;
   _done: Deferred<Error | null>;
   started: string;
+  closeListener: ConnectionClosedListener;
 
   /**
    * @param verb
@@ -314,13 +317,12 @@ export class ServiceImpl implements Service {
     this.reset();
 
     // close if the connection closes
-    this.nc.closed()
-      .then(() => {
-        this.close().catch();
-      })
-      .catch((err) => {
+    this.closeListener = {
+      connectionClosedCallback: (err) => {
         this.close(err).catch();
-      });
+      },
+    };
+    (this.nc as NatsConnectionImpl).addCloseListener(this.closeListener);
   }
 
   get subjects(): string[] {
@@ -546,11 +548,13 @@ export class ServiceImpl implements Service {
     return Promise.resolve(this);
   }
 
-  close(err?: Error): Promise<null | Error> {
+  close(err: Error | void): Promise<null | Error> {
     if (this._stopped) {
       return this._done;
     }
     this._stopped = true;
+    (this.nc as NatsConnectionImpl).removeCloseListener(this.closeListener);
+
     let buf: Promise<void>[] = [];
     if (!this.nc.isClosed()) {
       buf = this.handlers.concat(this.internal).map((h) => {

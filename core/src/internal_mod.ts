@@ -87,8 +87,10 @@ export type {
   Auth,
   Authenticator,
   CallbackFn,
+  CallbackOptionalErrorFn,
   ClientPingStatus,
   ClusterUpdateStatus,
+  ConnectionClosedListener,
   ConnectionOptions,
   DisconnectStatus,
   Dispatcher,
@@ -129,6 +131,7 @@ export type {
   TokenAuth,
   UserPass,
 } from "./core.ts";
+
 export { createInbox, Match, syncIterator } from "./core.ts";
 export { SubscriptionImpl, Subscriptions } from "./protocol.ts";
 

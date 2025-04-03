@@ -35,6 +35,8 @@ import {
   syncIterator,
 } from "../src/internal_mod.ts";
 import type {
+  ConnectionClosedListener,
+  Deferred,
   Msg,
   MsgHdrs,
   MsgImpl,
@@ -1680,3 +1682,47 @@ class MM implements Msg {
     return "";
   }
 }
+
+Deno.test("basics - internal close listener", async () => {
+  const ns = await NatsServer.start();
+  const port = ns.port;
+
+  // nothing bad should happen if none registered
+  let nc = await connect({ port }) as NatsConnectionImpl;
+  await nc.close();
+
+  function makeListener(d: Deferred<unknown>): ConnectionClosedListener {
+    return {
+      connectionClosedCallback: () => {
+        d.resolve();
+      },
+    };
+  }
+
+  // can add and remove
+  nc = await connect({ port }) as NatsConnectionImpl;
+  let done = deferred();
+  let listener = makeListener(done);
+
+  (nc as NatsConnectionImpl).addCloseListener(listener);
+  // @ts-ignore: internal
+  assertEquals((nc as NatsConnectionImpl).closeListeners.listeners.length, 1);
+  (nc as NatsConnectionImpl).removeCloseListener(listener);
+  // @ts-ignore: internal
+  assertEquals((nc as NatsConnectionImpl).closeListeners.listeners.length, 0);
+  await nc.close();
+  done.resolve();
+  await done;
+
+  // closed called
+  nc = await connect({ port }) as NatsConnectionImpl;
+  done = deferred();
+  listener = makeListener(done);
+  (nc as NatsConnectionImpl).addCloseListener(listener);
+  await nc.close();
+  await done;
+  // @ts-ignore: internal
+  assertEquals((nc as NatsConnectionImpl).closeListeners.listeners.length, 0);
+
+  await ns.stop();
+});

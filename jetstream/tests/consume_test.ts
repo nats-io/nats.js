@@ -611,3 +611,74 @@ Deno.test("consume - consumer not found and no responders", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("consumer - internal close listener", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const nci = nc as NatsConnectionImpl;
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners, undefined);
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "leak", subjects: ["leak.*"] });
+  const ci = await jsm.consumers.add("leak", {});
+  const js = jsm.jetstream();
+  await js.publish("leak.a");
+  await js.publish("leak.a");
+  await js.publish("leak.a");
+
+  // next
+  const c = await js.consumers.get("leak", ci.name);
+  await c.next();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  // fetch
+  let iter = await c.fetch({ max_messages: 1 });
+  await (async () => {
+    for await (const _ of iter) {
+      // nothing
+    }
+  })();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  iter = await c.consume({ max_messages: 1 });
+  await (async () => {
+    for await (const _ of iter) {
+      break;
+    }
+  })();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  // long
+  iter = await c.consume({ max_messages: 1 });
+  let done = (async () => {
+    for await (const _ of iter) {
+      // nothing
+    }
+  })();
+
+  await nc.flush();
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 1);
+  iter.stop();
+  await done;
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  iter = await c.consume({ max_messages: 1 });
+  done = (async () => {
+    for await (const _ of iter) {
+      // nothing
+    }
+  })();
+  // @ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 1);
+  await nc.close();
+  await done;
+  // @ts-ignore: internal
+  assertEquals(nci.closeListeners.listeners.length, 0);
+
+  await cleanup(ns, nc);
+});
