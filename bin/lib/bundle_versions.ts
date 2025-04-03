@@ -70,7 +70,7 @@ export class SemVer {
     if (this.micro > b.micro) return 1;
 
     if (this.qualifier === "" && b.qualifier !== "") return 1;
-    if (b.qualifier === "" && b.qualifier !== "") return -1;
+    if (b.qualifier === "" && this.qualifier !== "") return -1;
 
     // if we have non-empty qualifiers - we expect them to
     const q = parseInt(this.qualifier);
