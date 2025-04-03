@@ -2,8 +2,8 @@
 ![jetstream](https://github.com/nats-io/nats.js/actions/workflows/obj.yml/badge.svg)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/obj/index.html)
 
-[![JSR](https://jsr.io/badges/@nats-io/kv)](https://jsr.io/@nats-io/obj)
-[![JSR](https://jsr.io/badges/@nats-io/kv/score)](https://jsr.io/@nats-io/obj)
+[![JSR](https://jsr.io/badges/@nats-io/obj)](https://jsr.io/@nats-io/obj)
+[![JSR](https://jsr.io/badges/@nats-io/obj/score)](https://jsr.io/@nats-io/obj)
 
 [![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Fobj)](https://www.npmjs.com/package/@nats-io/obj)
 ![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fobj)
@@ -18,6 +18,9 @@ data stored in a stream using the API for an ObjectStore which should be
 familiar to many application developers.
 
 ## Installation
+
+For a quick overview of the libraries and how to install them, see
+[runtimes.md](../runtimes.md).
 
 Note that this library is distributed in two different registries:
 
