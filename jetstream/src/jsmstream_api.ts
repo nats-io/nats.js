@@ -185,6 +185,8 @@ export class ConsumersImpl implements Consumers {
     cc.inactive_threshold = nanos(5 * 60 * 1000);
     cc.num_replicas = 1;
     cc.max_deliver = 1;
+    cc.flow_control = true;
+    cc.idle_heartbeat = nanos(30_000);
 
     if (Array.isArray(filter_subjects)) {
       cc.filter_subjects = filter_subjects;

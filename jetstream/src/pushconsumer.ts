@@ -252,6 +252,9 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         ms,
         (count): boolean => {
           this.notify({ type: "heartbeats_missed", count });
+          if (this.ordered) {
+            this.reset();
+          }
           return false;
         },
         { maxOut: 2 },
