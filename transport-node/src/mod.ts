@@ -12,5 +12,5 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export { connect } from "./connect";
+export { connect, NodeConnectionOptions } from "./connect";
 export * from "./nats-base-client";

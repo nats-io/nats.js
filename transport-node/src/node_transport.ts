@@ -33,6 +33,7 @@ import { existsSync, readFile } from "node:fs";
 import dns from "node:dns";
 import { Buffer } from "node:buffer";
 import { version } from "./version";
+import type { NodeConnectionOptions } from "./connect";
 
 export const VERSION = version;
 const LANG = "nats.js";
@@ -56,7 +57,7 @@ export class NodeTransport implements Transport {
   }
   async connect(
     hp: { hostname: string; port: number; tlsName: string },
-    options: ConnectionOptions,
+    options: NodeConnectionOptions,
   ): Promise<void> {
     this.tlsName = hp.tlsName;
     this.options = options;
