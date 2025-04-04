@@ -718,6 +718,14 @@ export type PurgeResponse = Success & {
   purged: number;
 };
 
+/**
+ * Additional options that express the intention of the API
+ */
+export type ConsumerApiOptions = ConsumerApiAction | {
+  action?: ConsumerApiAction;
+  pedantic?: boolean;
+};
+
 export const ConsumerApiAction = {
   CreateOrUpdate: "",
   Update: "update",
@@ -730,6 +738,7 @@ export type CreateConsumerRequest = {
   "stream_name": string;
   config: Partial<ConsumerConfig>;
   action?: ConsumerApiAction;
+  pedantic?: boolean;
 };
 
 export type StreamMsgResponse = ApiResponse & {
