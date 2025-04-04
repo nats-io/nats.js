@@ -511,3 +511,49 @@ Deno.test("mreq - no mux request no perms doesn't leak subs", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("basics - request many tracing", async () => {
+  const { ns, nc } = await setup();
+  const sub = nc.subscribe("foo", {
+    callback: (_, m) => {
+      m.respond();
+      m.respond();
+    },
+  });
+
+  const traces = nc.subscribe("traces", {
+    callback: () => {},
+    max: 2,
+  });
+  nc.flush();
+
+  let iter = await nc.requestMany("foo", Empty, {
+    strategy: "stall",
+    maxWait: 2_000,
+    traceDestination: "traces",
+  });
+  let count = 0;
+  for await (const _ of iter) {
+    count++;
+  }
+  assertEquals(count, 2);
+
+  iter = await nc.requestMany("foo", Empty, {
+    strategy: "stall",
+    maxWait: 2_000,
+    traceDestination: "traces",
+    traceOnly: true,
+  });
+
+  count = 0;
+  for await (const _ of iter) {
+    count++;
+  }
+  assertEquals(count, 0);
+
+  await traces.closed;
+  assertEquals(sub.getReceived(), 1);
+  assertEquals(traces.getReceived(), 2);
+
+  await cleanup(ns, nc);
+});
