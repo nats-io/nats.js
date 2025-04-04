@@ -2599,6 +2599,40 @@ Deno.test("jsm - pause/unpause", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("jsm - consumer pedantic", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+    storage: StorageType.Memory,
+    consumer_limits: {
+      max_ack_pending: 10,
+    },
+  });
+
+  // this should work
+  await jsm.consumers.add("A", {
+    name: "a",
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  // but this should reject
+  await assertRejects(
+    () => {
+      return jsm.consumers.add("A", {
+        name: "b",
+        ack_policy: AckPolicy.Explicit,
+        max_ack_pending: 0,
+      }, { pedantic: true });
+    },
+    Error,
+    "pedantic mode: max_ack_pending must be set if it's configured in stream limits",
+  );
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("jsm - storage", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 

@@ -30,6 +30,7 @@ import {
   InvalidArgumentError,
 } from "@nats-io/nats-core/internal";
 import type {
+  ConsumerApiOptions,
   ConsumerConfig,
   ConsumerInfo,
   ConsumerListResponse,
@@ -55,9 +56,13 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   async add(
     stream: string,
     cfg: ConsumerConfig,
-    action: ConsumerApiAction = ConsumerApiAction.Create,
+    opts: ConsumerApiOptions = ConsumerApiAction.Create,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
+
+    if (typeof opts === "string") {
+      opts = { action: opts as ConsumerApiAction };
+    }
 
     if (cfg.deliver_group && cfg.flow_control) {
       throw InvalidArgumentError.format(
@@ -89,7 +94,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     const cr = {} as CreateConsumerRequest;
     cr.config = cfg;
     cr.stream_name = stream;
-    cr.action = action;
+    cr.action = opts.action;
+    cr.pedantic = opts.pedantic;
 
     if (cr.config.durable_name) {
       validateDurableName(cr.config.durable_name);
