@@ -95,6 +95,10 @@ export type PullConsumerInternalOptions = {
   ordered?: OrderedConsumerOptions;
 };
 
+type ClientPinId = {
+  id: string;
+};
+
 type InternalPullOptions =
   & MaxMessages
   & MaxBytes
@@ -102,7 +106,8 @@ type InternalPullOptions =
   & IdleHeartbeat
   & ThresholdMessages
   & OverflowMinPendingAndMinAck
-  & ThresholdBytes;
+  & ThresholdBytes
+  & ClientPinId;
 
 export function isOverflowOptions(
   opts: unknown,
@@ -131,6 +136,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   cancelables: Delay[];
   inReset: boolean;
   closeListener: ConnectionClosedListener;
+  isPinned: boolean;
+  natsPinId: string;
 
   // callback: ConsumerCallbackFn;
   constructor(
@@ -145,6 +152,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.inboxPrefix = createInbox(this.consumer.api.nc.options.inboxPrefix);
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
     this.inReset = false;
+    this.isPinned = false;
+    this.natsPinId = "";
 
     if (this.consumer.ordered) {
       if (isOverflowOptions(opts)) {
@@ -177,6 +186,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.listeners = [];
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
+    if (copts.group) {
+      const { min_pending, min_ack_pending } =
+        copts as OverflowMinPendingAndMinAck;
+      this.isPinned = min_pending === undefined &&
+        min_ack_pending === undefined;
+    }
 
     this.closeListener = {
       // we don't propagate the error here
@@ -266,6 +281,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
                 // proportionally to 2 missed heartbeats
                 break;
               }
+              case 423:
+                // we have been unpinned
+                this.natsPinId = "";
+                this.notify({ type: "consumer_unpinned" });
+                break;
               case 503:
                 this.notify({ type: "no_responders", code });
                 if (this.consumer.ordered) {
@@ -286,6 +306,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         } else {
           // convert to JsMsg
           const m = toJsMsg(msg, this.consumer.api.timeout);
+          if (this.isPinned) {
+            const pinID = m?.headers?.get("Nats-Pin-Id");
+            if (pinID && this.natsPinId === "") {
+              this.natsPinId = pinID;
+              this.notify({ type: "consumer_pinned", id: pinID });
+            }
+          }
           // if we are ordered, check
           if (this.consumer.ordered) {
             const cursor = this.consumer.orderedConsumerState!.cursor;
@@ -657,7 +684,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     const idle_heartbeat = nanos(this.opts.idle_heartbeat!);
     const expires = nanos(this.opts.expires!);
 
-    const opts = { batch, max_bytes, idle_heartbeat, expires } as PullOptions;
+    const opts = { batch, max_bytes, idle_heartbeat, expires } as
+      & PullOptions
+      & { id?: string };
+    if (this.isPinned && this.natsPinId !== "") {
+      opts.id = this.natsPinId;
+    }
 
     if (isOverflowOptions(this.opts)) {
       opts.group = this.opts.group;
@@ -870,6 +902,14 @@ export class PullConsumerImpl implements Consumer {
   ): Promise<ConsumerMessages> {
     opts = { ...opts };
     if (this.ordered) {
+      if (opts.group) {
+        return Promise.reject(
+          errors.InvalidArgumentError.format(
+            "group",
+            "ordered consumers don't support priority groups",
+          ),
+        );
+      }
       if (opts.bind) {
         return Promise.reject(
           errors.InvalidArgumentError.format("bind", "is not supported"),
@@ -986,13 +1026,6 @@ export function validateOverflowPullOptions(opts: unknown) {
     }
 
     const { min_pending, min_ack_pending } = opts;
-    if (!min_pending && !min_ack_pending) {
-      throw errors.InvalidArgumentError.format(
-        ["min_pending", "min_ack_pending"],
-        "at least one must be specified",
-      );
-    }
-
     if (min_pending && typeof min_pending !== "number") {
       throw errors.InvalidArgumentError.format(
         ["min_pending"],

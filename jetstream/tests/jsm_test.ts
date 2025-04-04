@@ -2701,7 +2701,7 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
     );
   });
 
-  await t.step("missing priority_policy ", async () => {
+  await t.step("missing priority_policy", async () => {
     await assertRejects(
       () => {
         return jsm.consumers.add("A", {
@@ -2711,7 +2711,7 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
         });
       },
       Error,
-      "'priority_policy' must be 'none' or 'overflow'",
+      "'priority_policy' must be 'none', 'overflow', or 'pinned_client'",
     );
   });
 
@@ -2727,7 +2727,7 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
         });
       },
       Error,
-      "'priority_policy' must be 'none' or 'overflow'",
+      "'priority_policy' must be 'none', 'overflow', or 'pinned_client'",
     );
   });
 

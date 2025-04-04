@@ -30,9 +30,17 @@ import {
   PriorityPolicy,
 } from "../src/jsapi_types.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert";
-import { deferred, Empty, type Msg, nanos, nuid } from "@nats-io/nats-core";
+import {
+  deferred,
+  delay,
+  Empty,
+  type Msg,
+  nanos,
+  nuid,
+} from "@nats-io/nats-core";
 import {
   type ConsumeOptions,
+  type ConsumerMessages,
   jetstream,
   jetstreamManager,
 } from "../src/mod.ts";
@@ -296,6 +304,182 @@ Deno.test("jetstream - priority group", async (t) => {
       expires: 1000,
     });
   });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - pinned client", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  const js = jetstream(nc);
+
+  const buf = [];
+  for (let i = 0; i < 100; i++) {
+    buf.push(js.publish("a", Empty));
+  }
+  await Promise.all(buf);
+
+  const opts = {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    priority_groups: ["pinned"],
+    priority_timeout: nanos(5_000),
+    priority_policy: PriorityPolicy.PinnedClient,
+  };
+
+  await jsm.consumers.add("A", opts);
+
+  async function processStatus(
+    msgs: ConsumerMessages,
+    bailOn = "",
+  ): Promise<string[]> {
+    const buf = [];
+    for await (const s of msgs.status()) {
+      //@ts-ignore: test
+      buf.push(s.type);
+      if (bailOn === s.type) {
+        msgs.stop();
+      }
+    }
+    return buf;
+  }
+
+  async function process(msgs: ConsumerMessages, wait = 0) {
+    for await (const m of msgs) {
+      if (wait > 0) {
+        await delay(wait);
+      }
+      m.ack();
+      if (m.info.pending === 0) {
+        break;
+      }
+    }
+  }
+
+  const a = await js.consumers.get("A", "a");
+  const iter = await a.consume({ group: "pinned", max_messages: 1 });
+  const eventsA = processStatus(iter, "consumer_unpinned").catch();
+  const done = process(iter, 10_000);
+
+  const b = await js.consumers.get("A", "a");
+  const iter2 = await b.consume({ group: "pinned", max_messages: 1 });
+  const eventsB = processStatus(iter2).catch();
+  await process(iter2);
+  await done;
+
+  assertEquals(iter.getReceived(), 1);
+  assertEquals(iter2.getReceived(), 99);
+
+  // check that A was unpinned
+  assertEquals(
+    (await eventsA).filter((e) => {
+      return e === "consumer_unpinned";
+    }).length,
+    1,
+  );
+
+  // and B was pinned
+  assertEquals(
+    (await eventsB).filter((e) => {
+      return e === "consumer_pinned";
+    }).length,
+    1,
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - unpin client", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+  });
+
+  const js = jetstream(nc);
+  for (let i = 0; i < 100; i++) {
+    await js.publish("a", Empty);
+  }
+
+  const opts = {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    priority_groups: ["pinned"],
+    priority_timeout: nanos(10_000),
+    priority_policy: PriorityPolicy.PinnedClient,
+  };
+
+  await jsm.consumers.add("A", opts);
+
+  async function bailOn(
+    n: string,
+    msgs: ConsumerMessages,
+    bailOn = "",
+  ): Promise<void> {
+    for await (const s of msgs.status()) {
+      // @ts-ignore: teest
+      console.log(n, s.type === "next" ? s.type + "=" + s.options?.id : s.type);
+      if (bailOn === s.type) {
+        console.log(n, "bailing");
+        msgs.stop();
+      }
+    }
+  }
+
+  async function process(n: string, msgs: ConsumerMessages) {
+    for await (const m of msgs) {
+      console.log(n, m.seq);
+      m.ack();
+      await delay(3_000);
+    }
+  }
+
+  const a = await js.consumers.get("A", "a");
+  const iter = await a.consume({
+    group: "pinned",
+    max_messages: 1,
+    expires: 5000,
+  });
+  bailOn("a", iter, "consumer_unpinned").catch();
+  const done = process("a", iter);
+
+  const b = await js.consumers.get("A", "a");
+  const iter2 = await b.consume({
+    group: "pinned",
+    max_messages: 1,
+    expires: 5000,
+  });
+  bailOn("b", iter2, "consumer_pinned").catch();
+  process("b", iter2).then();
+
+  (async () => {
+    for await (const a of jsm.advisories()) {
+      console.log("advisory:", a.kind);
+    }
+  })().then();
+
+  await jsm.consumers.unpin("A", "a", "pinned");
+  await done;
+  await js.publish("a", Empty);
+
+  await iter.closed();
+  assertEquals(iter.getReceived(), 1);
+  await iter2.closed();
+  assertEquals(iter2.getReceived(), 1);
 
   await cleanup(ns, nc);
 });

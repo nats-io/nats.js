@@ -304,16 +304,36 @@ export type ConsumerAPI = {
    */
   list(stream: string): Lister<ConsumerInfo>;
 
+  /**
+   * Pauses the consumer until the specified Date
+   * @param stream
+   * @param name
+   * @param until
+   */
   pause(
     stream: string,
     name: string,
     until?: Date,
   ): Promise<{ paused: boolean; pause_until?: string }>;
 
+  /**
+   * Resumes a paused Consumer, returning whether it is
+   * paused and when it will resume.
+   * @param stream
+   * @param name
+   */
   resume(
     stream: string,
     name: string,
   ): Promise<{ paused: boolean; pause_until?: string }>;
+
+  /**
+   * Unpins the currently pinned consumer.
+   * @param stream
+   * @param name
+   * @param group
+   */
+  unpin(stream: string, name: string, group: string): Promise<void>;
 };
 
 /**
@@ -368,6 +388,7 @@ export type PushConsumerOptions =
   & AbortOnMissingResource;
 
 export type NextOptions = Expires & Bind;
+
 export type ConsumeBytes =
   & MaxBytes
   & Partial<MaxMessages>
@@ -378,6 +399,7 @@ export type ConsumeBytes =
   & AbortOnMissingResource
   & Bind
   & Partial<OverflowOptions>;
+
 export type ConsumeMessages =
   & Partial<MaxMessages>
   & Partial<ThresholdMessages>
@@ -387,6 +409,7 @@ export type ConsumeMessages =
   & AbortOnMissingResource
   & Bind
   & Partial<OverflowOptions>;
+
 export type ConsumeOptions =
   | ConsumeBytes
   | ConsumeMessages;
@@ -509,7 +532,9 @@ export type ConsumerNotification =
   | Next
   | Heartbeat
   | FlowControl
-  | NoResponders;
+  | NoResponders
+  | ConsumerPinned
+  | ConsumerUnpinned;
 
 /**
  * Notification that heartbeats were missed. This notification is informational.
@@ -635,6 +660,15 @@ export type Heartbeat = {
  */
 export type FlowControl = {
   type: "flow_control";
+};
+
+export type ConsumerPinned = {
+  type: "consumer_pinned";
+  id: string;
+};
+
+export type ConsumerUnpinned = {
+  type: "consumer_unpinned";
 };
 
 export type PushConsumer =
