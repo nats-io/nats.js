@@ -18,13 +18,24 @@ import {
   NatsConnection,
   NatsConnectionImpl,
   setTransportFactory,
+  type TlsOptions,
   Transport,
   TransportFactory,
 } from "./nats-base-client";
 
 import { errors, hasWsProtocol } from "./nats-base-client";
 
-export function connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
+export type NodeTlsOptions = {
+  rejectUnauthorized?: boolean;
+} & TlsOptions;
+
+export type NodeConnectionOptions = Omit<ConnectionOptions, "tls"> & {
+  tls?: NodeTlsOptions | null;
+};
+
+export function connect(
+  opts: NodeConnectionOptions = {},
+): Promise<NatsConnection> {
   if (hasWsProtocol(opts)) {
     return Promise.reject(
       errors.InvalidArgumentError.format(

@@ -316,4 +316,27 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     await nc.close();
     await ns.stop();
   });
+  it("tls first reject unauthorized", async () => {
+    const ns = await NatsServer.start({
+      host: "0.0.0.0",
+      tls: {
+        handshake_first: true,
+        cert_file: resolve(join(dir, "./tests/certs/server.pem")),
+        key_file: resolve(join(dir, "./tests/certs/key.pem")),
+        ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
+      },
+    });
+
+    const nc = await connect({
+      port: ns.port,
+      tls: {
+        handshakeFirst: true,
+        rejectUnauthorized: false,
+      },
+    });
+
+    await nc.flush();
+    await nc.close();
+    await ns.stop();
+  });
 });
