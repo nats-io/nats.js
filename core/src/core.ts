@@ -288,7 +288,7 @@ export interface MsgHdrs extends Iterable<[string, string[]]> {
   last(k: string, match?: Match): string;
 }
 
-export interface RequestOptions {
+export interface RequestOptions extends TraceOptions {
   /**
    * number of milliseconds before the request will timeout.
    */
@@ -311,7 +311,7 @@ export interface RequestOptions {
 
 export type RequestStrategy = "timer" | "count" | "stall" | "sentinel";
 
-export interface RequestManyOptions {
+export interface RequestManyOptions extends TraceOptions {
   strategy: RequestStrategy;
   maxWait: number;
   headers?: MsgHdrs;
@@ -653,7 +653,25 @@ export interface Subscription extends AsyncIterable<Msg> {
   getMax(): number | undefined;
 }
 
-export interface PublishOptions {
+/**
+ * These options enable message tracing through NATS.
+ */
+export interface TraceOptions {
+  /**
+   * If set, the server will send events representing the flow of the
+   * message as it moves through the system to this subject.
+   */
+  traceDestination?: string;
+  /**
+   * If true, the message will NOT be delivered, and instead will just
+   * generate trace information. Note that in the context of requests,
+   * this means the service will not be triggered so the operation will
+   * timeout or return no responses.
+   */
+  traceOnly?: boolean;
+}
+
+export interface PublishOptions extends TraceOptions {
   /**
    * An optional subject where a response should be sent.
    * Note you must have a subscription listening on this subject

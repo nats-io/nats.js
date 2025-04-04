@@ -16,6 +16,7 @@
 import { deferred } from "./util.ts";
 import { ProtocolHandler, SubscriptionImpl } from "./protocol.ts";
 import { Empty } from "./encoders.ts";
+import { headers } from "./headers.ts";
 
 import type { Features, SemVer } from "./semver.ts";
 import { parseSemVer } from "./semver.ts";
@@ -103,6 +104,18 @@ export class NatsConnectionImpl implements NatsConnection {
     if (options?.reply) {
       this._check(options.reply, false, true);
     }
+
+    if (typeof options?.traceOnly === "boolean") {
+      const hdrs = options.headers || headers();
+      hdrs.set("Nats-Trace-Only", "true");
+      options.headers = hdrs;
+    }
+    if (typeof options?.traceDestination === "string") {
+      const hdrs = options.headers || headers();
+      hdrs.set("Nats-Trace-Dest", options.traceDestination);
+      options.headers = hdrs;
+    }
+
     this.protocol.publish(subject, data, options);
   }
 
@@ -293,8 +306,14 @@ export class NatsConnectionImpl implements NatsConnection {
           sub?.unsubscribe();
         });
 
+      const { headers, traceDestination, traceOnly } = opts;
       try {
-        this.publish(subject, data, { reply: sub.getSubject() });
+        this.publish(subject, data, {
+          reply: sub.getSubject(),
+          headers,
+          traceDestination,
+          traceOnly,
+        });
       } catch (err) {
         cancel(err as Error);
       }
@@ -322,13 +341,17 @@ export class NatsConnectionImpl implements NatsConnection {
       const r = new RequestMany(this.protocol.muxSubscriptions, subject, rmo);
       this.protocol.request(r);
 
+      const { headers, traceDestination, traceOnly } = opts;
+
       try {
         this.publish(
           subject,
           data,
           {
             reply: `${this.protocol.muxSubscriptions.baseInbox}${r.token}`,
-            headers: opts.headers,
+            headers,
+            traceDestination,
+            traceOnly,
           },
         );
       } catch (err) {
@@ -415,13 +438,17 @@ export class NatsConnectionImpl implements NatsConnection {
       );
       this.protocol.request(r);
 
+      const { headers, traceDestination, traceOnly } = opts;
+
       try {
         this.publish(
           subject,
           data,
           {
             reply: `${this.protocol.muxSubscriptions.baseInbox}${r.token}`,
-            headers: opts.headers,
+            headers,
+            traceDestination,
+            traceOnly,
           },
         );
       } catch (err) {

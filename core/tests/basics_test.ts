@@ -1726,3 +1726,56 @@ Deno.test("basics - internal close listener", async () => {
 
   await ns.stop();
 });
+
+Deno.test("basics - publish tracing", async () => {
+  const { ns, nc } = await setup();
+  const sub = nc.subscribe("foo", { callback: () => {} });
+
+  const traces = nc.subscribe("traces", {
+    callback: () => {},
+    max: 2,
+  });
+  nc.flush();
+
+  nc.publish("foo", Empty, { traceDestination: "traces" });
+  nc.publish("foo", Empty, { traceDestination: "traces", traceOnly: true });
+
+  await traces.closed;
+  assertEquals(sub.getReceived(), 1);
+  assertEquals(traces.getReceived(), 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request tracing", async () => {
+  const { ns, nc } = await setup();
+  const sub = nc.subscribe("foo", {
+    callback: (_, m) => {
+      m.respond();
+    },
+  });
+
+  const traces = nc.subscribe("traces", {
+    callback: () => {},
+    max: 2,
+  });
+  nc.flush();
+
+  await nc.request("foo", Empty, {
+    timeout: 2_000,
+    traceDestination: "traces",
+  });
+  await assertRejects(() => {
+    return nc.request("foo", Empty, {
+      timeout: 2_000,
+      traceDestination: "traces",
+      traceOnly: true,
+    });
+  });
+
+  await traces.closed;
+  assertEquals(sub.getReceived(), 1);
+  assertEquals(traces.getReceived(), 2);
+
+  await cleanup(ns, nc);
+});
