@@ -231,6 +231,11 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
       { paused: boolean; pause_until?: string; pause_remaining: Nanos }
     >;
   }
+
+  unpin(stream: string, name: string, group: string): Promise<void> {
+    const subj = `${this.prefix}.CONSUMER.UNPIN.${stream}.${name}`;
+    return this._request(subj, { group }) as Promise<void>;
+  }
 }
 
 function isPriorityGroup(config: unknown): config is PriorityGroups {
@@ -264,11 +269,12 @@ function validatePriorityGroups(pg: unknown): void {
     });
     if (
       pg.priority_policy !== PriorityPolicy.None &&
-      pg.priority_policy !== PriorityPolicy.Overflow
+      pg.priority_policy !== PriorityPolicy.Overflow &&
+      pg.priority_policy !== PriorityPolicy.PinnedClient
     ) {
       throw InvalidArgumentError.format(
         ["priority_policy"],
-        "must be 'none' or 'overflow'",
+        "must be 'none', 'overflow', or 'pinned_client'",
       );
     }
   }

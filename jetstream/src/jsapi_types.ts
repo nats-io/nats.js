@@ -926,6 +926,7 @@ export type AccountInfoResponse = ApiResponse & JetStreamAccountStats;
 export type PriorityGroups = {
   priority_groups?: string[];
   priority_policy?: PriorityPolicy;
+  priority_timeout?: Nanos;
 };
 
 export type ConsumerConfig = ConsumerUpdateConfig & {
@@ -1076,6 +1077,7 @@ export type ConsumerUpdateConfig = PriorityGroups & {
 export const PriorityPolicy = {
   None: "none",
   Overflow: "overflow",
+  PinnedClient: "pinned_client",
 } as const;
 export type PriorityPolicy = typeof PriorityPolicy[keyof typeof PriorityPolicy];
 
@@ -1133,6 +1135,21 @@ export type OverflowOptions =
   | OverflowMinPending
   | OverflowMinAckPending
   | OverflowMinPendingAndMinAck;
+
+export type PinnedOptions = {
+  /**
+   * The name of the group the consumer belongs to.
+   */
+  group: string;
+  /**
+   * Overflow option is not valid
+   */
+  min_pending: never;
+  /**
+   * Overflow option is not valid
+   */
+  min_ack_pending: never;
+};
 
 /**
  * Options for a JetStream pull subscription which define how long
