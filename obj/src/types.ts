@@ -221,7 +221,7 @@ export type ObjectResult = {
 };
 export type ObjectStorePutOpts = {
   /**
-   * maximum number of millis for the put requests to succeed
+   * Maximum number of milliseconds for each chunk's PUT request to succeed.
    */
   timeout?: number;
   /**
