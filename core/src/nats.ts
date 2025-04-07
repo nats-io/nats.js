@@ -240,7 +240,7 @@ export class NatsConnectionImpl implements NatsConnection {
             err = new errors.NoRespondersError(subject);
           }
           // augment any error with the current stack to provide context
-          // for the error on the suer code
+          // for the error in the user code
           if (err) {
             if (stack) {
               err.stack += `\n\n${stack}`;
