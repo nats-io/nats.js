@@ -582,11 +582,16 @@ export class Bucket implements KV {
     }
   }
 
-  update(k: string, data: Payload, version: number): Promise<number> {
+  update(
+    k: string,
+    data: Payload,
+    version: number,
+    timeout?: number,
+  ): Promise<number> {
     if (version <= 0) {
       throw new Error("version must be greater than 0");
     }
-    return this.put(k, data, { previousSeq: version });
+    return this.put(k, data, { previousSeq: version, timeout });
   }
 
   async put(
@@ -597,7 +602,7 @@ export class Bucket implements KV {
     const ek = this.encodeKey(k);
     this.validateKey(ek);
 
-    const o = {} as JetStreamPublishOptions;
+    const o = { timeout: opts?.timeout } as JetStreamPublishOptions;
     if (opts.previousSeq !== undefined) {
       const h = headers();
       o.headers = h;
