@@ -2199,3 +2199,41 @@ Deno.test("kv - watch isUpdate", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - kv - bind doesn't check jetstream", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const apiInfo = nc.subscribe("$JS.API.INFO", {
+    callback: (_, m) => {
+      console.log(m.subject);
+    },
+  });
+
+  const streamInfo = nc.subscribe("$JS.API.STREAM.INFO.*", {
+    callback: (_, m) => {
+      console.log(m.subject);
+    },
+  });
+
+  let kvm = new Kvm(jetstream(nc, { checkAPI: false }));
+
+  await kvm.create("A", { bindOnly: true });
+  assertEquals(apiInfo.getReceived(), 0);
+  assertEquals(streamInfo.getReceived(), 0);
+
+  await kvm.open("A", { bindOnly: true });
+  assertEquals(apiInfo.getReceived(), 0);
+  assertEquals(streamInfo.getReceived(), 0);
+
+  kvm = new Kvm(jetstream(nc));
+  await kvm.create("B", { bindOnly: true });
+  assertEquals(apiInfo.getReceived(), 0);
+  assertEquals(streamInfo.getReceived(), 0);
+
+  kvm = new Kvm(jetstream(nc));
+  await kvm.create("B");
+  assertEquals(apiInfo.getReceived(), 1);
+  assertEquals(streamInfo.getReceived(), 1);
+
+  await cleanup(ns, nc);
+});
