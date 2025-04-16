@@ -286,8 +286,14 @@ export type KV = RoKV & {
    * @param k
    * @param data
    * @param version
+   * @param timeout in millis
    */
-  update(k: string, data: Payload, version: number): Promise<number>;
+  update(
+    k: string,
+    data: Payload,
+    version: number,
+    timeout?: number,
+  ): Promise<number>;
 
   /**
    * Sets or updates the value stored under the specified key.
@@ -335,6 +341,12 @@ export type KvPutOptions = {
    * put will fail.
    */
   previousSeq: number;
+
+  /**
+   * Timeout value in milliseconds for the put, overrides Jetstream context's
+   * default.
+   */
+  timeout: number;
 };
 
 export type KvDeleteOptions = {

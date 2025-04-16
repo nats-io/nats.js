@@ -48,6 +48,7 @@ import {
   assertArrayIncludes,
   assertEquals,
   assertExists,
+  assertIsError,
   assertRejects,
   assertThrows,
 } from "jsr:@std/assert";
@@ -73,7 +74,7 @@ import {
 } from "test_helpers";
 import type { QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 import { Kvm } from "../src/kv.ts";
-import { flakyTest } from "../../test_helpers/mod.ts";
+import { assertBetween, flakyTest } from "../../test_helpers/mod.ts";
 
 Deno.test("kv - key validation", () => {
   const bad = [
@@ -2200,7 +2201,7 @@ Deno.test("kv - watch isUpdate", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("kv - kv - bind doesn't check jetstream", async () => {
+Deno.test("kv - bind doesn't check jetstream", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 
   const apiInfo = nc.subscribe("$JS.API.INFO", {
@@ -2234,6 +2235,42 @@ Deno.test("kv - kv - bind doesn't check jetstream", async () => {
   await kvm.create("B");
   assertEquals(apiInfo.getReceived(), 1);
   assertEquals(streamInfo.getReceived(), 1);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - put/update timeouts", async () => {
+  const { ns, nc } = await setup();
+
+  // allow a timeout
+  nc.subscribe("$KV.A.>", { callback: () => {} });
+
+  const kvm = new Kvm(jetstream(nc, { checkAPI: false }));
+  const kv = await kvm.open("A", { bindOnly: true });
+  let start = Date.now();
+  try {
+    await kv.put("A", "hello", { timeout: 1_500 });
+  } catch (err) {
+    assertIsError(err, Error, "timeout");
+    assertBetween(Date.now() - start, 1_300, 1_700);
+  }
+
+  start = Date.now();
+  try {
+    await kv.update("A", "hello", 1, 1_500);
+  } catch (err) {
+    assertIsError(err, Error, "timeout");
+    assertBetween(Date.now() - start, 1_300, 1_700);
+  }
+
+  // check default timeout 5s
+  start = Date.now();
+  try {
+    await kv.put("A", "a");
+  } catch (err) {
+    assertIsError(err, Error, "timeout");
+    assertBetween(Date.now() - start, 4_900, 5_100);
+  }
 
   await cleanup(ns, nc);
 });
