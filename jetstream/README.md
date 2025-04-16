@@ -320,7 +320,7 @@ const c = await js.consumers.get(stream, consumer);
 const oc = await js.consumers.get(stream);
 ```
 
-[full example](examples/01_consumers.ts)
+[full example](examples/01_consumers.js)
 
 With the consumer in hand, the client can start reading messages using whatever
 API is appropriate for the application.
@@ -369,7 +369,7 @@ if (m) {
 }
 ```
 
-[full example](examples/02_next.ts)
+[full example](examples/02_next.js)
 
 The operation takes an optional argument. Currently, the only option is an
 `expires` option which specifies the maximum number of milliseconds to wait for
@@ -404,7 +404,7 @@ for (let i = 0; i < 3; i++) {
 }
 ```
 
-[full example](examples/03_batch.ts)
+[full example](examples/03_batch.js)
 
 Fetching batches is useful if you parallelize a number of requests to take
 advantage of the asynchronous processing of data with a number of workers for
@@ -433,7 +433,7 @@ for await (const m of messages) {
 }
 ```
 
-[full example](examples/04_consume.ts)
+[full example](examples/04_consume.js)
 
 Note that it is possible to do an automatic version of `next()` by simply
 setting the maximum number of messages to buffer to `1`:
@@ -562,7 +562,7 @@ for await (const m of messages) {
 }
 ```
 
-[full example](examples/07_consume_jobs.ts)
+[full example](examples/07_consume_jobs.js)
 
 #### Processing a Stream
 
@@ -603,7 +603,7 @@ keys.forEach((k) => {
 });
 ```
 
-[full example](examples/08_consume_process.ts)
+[full example](examples/08_consume_process.js)
 
 ### Heartbeats
 
@@ -647,7 +647,7 @@ while (true) {
 }
 ```
 
-[full example](examples/06_heartbeats.ts)
+[full example](examples/06_heartbeats.js)
 
 Note that while the heartbeat interval is configurable, you shouldn't change it.
 
