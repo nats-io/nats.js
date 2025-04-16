@@ -54,6 +54,7 @@ import type {
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
+  JetStreamManagerOptions,
   JetStreamPublishOptions,
   JsMsg,
   Lister,
@@ -302,7 +303,10 @@ export class Bucket implements KV {
     name: string,
     opts: Partial<KvOptions> = {},
   ): Promise<KV> {
-    const jsm = await js.jetstreamManager();
+    const checkAPI = (js.getOptions() as JetStreamManagerOptions)?.checkAPI ||
+      opts.bindOnly === false;
+
+    const jsm = await js.jetstreamManager(checkAPI);
     const info = {
       config: {
         allow_direct: opts.allow_direct,
