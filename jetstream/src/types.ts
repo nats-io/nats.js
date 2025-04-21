@@ -23,7 +23,7 @@ import type {
 } from "@nats-io/nats-core/internal";
 
 import type {
-  ConsumerApiOptions,
+  ConsumerCreateOptions,
   DeliverPolicy,
   DirectLastFor,
   PullOptions,
@@ -271,11 +271,12 @@ export type ConsumerAPI = {
    * Adds a new consumer to the specified stream with the specified consumer options.
    * @param stream
    * @param cfg
+   * @param opts
    */
   add(
     stream: string,
     cfg: Partial<ConsumerConfig>,
-    opts?: ConsumerApiOptions,
+    opts?: ConsumerCreateOptions,
   ): Promise<ConsumerInfo>;
 
   /**

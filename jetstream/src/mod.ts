@@ -53,6 +53,7 @@ export type {
   ConsumerAPI,
   ConsumerCallbackFn,
   ConsumerConfig,
+  ConsumerCreateOptions,
   ConsumerDeleted,
   ConsumerInfo,
   ConsumerKind,
