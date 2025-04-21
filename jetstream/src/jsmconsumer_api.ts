@@ -32,6 +32,7 @@ import {
 import type {
   ConsumerApiOptions,
   ConsumerConfig,
+  ConsumerCreateOptions,
   ConsumerInfo,
   ConsumerListResponse,
   ConsumerUpdateConfig,
@@ -53,16 +54,13 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     super(nc, opts);
   }
 
-  async add(
+  async addUpdate(
     stream: string,
     cfg: ConsumerConfig,
-    opts: ConsumerApiOptions = ConsumerApiAction.Create,
+    opts: ConsumerApiOptions,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
-
-    if (typeof opts === "string") {
-      opts = { action: opts as ConsumerApiAction };
-    }
+    opts = opts || {};
 
     if (cfg.deliver_group && cfg.flow_control) {
       throw InvalidArgumentError.format(
@@ -94,8 +92,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     const cr = {} as CreateConsumerRequest;
     cr.config = cfg;
     cr.stream_name = stream;
-    cr.action = opts.action;
-    cr.pedantic = opts.pedantic;
+    cr.action = opts.action || ConsumerApiAction.Create;
+    cr.pedantic = opts.pedantic || false;
 
     if (cr.config.durable_name) {
       validateDurableName(cr.config.durable_name);
@@ -166,6 +164,22 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     return r as ConsumerInfo;
   }
 
+  add(
+    stream: string,
+    cfg: ConsumerConfig,
+    opts?: ConsumerCreateOptions,
+  ): Promise<ConsumerInfo> {
+    // in the previous API 3rd arg was a hidden arg, the action - a string
+    opts = opts || {};
+    let action = ConsumerApiAction.Create;
+    if (typeof opts === "string") {
+      action = opts;
+      opts = {};
+    }
+    const cco = Object.assign({}, { action }, opts);
+    return this.addUpdate(stream, cfg, cco);
+  }
+
   async update(
     stream: string,
     durable: string,
@@ -173,10 +187,10 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   ): Promise<ConsumerInfo> {
     const ci = await this.info(stream, durable);
     const changable = cfg as ConsumerConfig;
-    return this.add(
+    return this.addUpdate(
       stream,
       Object.assign(ci.config, changable),
-      ConsumerApiAction.Update,
+      { action: ConsumerApiAction.Update },
     );
   }
 

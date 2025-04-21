@@ -2039,7 +2039,9 @@ Deno.test("jsm - consumer api action", async () => {
   const api = jsm.consumers as ConsumerAPIImpl;
   await assertRejects(
     async () => {
-      await api.add("stream", config, ConsumerApiAction.Update);
+      await api.addUpdate("stream", config, {
+        action: ConsumerApiAction.Update,
+      });
     },
     Error,
     "consumer does not exist",
@@ -2051,7 +2053,7 @@ Deno.test("jsm - consumer api action", async () => {
   config.inactive_threshold = nanos(60 * 1000);
   await assertRejects(
     async () => {
-      await api.add("stream", config, ConsumerApiAction.Create);
+      await api.add("stream", config);
     },
     Error,
     "consumer already exists",
