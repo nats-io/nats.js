@@ -172,6 +172,12 @@ export type StreamConfig = StreamUpdateConfig & {
    * as it may disrupt the synchronization logic.
    */
   "first_seq": number;
+
+  /**
+   * Enables allows header initiated per-message TTLs. If disabled, then the `NATS-TTL`
+   * header will be ignored.
+   */
+  "allow_msg_ttl": boolean;
 };
 
 /**
@@ -286,6 +292,10 @@ export type StreamUpdateConfig = {
    * become an upper bound for all clients.
    */
   "consumer_limits"?: StreamConsumerLimits;
+  /**
+   * Sets a duration for adding server markers for delete, purge and max age limits.
+   */
+  "subject_delete_marker_ttl"?: Nanos;
 };
 
 export type Republish = {
@@ -1249,5 +1259,10 @@ export const PubHeaders = {
   ExpectedLastSeqHdr: "Nats-Expected-Last-Sequence",
   ExpectedLastMsgIdHdr: "Nats-Expected-Last-Msg-Id",
   ExpectedLastSubjectSequenceHdr: "Nats-Expected-Last-Subject-Sequence",
+  /**
+   * Sets the TTL for a message (Nanos value). Only have effect on streams that
+   * enable {@link StreamConfig#allow_msg_ttl}.
+   */
+  MessageTTL: "Nats-TTL",
 } as const;
 export type PubHeaders = typeof PubHeaders[keyof typeof PubHeaders];

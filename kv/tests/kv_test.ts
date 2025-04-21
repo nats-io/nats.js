@@ -18,6 +18,7 @@ import {
   deferred,
   delay,
   Empty,
+  millis,
   nanos,
   nuid,
   parseSemVer,
@@ -2197,6 +2198,80 @@ Deno.test("kv - watch isUpdate", async () => {
   await kv.put("b", "hello");
 
   await done;
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: nanos(2000) });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, millis(2000));
+
+  const nttl = await kvm.create("B");
+  const si2 = await nttl.status();
+  assertEquals(si2.markerTTL, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - entries ttl", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: nanos(2000), history: 3 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, millis(2000));
+
+  const entries: KvWatchEntry[] = [];
+  const iter = await kv.watch();
+  const done = (async () => {
+    for await (const e of iter) {
+      console.log(e.revision, e.operation);
+      //@ts-expect-error: test
+      const jsMsg = e.sm;
+      console.log(jsMsg.headers);
+      if (jsMsg.headers?.get("Nats-TTL")) {
+        const ttl = parseInt(jsMsg.headers.get("Nats-TTL")!);
+        console.log(millis(ttl));
+      }
+      entries.push(e);
+      if (e.revision === 3) {
+        break;
+      }
+    }
+  })().then();
+
+  await kv.put("a", "hello");
+  await kv.delete("a");
+  await kv.purge("a", { ttl: 2000 });
+
+  await done;
+  await delay(500);
+  const e = await kv.get("a");
+  assertExists(e);
+
+  const start = Date.now();
+  while (true) {
+    const b = await kv.get("a");
+    if (b === null) {
+      break;
+    }
+    console.log("still there");
+    await delay(1000);
+  }
+
+  console.log("gone after", Date.now() - start, "ms");
 
   await cleanup(ns, nc);
 });

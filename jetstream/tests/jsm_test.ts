@@ -27,6 +27,7 @@ import { Feature } from "@nats-io/nats-core/internal";
 import type { NatsConnection } from "@nats-io/nats-core";
 import {
   deferred,
+  delay,
   Empty,
   errors,
   headers,
@@ -2743,6 +2744,126 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
     assertEquals(ci.config.priority_policy, PriorityPolicy.Overflow);
     assertEquals(ci.config.priority_groups, ["hello"]);
   });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - stream message ttls", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  const si = await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+    allow_msg_ttl: true,
+    subject_delete_marker_ttl: nanos(60_000),
+  });
+  assertEquals(si.config.allow_msg_ttl, true);
+  assertEquals(si.config.subject_delete_marker_ttl, nanos(60_000));
+
+  await assertRejects(
+    () => {
+      //@ts-expect-error: this is a test
+      return jsm.streams.update("A", { allow_msg_ttl: false });
+    },
+    Error,
+    "subject marker delete cannot be set if message TTLs are disabled",
+  );
+
+  await jsm.streams.update("A", { subject_delete_marker_ttl: 0 });
+
+  await assertRejects(
+    () => {
+      //@ts-expect-error: this is a test
+      return jsm.streams.update("A", { allow_msg_ttl: false });
+    },
+    Error,
+    "message TTL status can not be changed after stream creation",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - message ttls", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+    allow_msg_ttl: true,
+    subject_delete_marker_ttl: nanos(2_000),
+  });
+
+  const js = jsm.jetstream();
+  const c = await js.consumers.get("A");
+  const iter = await c.consume();
+
+  (async () => {
+    for await (const m of iter) {
+      console.log(m.seq, m.headers);
+    }
+  })().then();
+
+  await js.publish("a", "hello", { ttl: "2s" });
+
+  for (let i = 0;; i++) {
+    const m = await jsm.streams.getMessage("A", { last_by_subj: "a" });
+    if (m === null) {
+      break;
+    }
+    console.log(`${i} still here...`);
+    await delay(1000);
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - message ttls notify delete", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+    allow_msg_ttl: true,
+    subject_delete_marker_ttl: nanos(2_000),
+    max_age: nanos(1_000),
+  });
+
+  const js = jsm.jetstream();
+  const c = await js.consumers.get("A");
+  const iter = await c.consume();
+
+  let notifications = 0;
+  (async () => {
+    for await (const m of iter) {
+      notifications++;
+      console.log(m.seq, m.headers);
+    }
+  })().then();
+
+  await js.publish("a", "hello");
+
+  for (let i = 0;; i++) {
+    const m = await jsm.streams.getMessage("A", { last_by_subj: "a" });
+    if (m === null) {
+      break;
+    }
+    console.log(`${i} still here...`);
+    await delay(1000);
+  }
+
+  assertEquals(notifications, 2);
 
   await cleanup(ns, nc);
 });
