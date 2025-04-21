@@ -18,6 +18,8 @@ import { initStream } from "./jstest_util.ts";
 import {
   AckPolicy,
   jetstream,
+  type JetStreamClient,
+  type JetStreamManager,
   jetstreamManager,
   JsHeaders,
   RepublishHeaders,
@@ -42,12 +44,16 @@ import {
   assertEquals,
   assertExists,
   assertInstanceOf,
+  assertIsError,
   assertRejects,
   assertThrows,
 } from "jsr:@std/assert";
 
-import type { JetStreamClientImpl } from "../src/jsclient.ts";
-import { defaultJsOptions } from "../src/jsbaseclient_api.ts";
+import { JetStreamClientImpl, JetStreamManagerImpl } from "../src/jsclient.ts";
+import {
+  type BaseApiClientImpl,
+  defaultJsOptions,
+} from "../src/jsbaseclient_api.ts";
 import {
   cleanup,
   flakyTest,
@@ -57,6 +63,7 @@ import {
 } from "test_helpers";
 import { PubHeaders } from "../src/jsapi_types.ts";
 import { JetStreamApiError, JetStreamNotEnabled } from "../src/jserrors.ts";
+import { assertBetween } from "../../test_helpers/mod.ts";
 
 Deno.test("jetstream - default options", () => {
   const opts = defaultJsOptions();
@@ -1167,4 +1174,81 @@ Deno.test("jetstream - publish no responder", async (t) => {
 
     await cleanup(ns, nc);
   });
+});
+
+Deno.test("jetstream - base client timeout", async () => {
+  const { ns, nc } = await setup();
+
+  nc.subscribe("test", { callback: () => {} });
+
+  async function pub(c: JetStreamClient): Promise<number> {
+    const start = Date.now();
+    try {
+      await c.publish("test", Empty);
+    } catch (err) {
+      assertIsError(err, Error, "timeout");
+      return Date.now() - start;
+    }
+    throw new Error("should have failed");
+  }
+
+  async function req(c: JetStreamClient): Promise<number> {
+    const start = Date.now();
+    try {
+      await (c as unknown as BaseApiClientImpl)._request("test", Empty);
+    } catch (err) {
+      assertIsError(err, Error, "timeout");
+      return Date.now() - start;
+    }
+    throw new Error("should have failed");
+  }
+
+  let c = new JetStreamClientImpl(nc) as JetStreamClient;
+  assertBetween(await pub(c), 4900, 5100);
+  assertBetween(await req(c), 4900, 5100);
+
+  c = jetstream(nc);
+  assertBetween(await pub(c), 4900, 5100);
+  assertBetween(await req(c), 4900, 5100);
+
+  c = new JetStreamClientImpl(nc, { timeout: 500 }) as JetStreamClient;
+  assertBetween(await pub(c), 450, 600);
+  assertBetween(await req(c), 450, 600);
+
+  c = jetstream(nc, { timeout: 500 });
+  assertBetween(await pub(c), 450, 600);
+  assertBetween(await req(c), 450, 600);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - jsm base timeout", async () => {
+  const { ns, nc } = await setup();
+
+  nc.subscribe("test", { callback: () => {} });
+
+  async function req(c: JetStreamManager): Promise<number> {
+    const start = Date.now();
+    try {
+      await (c as unknown as BaseApiClientImpl)._request("test", Empty);
+    } catch (err) {
+      assertIsError(err, Error, "timeout");
+      return Date.now() - start;
+    }
+    throw new Error("should have failed");
+  }
+
+  let c = new JetStreamManagerImpl(nc) as JetStreamManager;
+  assertBetween(await req(c), 4900, 5100);
+
+  c = await jetstreamManager(nc, { checkAPI: false });
+  assertBetween(await req(c), 4900, 5100);
+
+  c = new JetStreamManagerImpl(nc, { timeout: 500 }) as JetStreamManager;
+  assertBetween(await req(c), 450, 600);
+
+  c = await jetstreamManager(nc, { timeout: 500, checkAPI: false });
+  assertBetween(await req(c), 450, 600);
+
+  await cleanup(ns, nc);
 });
