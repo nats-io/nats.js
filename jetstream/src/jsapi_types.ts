@@ -718,10 +718,18 @@ export type PurgeResponse = Success & {
   purged: number;
 };
 
+export type ConsumerCreateOptions = {
+  /**
+   * If true, the server will check that the consumer configuration aligns with
+   * stream settings that affect the consumer.
+   */
+  pedantic?: boolean;
+};
+
 /**
  * Additional options that express the intention of the API
  */
-export type ConsumerApiOptions = ConsumerApiAction | {
+export type ConsumerApiOptions = {
   action?: ConsumerApiAction;
   pedantic?: boolean;
 };
