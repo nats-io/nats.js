@@ -160,7 +160,7 @@ import { wsconnect } from "https://esm.run/@nats-io/nats-core";
 import { jetstreamManager } from "https://esm.run/@nats-io/jetstream";
 import { Kvm } from "https://esm.run/@nats-io/kv";
 import { Objm } from "https://esm.run/@nats-io/obj";
-import { Svc } from "https://esm.run/@nats-io/services";
+import { Svcm } from "https://esm.run/@nats-io/services";
 
 // Add your code here
 ```
@@ -245,7 +245,7 @@ Create your own local bundled version of the libraries:
 esbuild --format=esm --bundle --minify nats.js > nats.mjs
 ```
 
-Create your own NATS application referencing the bundled modules:
+Create your own NATS application referencing the bundled modules (as `index.js`):
 
 ```javascript
 import { jetstreamManager, Kvm, Objm, Svcm, wsconnect } from "./nats.mjs";
