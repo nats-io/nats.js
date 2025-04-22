@@ -1779,3 +1779,19 @@ Deno.test("basics - request tracing", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("basics - close status", async () => {
+  const { ns, nc } = await setup();
+  setTimeout(() => {
+    nc.close();
+  }, 500);
+  const d = deferred();
+
+  for await (const s of nc.status()) {
+    if (s.type === "close") {
+      d.resolve();
+    }
+  }
+  await d;
+  await cleanup(ns, nc);
+});

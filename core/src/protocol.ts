@@ -1038,6 +1038,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     for (let i = 0; i < this.listeners.length; i++) {
       const qi = this.listeners[i];
       if (qi) {
+        qi.push({ type: "close" });
         qi.stop();
         proms.push(qi.iterClosed);
       }
