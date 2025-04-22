@@ -581,8 +581,8 @@ export type StreamState = {
    */
   "num_deleted": number;
   /**
-   * IDs of messages that were deleted using the Message Delete API or Interest based streams removing messages out of order
-   * {@link StreamInfoRequestOptions | deleted_details} is specified on
+   * IDs of messages that were deleted using the Message Delete API or Interest-based streams removing messages out of order
+   * {@link StreamInfoRequestOptions.deleted_details} is specified on
    * the request.
    */
   deleted: number[];
@@ -960,8 +960,7 @@ export type ConsumerConfig = ConsumerUpdateConfig & {
    */
   "deliver_group"?: string;
   /**
-   * A unique name for a durable consumer
-   * Set {@link name} - for ephemeral consumers, also set {@link idle_heartbeat}
+   * A unique name for a durable consumer. Set {@link name} for ephemeral consumers
    */
   "durable_name"?: string;
   /**
