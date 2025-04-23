@@ -46,7 +46,7 @@ The JSR registry hosts the EMS-only [@nats-io/obj](https://jsr.io/@nats-io/obj)
 version of the library.
 
 ```bash
-deno add @nats-io/obj
+deno add jsr:@nats-io/obj
 ```
 
 ```bash
