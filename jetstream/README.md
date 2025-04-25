@@ -50,7 +50,7 @@ The JSR registry hosts the ESM-only
 [@nats-io/jetstream](https://jsr.io/@nats-io/jetstream) version of the library.
 
 ```bash
-deno add @nats-io/jetstream
+deno add jsr:@nats-io/jetstream
 ```
 
 ```bash
