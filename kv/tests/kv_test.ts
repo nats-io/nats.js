@@ -2233,30 +2233,27 @@ Deno.test("kv - entries ttl", async () => {
   assertEquals(si.markerTTL, 2000);
 
   const iter = await kv.watch();
-  const done = (async () => {
+  (async () => {
     for await (const e of iter) {
       console.log(e.revision, e.operation);
       //@ts-expect-error: test
       const jsMsg = e.sm;
       console.log(jsMsg.headers);
-      if (e.operation === "PURGE") {
-        break;
-      }
     }
   })().then();
 
-  await kv.put("a", "hello");
+  await kv.create("a", "hello");
   await kv.delete("a");
   await kv.purge("a", { ttl: "2s" });
 
-  await done;
+  // await done;
   const start = Date.now();
-  while (true) {
+  for (let i = 0;; i++) {
     const b = await kv.get("a");
     if (b === null) {
       break;
     }
-    console.log("still there");
+    console.log("still there", i);
     await delay(1000);
   }
 

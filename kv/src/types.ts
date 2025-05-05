@@ -292,7 +292,7 @@ export type KV = RoKV & {
    * @param data
    * @param markerTTL - in milliseconds
    */
-  create(k: string, data: Payload, markerTTL?: number): Promise<number>;
+  create(k: string, data: Payload, markerTTL?: string): Promise<number>;
 
   /**
    * Updates the existing entry provided that the previous sequence
@@ -361,7 +361,7 @@ export type KvPutOptions = {
    * of millis. Note that for this option to work, the KvBucket must have the
    * markerTTL option.
    */
-  ttl: number;
+  ttl: string;
 
   /**
    * Timeout value in milliseconds for the put, overrides Jetstream context's

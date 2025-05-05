@@ -560,7 +560,7 @@ export class Bucket implements KV {
     return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
   }
 
-  async create(k: string, data: Payload, markerTTL?: 0): Promise<number> {
+  async create(k: string, data: Payload, markerTTL?: string): Promise<number> {
     let firstErr;
     try {
       const opts: Partial<KvPutOptions> = { previousSeq: 0 };
@@ -620,8 +620,7 @@ export class Bucket implements KV {
     }
     if (opts.ttl) {
       const h = o.headers || headers();
-      const ttl = nanos(opts.ttl);
-      h.set(PubHeaders.MessageTTL, `${ttl}`);
+      h.set(PubHeaders.MessageTTL, opts.ttl);
     }
     try {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
