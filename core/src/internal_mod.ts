@@ -89,6 +89,7 @@ export type {
   CallbackFn,
   CallbackOptionalErrorFn,
   ClientPingStatus,
+  CloseStatus,
   ClusterUpdateStatus,
   ConnectionClosedListener,
   ConnectionOptions,

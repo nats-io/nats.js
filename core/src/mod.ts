@@ -62,6 +62,7 @@ export type {
   Backoff,
   BenchOpts,
   ClientPingStatus,
+  CloseStatus,
   ClusterUpdateStatus,
   Codec,
   ConnectionOptions,
