@@ -799,6 +799,7 @@ status `type`s include:
 - `staleConnection` - the connection is stale (client will reconnect)
 - `forceReconnect` - the client has been instructed to reconnect because of
   user-code (`reconnect()`)
+- `close` - the client has closed, no further reconnects will be attempted.
 
 ```javascript
 const nc = await connect(opts);
