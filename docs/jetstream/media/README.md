@@ -46,7 +46,7 @@ The JSR registry hosts the ESM-only [@nats-io/kv](https://jsr.io/@nats-io/kv)
 version of the library.
 
 ```bash
-deno add jsr:@nats-io/kv
+deno jsr:add @nats-io/kv
 ```
 
 ```bash
