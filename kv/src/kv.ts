@@ -78,6 +78,7 @@ import type {
   KvDeleteOptions,
   KvEntry,
   KvOptions,
+  KvPurgeOptions,
   KvPutOptions,
   KvStatus,
   KvWatchEntry,
@@ -210,7 +211,8 @@ export class Kvm {
   }
 
   /**
-   * Open to the specified KV. If the KV doesn't exist, this API will fail.
+   * Open to the specified KV. If the KV doesn't exist, this API will fail on accessing
+   * the KV.
    * @param name
    * @param opts
    */
@@ -344,6 +346,10 @@ export class Bucket implements KV {
     }
     if (opts.description) {
       sc.description = opts.description;
+    }
+    if (opts.markerTTL) {
+      sc.allow_msg_ttl = true;
+      sc.subject_delete_marker_ttl = nanos(bo.markerTTL);
     }
     if (opts.mirror) {
       const mirror = Object.assign({}, opts.mirror);
@@ -554,10 +560,14 @@ export class Bucket implements KV {
     return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
   }
 
-  async create(k: string, data: Payload): Promise<number> {
+  async create(k: string, data: Payload, markerTTL?: 0): Promise<number> {
     let firstErr;
     try {
-      const n = await this.put(k, data, { previousSeq: 0 });
+      const opts: Partial<KvPutOptions> = { previousSeq: 0 };
+      if (markerTTL) {
+        opts.ttl = markerTTL;
+      }
+      const n = await this.put(k, data, opts);
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
@@ -607,6 +617,11 @@ export class Bucket implements KV {
       const h = headers();
       o.headers = h;
       h.set(PubHeaders.ExpectedLastSubjectSequenceHdr, `${opts.previousSeq}`);
+    }
+    if (opts.ttl) {
+      const h = o.headers || headers();
+      const ttl = nanos(opts.ttl);
+      h.set(PubHeaders.MessageTTL, `${ttl}`);
     }
     try {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
@@ -722,7 +737,11 @@ export class Bucket implements KV {
     const h = headers();
     h.set(kvOperationHdr, op);
     if (op === "PURGE") {
+      const popts = opts as KvPurgeOptions;
       h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
+      if (typeof popts?.ttl === "string" && popts.ttl !== "") {
+        h.set(PubHeaders.MessageTTL, `${popts.ttl}`);
+      }
     }
     if (opts?.previousSeq) {
       h.set(PubHeaders.ExpectedLastSubjectSequenceHdr, `${opts.previousSeq}`);
@@ -990,6 +1009,13 @@ export class KvStatusImpl implements KvStatus {
     return millis(this.si.config.max_age);
   }
 
+  get markerTTL(): number {
+    if (typeof this.si.config.subject_delete_marker_ttl === "number") {
+      return millis(this.si.config.subject_delete_marker_ttl);
+    }
+    return 0;
+  }
+
   get bucket_location(): string {
     return this.cluster;
   }
@@ -1086,7 +1112,11 @@ class KvStoredEntryImpl implements KvEntry {
   }
 
   get operation(): OperationType {
-    return this.sm.header.get(kvOperationHdr) as OperationType || "PUT";
+    const op = this.sm.header.get(kvOperationHdr);
+    if (op === "MaxAge") {
+      return "PURGE";
+    }
+    return op as OperationType || "PUT";
   }
 
   get length(): number {
@@ -1132,7 +1162,11 @@ class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
   }
 
   get operation(): OperationType {
-    return this.sm.headers?.get(kvOperationHdr) as OperationType || "PUT";
+    const op = this.sm.headers?.get(kvOperationHdr);
+    if (op === "MaxAge") {
+      return "PURGE";
+    }
+    return op as OperationType || "PUT";
   }
 
   get delta(): number {

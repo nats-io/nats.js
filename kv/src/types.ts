@@ -99,6 +99,13 @@ export type KvLimits = {
    */
   ttl: number; // millis
   /**
+   * When set, this will turn on the stream's `allow_msg_ttl`, and
+   * set the `subject_delete_marker_ttl` to the specified number of
+   * milliseconds. Note that while you can change this setting, you
+   * cannot make it 0 once set as the `allow_msg_ttl` cannot be disabled once set.
+   */
+  markerTTL: number; // millis
+  /**
    * The backing store of the stream hosting the KV
    */
   storage: StorageType;
@@ -151,6 +158,13 @@ export type KvStatus = KvLimits & {
    * 2.10.x and better.
    */
   metadata?: Record<string, string>;
+
+  /**
+   * Number of millis delete markers will live before they are removed by the server.
+   * Note that this value will be set to 0 if the underlying stream doesn't enable
+   * this feature. This is a feature that must be configured on bucket creation.
+   */
+  markerTTL: number;
 };
 
 export type KvOptions = KvLimits & {
@@ -276,8 +290,9 @@ export type KV = RoKV & {
    * If the entry already exists, this operation fails.
    * @param k
    * @param data
+   * @param markerTTL - in milliseconds
    */
-  create(k: string, data: Payload): Promise<number>;
+  create(k: string, data: Payload, markerTTL?: number): Promise<number>;
 
   /**
    * Updates the existing entry provided that the previous sequence
@@ -326,7 +341,7 @@ export type KV = RoKV & {
    * @param k
    * @param opts
    */
-  purge(k: string, opts?: Partial<KvDeleteOptions>): Promise<void>;
+  purge(k: string, opts?: Partial<KvPurgeOptions>): Promise<void>;
 
   /**
    * Destroys the underlying stream used by the KV. This
@@ -341,12 +356,35 @@ export type KvPutOptions = {
    * put will fail.
    */
   previousSeq: number;
+  /**
+   * If set, the entry will notify when deleted after the specify number
+   * of millis. Note that for this option to work, the KvBucket must have the
+   * markerTTL option.
+   */
+  ttl: number;
 
   /**
    * Timeout value in milliseconds for the put, overrides Jetstream context's
    * default.
    */
   timeout: number;
+};
+
+export type KvPurgeOptions = KvDeleteOptions & {
+  /**
+   * If set, the entry will notify when deleted after the specified duration.
+   * Note that for this option to work, the KvBucket must have the
+   * markerTTL option.
+   *
+   * Note that the duration is specified as a string. The duration format matches
+   * [Go duration strings](https://pkg.go.dev/maze.io/x/duration#ParseDuration)
+   * - "10s" - 10 seconds
+   * - "1m" - 1 minute
+   * - "1h" - 1 hour
+   *
+   * If a unit suffix is not specified, it is assumed to be seconds.
+   */
+  ttl: string;
 };
 
 export type KvDeleteOptions = {

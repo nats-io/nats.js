@@ -2201,6 +2201,72 @@ Deno.test("kv - watch isUpdate", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("kv - entries ttl markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, 2000);
+
+  const nttl = await kvm.create("B");
+  const si2 = await nttl.status();
+  assertEquals(si2.markerTTL, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - entries ttl", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000, history: 3 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, 2000);
+
+  const iter = await kv.watch();
+  const done = (async () => {
+    for await (const e of iter) {
+      console.log(e.revision, e.operation);
+      //@ts-expect-error: test
+      const jsMsg = e.sm;
+      console.log(jsMsg.headers);
+      if (e.operation === "PURGE") {
+        break;
+      }
+    }
+  })().then();
+
+  await kv.put("a", "hello");
+  await kv.delete("a");
+  await kv.purge("a", { ttl: "2s" });
+
+  await done;
+  const start = Date.now();
+  while (true) {
+    const b = await kv.get("a");
+    if (b === null) {
+      break;
+    }
+    console.log("still there");
+    await delay(1000);
+  }
+
+  const end = Date.now() - start;
+  // 2s for the purge, and the 2s for the markerTTL
+  assertBetween(end, 4000, 4500);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("kv - bind doesn't check jetstream", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
 
