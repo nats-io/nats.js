@@ -2765,14 +2765,16 @@ Deno.test("jsm - stream message ttls", async () => {
   assertEquals(si.config.allow_msg_ttl, true);
   assertEquals(si.config.subject_delete_marker_ttl, nanos(60_000));
 
-  await assertRejects(
-    () => {
-      //@ts-expect-error: this is a test
-      return jsm.streams.update("A", { allow_msg_ttl: false });
-    },
-    Error,
-    "subject marker delete cannot be set if message TTLs are disabled",
-  );
+  // server seems to have changed behaviour.
+  // https://github.com/nats-io/nats-server/issues/6872
+  // await assertRejects(
+  //   () => {
+  //     //@ts-expect-error: this is a test
+  //     return jsm.streams.update("A", { allow_msg_ttl: false });
+  //   },
+  //   Error,
+  //   "subject marker delete cannot be set if message TTLs are disabled",
+  // );
 
   await jsm.streams.update("A", { subject_delete_marker_ttl: 0 });
 
