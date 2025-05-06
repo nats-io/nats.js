@@ -2784,7 +2784,7 @@ Deno.test("jsm - stream message ttls", async () => {
       return jsm.streams.update("A", { allow_msg_ttl: false });
     },
     Error,
-    "message TTL status can not be changed after stream creation",
+    "message TTL status can not be disabled",
   );
 
   await cleanup(ns, nc);
