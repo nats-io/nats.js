@@ -1161,11 +1161,13 @@ class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
   }
 
   get operation(): OperationType {
-    const op = this.sm.headers?.get(kvOperationHdr);
-    if (op === "MaxAge") {
-      return "PURGE";
+    if (this.sm.headers?.has("Nats-Marker-Reason")) {
+      const op = this.sm.headers?.get("Nats-Marker-Reason");
+      if (op === "MaxAge") {
+        return "PURGE";
+      }
     }
-    return op as OperationType || "PUT";
+    return this.sm.headers?.get(kvOperationHdr) as OperationType || "PUT";
   }
 
   get delta(): number {
