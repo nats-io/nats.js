@@ -2222,6 +2222,23 @@ Deno.test("kv - entries ttl markerTTL", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("kv - get entry ttl markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000 });
+  await kv.create("a", Empty, "3s");
+  await kv.delete("a");
+  await kv.purge("a", { ttl: "3s" });
+  const e = await kv.get("a");
+  assertEquals(e?.operation, "PURGE");
+  await cleanup(ns, nc);
+});
+
 Deno.test("kv - entries ttl", async () => {
   const { ns, nc } = await setup(
     jetstreamServerConf({}),
