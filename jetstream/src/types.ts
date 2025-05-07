@@ -144,6 +144,13 @@ export type JetStreamPublishOptions = {
   }>;
 
   /**
+   * Sets {@link PubHeaders#MessageTtl} this only applies to streams that enable
+   * {@link StreamConfig#allow_msg_ttl}. The format of this value is "1s" or "1h",
+   * etc, or a plain number interpreted as the number of seconds.
+   */
+  ttl?: string;
+
+  /**
    * Continue to attempt to publish if the publish fails due to a no responders error.
    * Default is 1.
    */

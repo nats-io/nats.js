@@ -15,6 +15,7 @@
 import {
   collect,
   compare,
+  deadline,
   deferred,
   delay,
   Empty,
@@ -1774,6 +1775,7 @@ Deno.test("kv - watch history", async () => {
   const notifications: string[] = [];
   (async () => {
     for await (const e of iter) {
+      console.log(e.operation);
       if (e.operation === "DEL") {
         notifications.push(`${e.key}=del`);
       } else {
@@ -2197,6 +2199,120 @@ Deno.test("kv - watch isUpdate", async () => {
   await kv.put("b", "hello");
 
   await done;
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - entries ttl markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, 2000);
+
+  const nttl = await kvm.create("B");
+  const si2 = await nttl.status();
+  assertEquals(si2.markerTTL, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - get entry ttl markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000 });
+  await kv.create("a", Empty, "1s");
+  await kv.delete("a");
+  await kv.purge("a", { ttl: "1s" });
+  await delay(2000);
+  const e = await kv.get("a");
+  console.log(e);
+  assertEquals(e?.operation, "PURGE");
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - entries ttl", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000, history: 3 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, 2000);
+
+  const iter = await kv.watch();
+  (async () => {
+    for await (const e of iter) {
+      console.log(e.revision, e.operation);
+      //@ts-expect-error: test
+      const jsMsg = e.sm;
+      console.log(jsMsg.headers);
+    }
+  })().then();
+
+  await kv.create("a", "hello");
+  await kv.delete("a");
+  await kv.purge("a", { ttl: "2s" });
+
+  // await done;
+  const start = Date.now();
+  for (let i = 0;; i++) {
+    const b = await kv.get("a");
+    if (b === null) {
+      break;
+    }
+    console.log("still there", i);
+    await delay(1000);
+  }
+
+  const end = Date.now() - start;
+  // 2s for the purge, and the 2s for the markerTTL
+  assertBetween(end, 4000, 4500);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - watcher ttl", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000, history: 3, ttl: 2000 });
+  const si = await kv.status();
+  assertEquals(si.markerTTL, 2000);
+
+  const iter = await kv.watch();
+  const done = (async () => {
+    for await (const e of iter) {
+      console.log(e.revision, e.operation);
+      //@ts-expect-error: test
+      const jsMsg = e.sm;
+      console.log(jsMsg.headers);
+      if (e.operation === "PURGE") {
+        break;
+      }
+    }
+  })().then();
+
+  await kv.create("a", "hello", "2s");
+
+  await deadline(done, 3000);
 
   await cleanup(ns, nc);
 });

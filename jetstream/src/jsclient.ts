@@ -200,6 +200,12 @@ export class JetStreamClientImpl extends BaseApiClientImpl
           `${opts.expect.lastSubjectSequence}`,
         );
       }
+      if (opts.ttl) {
+        mh.set(
+          PubHeaders.MessageTTL,
+          `${opts.ttl}`,
+        );
+      }
     }
 
     const to = opts.timeout || this.timeout;
