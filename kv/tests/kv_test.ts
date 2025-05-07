@@ -2231,10 +2231,12 @@ Deno.test("kv - get entry ttl markerTTL", async () => {
   }
   const kvm = await new Kvm(nc);
   const kv = await kvm.create("A", { markerTTL: 2000 });
-  await kv.create("a", Empty, "3s");
+  await kv.create("a", Empty, "1s");
   await kv.delete("a");
-  await kv.purge("a", { ttl: "3s" });
+  await kv.purge("a", { ttl: "1s" });
+  await delay(2000);
   const e = await kv.get("a");
+  console.log(e);
   assertEquals(e?.operation, "PURGE");
   await cleanup(ns, nc);
 });

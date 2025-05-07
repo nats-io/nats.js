@@ -1111,11 +1111,13 @@ class KvStoredEntryImpl implements KvEntry {
   }
 
   get operation(): OperationType {
-    const op = this.sm.header.get(kvOperationHdr);
-    if (op === "MaxAge") {
-      return "PURGE";
+    if (this.sm.header?.has("Nats-Marker-Reason")) {
+      const op = this.sm.header?.get("Nats-Marker-Reason");
+      if (op === "MaxAge") {
+        return "PURGE";
+      }
     }
-    return op as OperationType || "PUT";
+    return this.sm.header?.get(kvOperationHdr) as OperationType || "PUT";
   }
 
   get length(): number {
