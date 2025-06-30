@@ -169,11 +169,16 @@ export class JetStreamStatus {
 
   isExceededLimit(): boolean {
     return this.isExceededMaxExpires() || this.isExceededMaxWaiting() ||
-      this.isExceededMaxRequestBatch();
+      this.isExceededMaxRequestBatch() || this.isMessageSizeExceedsMaxBytes();
   }
 
   isMessageNotFound(): boolean {
     return this.code === 404 && this.description === "message not found";
+  }
+
+  isMessageSizeExceedsMaxBytes(): boolean {
+    return this.code === 409 &&
+      this.description === "message size exceeds maxbytes";
   }
 
   isEndOfBatch(): boolean {

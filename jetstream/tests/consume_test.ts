@@ -682,3 +682,105 @@ Deno.test("consumer - internal close listener", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("consume - max_waiting throttles", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const js = jsm.jetstream();
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    max_waiting: 1,
+  });
+
+  const c = await js.consumers.get("A", "a");
+  // @ts-ignore: test
+  nc.options.debug = true;
+
+  const p = c.next({ expires: 10_000 });
+  let exceeded = 0;
+  let diff = 0;
+  const gotNextAfter = deferred();
+  await delay(500);
+
+  const cm = await c.consume({ expires: 5_000 });
+  (async () => {
+    for await (const s of cm.status()) {
+      if (
+        s.type === "exceeded_limits" && s.description === "exceeded maxwaiting"
+      ) {
+        exceeded = Date.now();
+      }
+      if (exceeded > 0 && s.type === "next") {
+        diff = Date.now() - exceeded;
+        gotNextAfter.resolve();
+      }
+    }
+  })().then();
+
+  (async () => {
+    for await (const _ of cm) {
+      // do nothing
+    }
+  })().then();
+
+  await Promise.all([p, gotNextAfter]);
+  assert(diff > 5000);
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - max_bytes throttles", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const js = jsm.jetstream();
+  await js.publish("a", new Uint8Array(32));
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const c = await js.consumers.get("A", "a");
+
+  let exceeded = 0;
+  let diff = 0;
+  const gotNextAfter = deferred();
+  await delay(500);
+
+  const cm = await c.consume({ expires: 5_000, max_bytes: 8 });
+  (async () => {
+    for await (const s of cm.status()) {
+      console.log(s);
+      if (
+        s.type === "exceeded_limits" &&
+        s.description === "message size exceeds maxbytes"
+      ) {
+        if (exceeded === 0) {
+          exceeded = Date.now();
+        } else {
+          diff = Date.now() - exceeded;
+          gotNextAfter.resolve();
+        }
+      }
+    }
+  })().then();
+
+  (async () => {
+    for await (const _ of cm) {
+      // do nothing
+    }
+  })().then();
+
+  await gotNextAfter;
+  assert(diff > 5000);
+  await cleanup(ns, nc);
+});

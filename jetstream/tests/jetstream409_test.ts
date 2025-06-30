@@ -16,7 +16,7 @@
 import { nanos } from "@nats-io/nats-core";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
-import { assert, assertRejects, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
 import { initStream } from "./jstest_util.ts";
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 
@@ -100,29 +100,29 @@ Deno.test("409 - max message size", async () => {
       }
     }
   })().then();
-  for await (const _ of msgs) {
-    fail("shoudn't have gotten any messages");
-  }
+
+  const err = await assertRejects(async () => {
+    for await (const _ of msgs) {
+      fail("shoudn't have gotten any messages");
+    }
+  });
+  assertEquals((err as Error).message, "message size exceeds maxbytes");
 
   const iter = await c.consume({
+    expires: 5_000,
     max_bytes: 10,
     callback: () => {
       fail("this shouldn't have been called");
     },
   });
-  let count = 0;
+
   for await (const s of iter.status()) {
-    if (s.type === "discard") {
-      count++;
-      if (s.bytesLeft === 10) {
-        if (count >= 2) {
-          iter.close();
-        }
-      }
+    if (s.type === "heartbeats_missed") {
+      // the 409 kicked in, and the client backed off
+      iter.close().catch();
     }
   }
   await iter.closed();
-  assert(count >= 2);
   await cleanup(ns, nc);
 });
 

@@ -468,7 +468,7 @@ export type ThresholdMessages = {
 };
 export type ThresholdBytes = {
   /**
-   * Threshold bytes on which the client wil auto-trigger additional message requests
+   * Threshold bytes on which the client auto-triggers additional message requests
    * from the server. This is only applicable to `consume`.
    * @default 75% of {@link MaxBytes}.
    */
@@ -476,11 +476,11 @@ export type ThresholdBytes = {
 };
 export type Expires = {
   /**
-   * Amount of milliseconds to wait for messages before issuing another request.
+   * Number of milliseconds to wait for messages before issuing another request.
    * Note this value shouldn't be set by the user, as the default provides proper behavior.
    * A low value will stress the server.
    *
-   * Minimum value is 1000 (1s).
+   * The minimum value is 1000 (1s).
    * @default 30_000 (30s)
    */
   expires?: number;
