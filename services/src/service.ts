@@ -629,6 +629,9 @@ export class ServiceImpl implements Service {
     }
     // track the iterator for stats
     const ss = this.setupHandler(e, false);
+    ss.sub.closed.then((err) => {
+      err ? this.stop(err) : qi.stop();
+    });
     ss.qi = qi;
     this.handlers.push(ss);
     return qi;

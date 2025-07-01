@@ -28,6 +28,7 @@ import {
 import {
   collect,
   createInbox,
+  deadline,
   delay,
   errors,
 } from "@nats-io/nats-core/internal";
@@ -1140,6 +1141,35 @@ Deno.test("service - close listener check", async () => {
   await nc.close();
   //@ts-ignore: internal
   assertEquals(nci.closeListeners.listeners.length, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - stop should stop iterators", async () => {
+  const { ns, nc } = await setup();
+
+  const nci = nc as NatsConnectionImpl;
+  //@ts-ignore: internal
+  assertEquals(nci.closeListeners, undefined);
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: { service: "1", hello: "world" },
+    queue: "",
+  });
+
+  const iter = srv.addEndpoint("hello");
+  const done = (async () => {
+    for await (const _ of iter) {
+      // nothing
+    }
+  })().then();
+
+  await srv.stop();
+
+  await deadline(done, 5_000);
 
   await cleanup(ns, nc);
 });
