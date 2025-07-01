@@ -47,6 +47,7 @@ import {
   assertIsError,
   assertRejects,
   assertThrows,
+  fail,
 } from "jsr:@std/assert";
 
 import { JetStreamClientImpl, JetStreamManagerImpl } from "../src/jsclient.ts";
@@ -305,6 +306,69 @@ Deno.test("jetstream - publish require last sequence by subject", async () => {
   await js.publish(`${stream}.A`, Empty, {
     expect: { lastSubjectSequence: pa.seq },
   });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - last subject sequence subject", async () => {
+  // https://github.com/nats-io/nats-server/blob/47382b1ee49a0dec1c1d8785d54790b39b7a3289/server/jetstream_test.go#L9095
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a.>`],
+    max_msgs_per_subject: 1,
+  });
+
+  const js = jsm.jetstream();
+
+  await Promise.all([
+    js.publish("a.1.foo", "1:1"), // Last is 1 for aa.1.foo; 1 for a.1.*;
+    js.publish("a.1.bar", "1:2"), // Last is 2 for a.1.bar; 2 for a.1.*;
+    js.publish("a.2.foo", "2:1"), // Last is 3 for a.2.foo; 3 for a.2.*;
+    js.publish("a.3.bar", "3:1"), // Last is 4 for a.3.bar; 4 for a.3.*;
+    js.publish("a.1.baz", "1:3"), // Last is 5 for a.1.baz; 5 for a.1.*;
+    js.publish("a.1.bar", "1:4"), // Last is 6 for a.1.baz; 6 for a.1.*;
+    js.publish("a.2.baz", "2:2"), // Last is 7 for a.2.baz; 7 for a.2.*;
+  ]);
+
+  async function pc(subj: string, filter: string, seq: number, ok: boolean) {
+    await js.publish(subj, "data", {
+      expect: { lastSubjectSequence: seq, lastSubjectSequenceSubject: filter },
+    }).then((_) => {
+      if (!ok) {
+        fail("should have not succeeded");
+      }
+    })
+      .catch((err) => {
+        if (ok) {
+          fail(err);
+        }
+      });
+  }
+
+  await pc("a.1.foo", "a.1.*", 0, false);
+  await pc("a.1.bar", "a.1.*", 0, false);
+  await pc("a.1.xxx", "a.1.*", 0, false);
+  await pc("a.1.foo", "a.1.*", 1, false);
+  await pc("a.1.bar", "a.1.*", 1, false);
+  await pc("a.1.xxx", "a.1.*", 1, false);
+  await pc("a.2.foo", "a.2.*", 1, false);
+  await pc("a.2.bar", "a.2.*", 1, false);
+  await pc("a.2.xxx", "a.2.*", 1, false);
+  await pc("a.1.bar", "a.1.*", 3, false);
+  await pc("a.1.bar", "a.1.*", 4, false);
+  await pc("a.1.bar", "a.1.*", 5, false);
+  await pc("a.1.bar", "a.1.*", 6, true); // Last is 8 for a.1.bar; 8 for a.1.*;
+  await pc("a.1.baz", "a.1.*", 2, false);
+  await pc("a.1.bar", "a.1.*", 7, false);
+  await pc("a.1.xxx", "a.1.*", 8, true); // Last is 9 for a.1.xxx; 9 for a.1.*;
+  await pc("a.2.foo", "a.2.*", 2, false);
+  await pc("a.2.foo", "a.2.*", 7, true); // Last is 10 for a.2.foo; 10 for a.2.*;
+  await pc("a.xxx", "a.*", 0, true); // Last is 0 for a.xxx; 0 for a.*;
+  await pc("a.xxx", "a.*.*", 0, false); // Last is 11 for a.xxx; 11 for a.*.*;
+  await pc("a.3.xxx", "a.3.*", 4, true); // Last is 12 for a.3.xxx; 12 for a.3.*;
+  await pc("a.3.xyz", "a.3.*", 12, true); // Last is 13 for a.3.xyz; 13 for a.3.*;
 
   await cleanup(ns, nc);
 });
