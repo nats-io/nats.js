@@ -17,6 +17,7 @@ import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
 import {
+  assert,
   assertEquals,
   assertExists,
   assertRejects,
@@ -330,6 +331,38 @@ Deno.test("next - consumer not found and no responders", async () => {
 
   const m = await c.next();
   assertExists(m);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("next - max_bytes returns fast", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const js = jsm.jetstream();
+  await js.publish("a", new Uint8Array(32));
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const c = await js.consumers.get("A", "a");
+
+  const start = Date.now();
+  let end = 0;
+  const iter = await c.fetch({ expires: 30_000, max_bytes: 8 });
+  try {
+    for await (const _ of iter) {
+      // nothing
+    }
+  } catch (_) {
+    end = Date.now() - start;
+  }
+  assert(1000 > end);
 
   await cleanup(ns, nc);
 });

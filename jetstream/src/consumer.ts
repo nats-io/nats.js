@@ -256,52 +256,61 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
               messagesLeft: msgsLeft,
               bytesLeft: bytesLeft,
             });
-          } else {
-            // Examine the error codes
-            // FIXME: 408 can be a Timeout or bad request,
-            //  or it can be sent if a nowait request was
-            //  sent when other waiting requests are pending
-            //  "Requests Pending"
+          }
+          // Examine the error codes
+          // FIXME: 408 can be a Timeout or bad request,
+          //  or it can be sent if a nowait request was
+          //  sent when other waiting requests are pending
+          //  "Requests Pending"
 
-            // FIXME: 400 bad request Invalid Heartbeat or Unmarshalling Fails
-            //  these are real bad values - so this is bad request
-            //  fail on this
-            // we got a bad request - no progress here
-            switch (code) {
-              case 400:
-                this.stop(status.toError());
+          // FIXME: 400 bad request Invalid Heartbeat or Unmarshalling Fails
+          //  these are real bad values - so this is bad request
+          //  fail on this
+          // we got a bad request - no progress here
+          switch (code) {
+            case 400:
+              this.stop(status.toError());
+              return;
+            case 409: {
+              const err = this.handle409(status);
+              if (err) {
+                this.stop(err);
                 return;
-              case 409: {
-                const err = this.handle409(status);
-                if (err) {
-                  this.stop(err);
-                  return;
-                }
-                // stall, missed heartbeats will resuscitate
-                // proportionally to 2 missed heartbeats
+              }
+
+              // if we are using bytes, the buffer may be preventing more messages
+              // so we pull again - if we are empty, then we return that will stall
+              // the client for heartbeats missed, and give a chance to have a
+              // message
+              if (
+                status.isMessageSizeExceedsMaxBytes() && this.yields.length > 0
+              ) {
                 break;
               }
-              case 423:
-                // we have been unpinned
-                this.natsPinId = "";
-                this.notify({ type: "consumer_unpinned" });
-                break;
-              case 503:
-                this.notify({ type: "no_responders", code });
-                if (this.consumer.ordered) {
-                  const ocs = this.consumer.orderedConsumerState!;
-                  ocs.needsReset = true;
-                }
-                if (!this.isConsume) {
-                  this.stop(status.toError());
-                  return;
-                }
-                break;
-              default:
-                this.notify(
-                  { type: "debug", code, description },
-                );
+              // stall, missed heartbeats will resuscitate
+              // proportionally to 2 missed heartbeats
+              return;
             }
+            case 423:
+              // we have been unpinned
+              this.natsPinId = "";
+              this.notify({ type: "consumer_unpinned" });
+              break;
+            case 503:
+              this.notify({ type: "no_responders", code });
+              if (this.consumer.ordered) {
+                const ocs = this.consumer.orderedConsumerState!;
+                ocs.needsReset = true;
+              }
+              if (!this.isConsume) {
+                this.stop(status.toError());
+                return;
+              }
+              break;
+            default:
+              this.notify(
+                { type: "debug", code, description },
+              );
           }
         } else {
           // convert to JsMsg

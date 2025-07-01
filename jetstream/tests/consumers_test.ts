@@ -396,7 +396,7 @@ Deno.test("consumers - threshold_messages bytes", async () => {
   const a = new Array(1001).fill(false);
   const c = await js.consumers.get(stream, "a");
   const iter = await c.consume({
-    expires: 30_000,
+    expires: 2_000,
     max_bytes: 1100,
     threshold_bytes: 1,
   }) as PullConsumerMessagesImpl;
