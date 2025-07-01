@@ -547,11 +547,11 @@ export type DirectBatchLimits = {
 };
 export type DirectBatchStartSeq = Partial<DirectBatchLimits> & {
   seq: number;
-  start_time: never;
+  start_time?: never;
 };
 export type DirectBatchStartTime = Partial<DirectBatchLimits> & {
   start_time: Date | string;
-  seq: never;
+  seq?: never;
 };
 export type DirectBatchOptions = DirectBatchStartSeq | DirectBatchStartTime;
 
