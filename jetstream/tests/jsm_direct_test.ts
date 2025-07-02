@@ -68,7 +68,7 @@ Deno.test("direct - version checks", async () => {
     () => {
       return jsm.direct.getBatch(
         "A",
-        { seq: 1, batch: 100 } as DirectBatchOptions,
+        { seq: 1, batch: 100 },
       );
     },
     Error,
@@ -79,7 +79,7 @@ Deno.test("direct - version checks", async () => {
     () => {
       return jsm.direct.getBatch(
         "A",
-        { seq: 1, batch: 100 } as DirectBatchOptions,
+        { seq: 1, batch: 100 },
       );
     },
     Error,
@@ -240,7 +240,7 @@ Deno.test("direct - callback", async (t) => {
         assertIsError(done.err, Error, "no responders");
         d.resolve();
       },
-    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
+    }) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertIsError(err, Error, "no responders");
@@ -261,7 +261,7 @@ Deno.test("direct - callback", async (t) => {
         assertExists(done);
         assertIsError(done.err, JetStreamStatusError, "message not found");
       },
-    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
+    }) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertIsError(err, JetStreamStatusError, "message not found");
@@ -297,7 +297,7 @@ Deno.test("direct - callback", async (t) => {
         }
         buf.push(sm);
       },
-    } as DirectBatchOptions) as QueuedIteratorImpl<StoredMsg>;
+    }) as QueuedIteratorImpl<StoredMsg>;
 
     const err = await iter.iterClosed;
     assertEquals(err, undefined);
@@ -555,7 +555,7 @@ Deno.test("direct - batch next_by_subj", async () => {
     seq: 0,
     batch: 100,
     next_by_subj: "a",
-  } as DirectBatchOptions);
+  });
   for await (const m of iter) {
     msgs.push(m.subject);
   }
@@ -569,7 +569,7 @@ Deno.test("direct - batch next_by_subj", async () => {
     seq: 50,
     batch: 100,
     next_by_subj: "b",
-  } as DirectBatchOptions);
+  });
   for await (const m of iter) {
     msgs.push(m.subject);
   }
