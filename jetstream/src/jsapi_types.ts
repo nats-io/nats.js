@@ -1258,6 +1258,8 @@ export const PubHeaders = {
   ExpectedLastSeqHdr: "Nats-Expected-Last-Sequence",
   ExpectedLastMsgIdHdr: "Nats-Expected-Last-Msg-Id",
   ExpectedLastSubjectSequenceHdr: "Nats-Expected-Last-Subject-Sequence",
+  ExpectedLastSubjectSequenceSubjectHdr:
+    "Nats-Expected-Last-Subject-Sequence-Subject",
   /**
    * Sets the TTL for a message (Nanos value). Only have effect on streams that
    * enable {@link StreamConfig#allow_msg_ttl}.

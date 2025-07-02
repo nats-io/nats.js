@@ -141,6 +141,35 @@ export type JetStreamPublishOptions = {
      * The expected last sequence on the stream for a message with this subject
      */
     lastSubjectSequence: number;
+    /**
+     * This option is used in conjunction with {@link lastSubjectSequence}. It enables a
+     * constraint on the sequence to be based on the specified subject (which can
+     * have wildcards) rather than the subject of the message being published.
+     *
+     * Here's an example set of sequences for specific subjects:
+     *
+     * ┌─────────┬────────┐
+     * │ subj    │ Seq    │
+     * ├─────────┼────────┤
+     * │ a.1.foo │ 1      │
+     * │ a.1.bar │ 6      │
+     * │ a.2.foo │ 3      │
+     * │ a.3.bar │ 4      │
+     * │ a.1.baz │ 5      │
+     * │ a.2.baz │ 7      │
+     * └─────────┴────────┘
+     *
+     *  The LastSubjectSequenceSubject for wildcards in the last token
+     *  Are evaluated for to the largest sequence matching the subject:
+     * ┌────────────────────┬────────┐
+     * | Last Subj Seq Subj | Seq    |
+     * ├────────────────────┼────────┤
+     * │ a.1.*              │ 6      │
+     * │ a.2.*              │ 7      │
+     * │ a.3.*              │ 4      │
+     * └────────────────────┴────────┘
+     */
+    lastSubjectSequenceSubject: string;
   }>;
 
   /**
