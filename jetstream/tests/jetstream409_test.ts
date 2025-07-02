@@ -175,62 +175,64 @@ Deno.test("409 - max batch", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("409 - max waiting", async () => {
-  const { ns, nc } = await setup(jetstreamServerConf({}));
-  const { stream } = await initStream(nc);
-
-  const jsm = await jetstreamManager(nc);
-
-  // only one pull request
-  await jsm.consumers.add(stream, {
-    durable_name: "a",
-    ack_policy: AckPolicy.Explicit,
-    max_waiting: 1,
-  });
-
-  const js = jetstream(nc);
-  const c = await js.consumers.get(stream, "a");
-
-  // consume with an open pull
-  const blocking = await c.consume({ callback: () => {} });
-
-  await assertRejects(
-    () => {
-      return c.next({ expires: 1_000 });
-    },
-    Error,
-    "exceeded maxwaiting",
-  );
-
-  await assertRejects(
-    async () => {
-      const msgs = await c.fetch({ expires: 1_000 });
-      for await (const _ of msgs) {
-        // nothing
-      }
-    },
-    Error,
-    "exceeded maxwaiting",
-  );
-
-  let count = 0;
-
-  const iter = await c.consume({ expires: 1_000, callback: () => {} });
-  for await (const s of iter.status()) {
-    if (s.type === "exceeded_limits") {
-      if (s.description.includes("exceeded maxwaiting")) {
-        count++;
-        if (count >= 2) {
-          iter.stop();
-        }
-      }
-    }
-  }
-  await iter.closed();
-  assert(count >= 2);
-
-  // stop the consumer blocking
-  blocking.stop();
-  await blocking.closed();
-  await cleanup(ns, nc);
-});
+// 2.11.6 changed behaviour - so requrests with expires will not receive `exceeded maxwaiting`
+//
+// Deno.test("409 - max waiting", async () => {
+//   const { ns, nc } = await setup(jetstreamServerConf({}));
+//   const { stream } = await initStream(nc);
+//
+//   const jsm = await jetstreamManager(nc);
+//
+//   // only one pull request
+//   await jsm.consumers.add(stream, {
+//     durable_name: "a",
+//     ack_policy: AckPolicy.Explicit,
+//     max_waiting: 1,
+//   });
+//
+//   const js = jetstream(nc);
+//   const c = await js.consumers.get(stream, "a");
+//
+//   // consume with an open pull
+//   const blocking = await c.consume({ callback: () => {} });
+//
+//   await assertRejects(
+//     () => {
+//       return c.next({ expires: 1_000 });
+//     },
+//     Error,
+//     "exceeded maxwaiting",
+//   );
+//
+//   await assertRejects(
+//     async () => {
+//       const msgs = await c.fetch({ expires: 1_000 });
+//       for await (const _ of msgs) {
+//         // nothing
+//       }
+//     },
+//     Error,
+//     "exceeded maxwaiting",
+//   );
+//
+//   let count = 0;
+//
+//   const iter = await c.consume({ expires: 1_000, callback: () => {} });
+//   for await (const s of iter.status()) {
+//     if (s.type === "exceeded_limits") {
+//       if (s.description.includes("exceeded maxwaiting")) {
+//         count++;
+//         if (count >= 2) {
+//           iter.stop();
+//         }
+//       }
+//     }
+//   }
+//   await iter.closed();
+//   assert(count >= 2);
+//
+//   // stop the consumer blocking
+//   blocking.stop();
+//   await blocking.closed();
+//   await cleanup(ns, nc);
+// });
