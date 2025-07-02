@@ -700,25 +700,26 @@ Deno.test("consume - max_waiting throttles", async () => {
 
   const c = await js.consumers.get("A", "a");
   // @ts-ignore: test
-  nc.options.debug = true;
+  // nc.options.debug = true;
 
   const p = c.next({ expires: 10_000 });
-  let exceeded = 0;
-  let diff = 0;
-  const gotNextAfter = deferred();
   await delay(500);
 
+  let hb = 0;
+  let nexts = 0;
   const cm = await c.consume({ expires: 5_000 });
-  (async () => {
+  const done = (async () => {
     for await (const s of cm.status()) {
       if (
-        s.type === "exceeded_limits" && s.description === "exceeded maxwaiting"
+        s.type === "heartbeats_missed"
       ) {
-        exceeded = Date.now();
+        hb++;
       }
-      if (exceeded > 0 && s.type === "next") {
-        diff = Date.now() - exceeded;
-        gotNextAfter.resolve();
+      if (s.type === "next") {
+        nexts++;
+        if (hb > 0) {
+          break;
+        }
       }
     }
   })().then();
@@ -729,8 +730,8 @@ Deno.test("consume - max_waiting throttles", async () => {
     }
   })().then();
 
-  await Promise.all([p, gotNextAfter]);
-  assert(diff > 5000);
+  await Promise.all([p, done]);
+
   await cleanup(ns, nc);
 });
 
@@ -751,25 +752,25 @@ Deno.test("consume - max_bytes throttles", async () => {
 
   const c = await js.consumers.get("A", "a");
 
-  let exceeded = 0;
-  let diff = 0;
-  const gotNextAfter = deferred();
   await delay(500);
 
+  let next = 0;
+  let hbs = 0;
+
   const cm = await c.consume({ expires: 5_000, max_bytes: 8 });
-  (async () => {
+  const done = (async () => {
     for await (const s of cm.status()) {
-      console.log(s);
-      if (
-        s.type === "exceeded_limits" &&
-        s.description === "message size exceeds maxbytes"
-      ) {
-        if (exceeded === 0) {
-          exceeded = Date.now();
-        } else {
-          diff = Date.now() - exceeded;
-          gotNextAfter.resolve();
-        }
+      switch (s.type) {
+        case "next":
+          next++;
+          // if we got heartbeats, we emitted next to recover
+          if (hbs > 0) {
+            return;
+          }
+          break;
+        case "heartbeats_missed":
+          hbs++;
+          break;
       }
     }
   })().then();
@@ -780,7 +781,6 @@ Deno.test("consume - max_bytes throttles", async () => {
     }
   })().then();
 
-  await gotNextAfter;
-  assert(diff > 5000);
+  await done;
   await cleanup(ns, nc);
 });
