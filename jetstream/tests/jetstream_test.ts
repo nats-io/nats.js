@@ -322,15 +322,29 @@ Deno.test("jetstream - last subject sequence subject", async () => {
 
   const js = jsm.jetstream();
 
+  const r: Record<string, number> = {};
+
+  async function pub(subj: string, data: string) {
+    return await js.publish(subj, data)
+      .then((pa) => {
+        r[subj] = pa.seq;
+        const chunks = subj.split(".");
+        chunks[2] = "*";
+        r[chunks.join(".")] = pa.seq;
+      });
+  }
+
   await Promise.all([
-    js.publish("a.1.foo", "1:1"), // Last is 1 for aa.1.foo; 1 for a.1.*;
-    js.publish("a.1.bar", "1:2"), // Last is 2 for a.1.bar; 2 for a.1.*;
-    js.publish("a.2.foo", "2:1"), // Last is 3 for a.2.foo; 3 for a.2.*;
-    js.publish("a.3.bar", "3:1"), // Last is 4 for a.3.bar; 4 for a.3.*;
-    js.publish("a.1.baz", "1:3"), // Last is 5 for a.1.baz; 5 for a.1.*;
-    js.publish("a.1.bar", "1:4"), // Last is 6 for a.1.baz; 6 for a.1.*;
-    js.publish("a.2.baz", "2:2"), // Last is 7 for a.2.baz; 7 for a.2.*;
-  ]);
+    pub("a.1.foo", "1:1"),
+    pub("a.1.bar", "1:2"),
+    pub("a.2.foo", "2:1"),
+    pub("a.3.bar", "3:1"),
+    pub("a.1.baz", "1:3"),
+    pub("a.1.bar", "1:4"),
+    pub("a.2.baz", "2:2"),
+  ]).then(() => {
+    console.table(r);
+  });
 
   async function pc(subj: string, filter: string, seq: number, ok: boolean) {
     await js.publish(subj, "data", {
@@ -347,6 +361,19 @@ Deno.test("jetstream - last subject sequence subject", async () => {
       });
   }
 
+  // ┌─────────┬────────┐
+  // │ (idx)   │ Values │
+  // ├─────────┼────────┤
+  // │ a.1.foo │ 1      │
+  // │ a.1.*   │ 6      │
+  // │ a.1.bar │ 6      │
+  // │ a.2.foo │ 3      │
+  // │ a.2.*   │ 7      │
+  // │ a.3.bar │ 4      │
+  // │ a.3.*   │ 4      │
+  // │ a.1.baz │ 5      │
+  // │ a.2.baz │ 7      │
+  // └─────────┴────────┘
   await pc("a.1.foo", "a.1.*", 0, false);
   await pc("a.1.bar", "a.1.*", 0, false);
   await pc("a.1.xxx", "a.1.*", 0, false);
@@ -359,16 +386,47 @@ Deno.test("jetstream - last subject sequence subject", async () => {
   await pc("a.1.bar", "a.1.*", 3, false);
   await pc("a.1.bar", "a.1.*", 4, false);
   await pc("a.1.bar", "a.1.*", 5, false);
-  await pc("a.1.bar", "a.1.*", 6, true); // Last is 8 for a.1.bar; 8 for a.1.*;
+  // this inserts seq 8 because a.1.* is at seq 6 (a.2.baz is at 7)
+  await pc("a.1.bar", "a.1.*", 6, true);
+  // ┌─────────┬────────┐
+  // │ (idx)   │ Values │
+  // ├─────────┼────────┤
+  // │ a.1.foo │ 1      │
+  // │ a.1.*   │ 8      │
+  // │ a.1.bar │ 8      │
+  // │ a.2.foo │ 3      │
+  // │ a.2.*   │ 7      │
+  // │ a.3.bar │ 4      │
+  // │ a.3.*   │ 4      │
+  // │ a.1.baz │ 5      │
+  // │ a.2.baz │ 7      │
+  // └─────────┴────────┘
   await pc("a.1.baz", "a.1.*", 2, false);
   await pc("a.1.bar", "a.1.*", 7, false);
-  await pc("a.1.xxx", "a.1.*", 8, true); // Last is 9 for a.1.xxx; 9 for a.1.*;
+
+  // this inserts seq 9, because a.1.* is at 8
+  await pc("a.1.xxx", "a.1.*", 8, true);
+  // ┌─────────┬────────┐
+  // │ (idx)   │ Values │
+  // ├─────────┼────────┤
+  // │ a.1.foo │ 1      │
+  // │ a.1.*   │ 9      │
+  // │ a.1.bar │ 8      │
+  // │ a.2.foo │ 3      │
+  // │ a.2.*   │ 7      │
+  // │ a.3.bar │ 4      │
+  // │ a.3.*   │ 4      │
+  // │ a.1.baz │ 5      │
+  // │ a.2.baz │ 7      │
+  // │ a.1.xxx │ 9      │
+  // └─────────┴────────┘
+  // and so forth...
   await pc("a.2.foo", "a.2.*", 2, false);
-  await pc("a.2.foo", "a.2.*", 7, true); // Last is 10 for a.2.foo; 10 for a.2.*;
-  await pc("a.xxx", "a.*", 0, true); // Last is 0 for a.xxx; 0 for a.*;
-  await pc("a.xxx", "a.*.*", 0, false); // Last is 11 for a.xxx; 11 for a.*.*;
-  await pc("a.3.xxx", "a.3.*", 4, true); // Last is 12 for a.3.xxx; 12 for a.3.*;
-  await pc("a.3.xyz", "a.3.*", 12, true); // Last is 13 for a.3.xyz; 13 for a.3.*;
+  await pc("a.2.foo", "a.2.*", 7, true);
+  await pc("a.xxx", "a.*", 0, true);
+  await pc("a.xxx", "a.*.*", 0, false);
+  await pc("a.3.xxx", "a.3.*", 4, true);
+  await pc("a.3.xyz", "a.3.*", 12, true);
 
   await cleanup(ns, nc);
 });
