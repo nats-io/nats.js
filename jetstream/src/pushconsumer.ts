@@ -44,7 +44,6 @@ import type {
   QueuedIterator,
   Status,
   Subscription,
-  SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import { JetStreamStatus } from "./jserrors.ts";
 
@@ -293,7 +292,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           : msg.subject === subject;
 
         if (isProtocol) {
-          if (msg.subject !== (this.sub as SubscriptionImpl).subject) {
+          if (msg.subject !== this.sub.getSubject()) {
             // this is a stale message - was not sent to the current inbox
             return;
           }

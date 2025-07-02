@@ -21,7 +21,6 @@ import type {
   QueuedIterator,
   Status,
   Subscription,
-  SubscriptionImpl,
 } from "@nats-io/nats-core/internal";
 import {
   backoff,
@@ -232,7 +231,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           : msg.subject === this.inbox;
 
         if (isProtocol) {
-          if (msg.subject !== (this.sub as SubscriptionImpl).subject) {
+          if (msg.subject !== this.sub.getSubject()) {
             // this is a stale message - was not sent to the current inbox
             return;
           }
@@ -437,7 +436,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     this.sub.closed.then(() => {
       // for ordered consumer we cannot break the iterator
-      if ((this.sub as SubscriptionImpl).draining) {
+      if (this.sub.isDraining()) {
         // @ts-ignore: we are pushing the pull fn
         this._push(() => {
           this.stop();
