@@ -194,8 +194,8 @@ Deno.test("basics - subscriptions pass exact subject to cb", async () => {
 Deno.test("basics - subscribe returns Subscription", async () => {
   const { ns, nc } = await setup();
   const subj = createInbox();
-  const sub = nc.subscribe(subj) as SubscriptionImpl;
-  assertEquals(sub.sid, 1);
+  const sub = nc.subscribe(subj);
+  assertEquals(sub.getID(), 1);
   await cleanup(ns, nc);
 });
 

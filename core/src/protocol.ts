@@ -299,7 +299,7 @@ export class Subscriptions {
   add(s: SubscriptionImpl): SubscriptionImpl {
     this.sidCounter++;
     s.sid = this.sidCounter;
-    this.subs.set(s.sid, s as SubscriptionImpl);
+    this.subs.set(s.sid, s);
     return s;
   }
 
@@ -705,7 +705,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       return;
     }
 
-    const sub = this.subscriptions.get(msg.sid) as SubscriptionImpl;
+    const sub = this.subscriptions.get(msg.sid);
     if (!sub) {
       return;
     }
@@ -1010,7 +1010,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   sendSubscriptions(): void {
     const cmds: string[] = [];
     this.subscriptions.all().forEach((s) => {
-      const sub = s as SubscriptionImpl;
+      const sub = s;
       if (sub.queue) {
         cmds.push(`SUB ${sub.subject} ${sub.queue} ${sub.sid}${CR_LF}`);
       } else {
