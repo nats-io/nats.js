@@ -47,14 +47,15 @@ jobs:
           name: nats-server
           cache: true
 
-      - name: Disable NPM workspace
+      - name: Build workspace
         run: |
-          deno task disable-npm-workspace
+          npm install --workspaces
+          npm run build --workspaces
 
-      - name: Test Node Transport with specified dependencies
+
+      - name: Test Node Transport with local dependencies
         working-directory: transport-node
         env:
           CI: true
         run: |
-          npm install
           npm test
