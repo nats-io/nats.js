@@ -18,8 +18,8 @@ jobs:
   test:
     strategy:
       matrix:
-        deno-version: [2.2.x]
-        node-version: [23.x]
+        deno-version: [2.4.x]
+        node-version: [24.x]
 
     name: test node transport with local dependencies
     runs-on: ubuntu-latest
