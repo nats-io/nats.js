@@ -1,3 +1,22 @@
+/**
+ * Version Manager for NATS.js Monorepo
+ *
+ * This tool manages versions across all modules in the NATS.js monorepo.
+ * It is designed to handle future versions of modules that may not yet exist in registries.
+ *
+ * Key features:
+ * - Check version consistency across all modules
+ * - Fix version inconsistencies
+ * - Bump versions using npm's versioning (with --ignore-scripts and --workspaces-update=false by default)
+ * - Suggest version bumps based on conventional commits
+ * - List versions from NPM/JSR registries
+ *
+ * Note: The bump command uses --ignore-scripts to prevent any npm lifecycle scripts
+ * (including postversion) from running, and --workspaces-update=false to prevent npm
+ * from attempting to resolve dependencies that don't exist yet in the registry.
+ * All operations are local only.
+ */
+
 import { parse } from "https://deno.land/std@0.224.0/jsonc/parse.ts";
 import * as semver from "https://deno.land/std@0.224.0/semver/mod.ts";
 
@@ -105,9 +124,14 @@ async function getModuleVersions(): Promise<Map<string, string>> {
       if (pkg && pkg.name && pkg.version && pkg.name.startsWith(NATS_SCOPE)) {
         const existingVersion = moduleVersions.get(pkg.name);
         if (existingVersion && existingVersion !== pkg.version) {
-          console.warn(`Warning: ${pkg.name} has different versions in package.json (${pkg.version}) and deno.json (${existingVersion})`);
+          console.warn(
+            `Warning: ${pkg.name} has different versions in package.json (${pkg.version}) and deno.json (${existingVersion})`,
+          );
           // Use the higher version as the expected one
-          const comparison = semver.compare(semver.parse(pkg.version), semver.parse(existingVersion));
+          const comparison = semver.compare(
+            semver.parse(pkg.version),
+            semver.parse(existingVersion),
+          );
           if (comparison > 0) {
             moduleVersions.set(pkg.name, pkg.version);
           }
@@ -123,9 +147,14 @@ async function getModuleVersions(): Promise<Map<string, string>> {
       ) {
         const existingVersion = moduleVersions.get(denoConfig.name);
         if (existingVersion && existingVersion !== denoConfig.version) {
-          console.warn(`Warning: ${denoConfig.name} has different versions in package.json (${existingVersion}) and deno.json (${denoConfig.version})`);
+          console.warn(
+            `Warning: ${denoConfig.name} has different versions in package.json (${existingVersion}) and deno.json (${denoConfig.version})`,
+          );
           // Use the higher version as the expected one
-          const comparison = semver.compare(semver.parse(denoConfig.version), semver.parse(existingVersion));
+          const comparison = semver.compare(
+            semver.parse(denoConfig.version),
+            semver.parse(existingVersion),
+          );
           if (comparison > 0) {
             moduleVersions.set(denoConfig.name, denoConfig.version);
           }
@@ -149,8 +178,11 @@ async function checkVersions() {
   }> = [];
 
   // First check if each module's own package.json and deno.json have the same version
-  const moduleOwnVersions = new Map<string, { packageVersion?: string; denoVersion?: string }>();
-  
+  const moduleOwnVersions = new Map<
+    string,
+    { packageVersion?: string; denoVersion?: string }
+  >();
+
   for (const filePath of allFiles) {
     if (filePath.endsWith("package.json")) {
       const pkg = await readJsonFile<PackageJson>(filePath);
@@ -161,7 +193,10 @@ async function checkVersions() {
       }
     } else if (filePath.endsWith("deno.json")) {
       const denoConfig = await readJsonFile<DenoJson>(filePath);
-      if (denoConfig && denoConfig.name && denoConfig.version && denoConfig.name.startsWith(NATS_SCOPE)) {
+      if (
+        denoConfig && denoConfig.name && denoConfig.version &&
+        denoConfig.name.startsWith(NATS_SCOPE)
+      ) {
         const existing = moduleOwnVersions.get(denoConfig.name) || {};
         existing.denoVersion = denoConfig.version;
         moduleOwnVersions.set(denoConfig.name, existing);
@@ -171,7 +206,10 @@ async function checkVersions() {
 
   // Check for mismatches in module's own files
   for (const [moduleName, versions] of moduleOwnVersions) {
-    if (versions.packageVersion && versions.denoVersion && versions.packageVersion !== versions.denoVersion) {
+    if (
+      versions.packageVersion && versions.denoVersion &&
+      versions.packageVersion !== versions.denoVersion
+    ) {
       // Find the actual file paths
       for (const filePath of allFiles) {
         if (filePath.endsWith("package.json")) {
@@ -195,6 +233,64 @@ async function checkVersions() {
             });
           }
         }
+      }
+    }
+  }
+
+  // Build module directory map
+  const moduleDirs = new Map<string, string>();
+  for (const filePath of allFiles) {
+    if (filePath.endsWith("package.json")) {
+      const pkg = await readJsonFile<PackageJson>(filePath);
+      if (pkg && pkg.name && pkg.name.startsWith(NATS_SCOPE)) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(pkg.name, dir);
+      }
+    } else if (filePath.endsWith("deno.json")) {
+      const denoConfig = await readJsonFile<DenoJson>(filePath);
+      if (
+        denoConfig && denoConfig.name && denoConfig.name.startsWith(NATS_SCOPE)
+      ) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(denoConfig.name, dir);
+      }
+    }
+  }
+
+  // Check version.ts files match manifest versions
+  const modulesWithVersionTs = [
+    "@nats-io/nats-core",
+    "@nats-io/transport-node",
+    "@nats-io/transport-deno",
+  ];
+
+  for (const moduleName of modulesWithVersionTs) {
+    const moduleDir = moduleDirs.get(moduleName);
+    if (!moduleDir) continue;
+
+    const versionTsPath = `${moduleDir}/src/version.ts`;
+    try {
+      const versionTsContent = await Deno.readTextFile(versionTsPath);
+      const versionMatch = versionTsContent.match(
+        /export const version = "([^"]+)"/,
+      );
+      if (versionMatch) {
+        const versionTsVersion = versionMatch[1];
+        const expectedVersion = moduleVersions.get(moduleName);
+        if (expectedVersion && versionTsVersion !== expectedVersion) {
+          inconsistencies.push({
+            file: versionTsPath,
+            module: `${moduleName} (version.ts)`,
+            expected: expectedVersion,
+            actual: versionTsVersion,
+          });
+        }
+      }
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) {
+        console.error(`Error reading ${versionTsPath}: ${e}`);
       }
     }
   }
@@ -266,12 +362,17 @@ async function fixVersions() {
   for (const filePath of allFiles) {
     if (filePath.endsWith("deno.json")) {
       const denoConfig = await readJsonFile<DenoJson>(filePath);
-      if (denoConfig && denoConfig.name && denoConfig.version && denoConfig.name.startsWith(NATS_SCOPE)) {
+      if (
+        denoConfig && denoConfig.name && denoConfig.version &&
+        denoConfig.name.startsWith(NATS_SCOPE)
+      ) {
         const expectedVersion = moduleVersions.get(denoConfig.name);
         if (expectedVersion && denoConfig.version !== expectedVersion) {
           denoConfig.version = expectedVersion;
           await writeJsonFile(filePath, denoConfig);
-          console.log(`Fixed ${filePath}: ${denoConfig.name} own version to ${expectedVersion}`);
+          console.log(
+            `Fixed ${filePath}: ${denoConfig.name} own version to ${expectedVersion}`,
+          );
           fixedCount++;
         }
       }
@@ -336,67 +437,243 @@ async function fixVersions() {
       }
     }
   }
+  // Fix version.ts files
+  const modulesWithVersionTs = [
+    "@nats-io/nats-core",
+    "@nats-io/transport-node",
+    "@nats-io/transport-deno",
+  ];
+
+  // Build module directory map
+  const moduleDirs = new Map<string, string>();
+  for (const filePath of allFiles) {
+    if (filePath.endsWith("package.json")) {
+      const pkg = await readJsonFile<PackageJson>(filePath);
+      if (pkg && pkg.name && pkg.name.startsWith(NATS_SCOPE)) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(pkg.name, dir);
+      }
+    } else if (filePath.endsWith("deno.json")) {
+      const denoConfig = await readJsonFile<DenoJson>(filePath);
+      if (
+        denoConfig && denoConfig.name && denoConfig.name.startsWith(NATS_SCOPE)
+      ) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(denoConfig.name, dir);
+      }
+    }
+  }
+
+  for (const moduleName of modulesWithVersionTs) {
+    const moduleDir = moduleDirs.get(moduleName);
+    if (!moduleDir) continue;
+
+    const expectedVersion = moduleVersions.get(moduleName);
+    if (!expectedVersion) continue;
+
+    const versionTsPath = `${moduleDir}/src/version.ts`;
+    try {
+      const versionTsContent = await Deno.readTextFile(versionTsPath);
+      const versionMatch = versionTsContent.match(
+        /export const version = "([^"]+)"/,
+      );
+      if (versionMatch && versionMatch[1] !== expectedVersion) {
+        const versionContent = `// This file is generated - do not edit
+export const version = "${expectedVersion}";
+`;
+        await Deno.writeTextFile(versionTsPath, versionContent);
+        console.log(`Fixed ${versionTsPath}: version to ${expectedVersion}`);
+        fixedCount++;
+      }
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) {
+        console.error(`Error updating ${versionTsPath}: ${e}`);
+      }
+    }
+  }
+
   console.log(`Fixed ${fixedCount} version inconsistencies.`);
 }
 
 async function bumpVersion(
   moduleName: string,
-  bumpType: "major" | "minor" | "patch" | "prerelease",
+  bumpType: string,
+  preid?: string,
+  isDependent: boolean = false,
 ) {
   const allFiles = await getAllPackageAndDenoJsonPaths();
   let originalVersion: string | undefined;
   let newVersion: string | undefined;
+  let moduleDir: string | undefined;
 
-  // Find ALL files (package.json and deno.json) for the module and bump their versions
-  const moduleFiles: string[] = [];
+  // Find the module directory and its package.json or deno.json
   for (const filePath of allFiles) {
-    if (filePath.endsWith("package.json") || filePath.endsWith("deno.json")) {
-      let content: PackageJson | DenoJson | null = null;
-      if (filePath.endsWith("package.json")) {
-        content = await readJsonFile<PackageJson>(filePath);
-      } else {
-        content = await readJsonFile<DenoJson>(filePath);
-      }
-
-      if (content && content.name === moduleName && content.version) {
-        moduleFiles.push(filePath);
-        if (!originalVersion) {
-          originalVersion = content.version;
-          const parsedVersion = semver.parse(originalVersion);
-          const bumped = semver.increment(parsedVersion, bumpType);
-          if (!bumped) {
-            console.error(
-              `Failed to bump version for ${moduleName} with type ${bumpType}`,
-            );
-            return;
-          }
-          newVersion = semver.format(bumped);
-        }
-      }
-    }
-  }
-
-  // Update all module files with the new version
-  for (const filePath of moduleFiles) {
-    let content: PackageJson | DenoJson | null = null;
     if (filePath.endsWith("package.json")) {
-      content = await readJsonFile<PackageJson>(filePath);
-    } else {
-      content = await readJsonFile<DenoJson>(filePath);
-    }
-
-    if (content && content.version && newVersion) {
-      content.version = newVersion;
-      await writeJsonFile(filePath, content);
-      console.log(
-        `Bumped ${moduleName} from ${originalVersion} to ${newVersion} in ${filePath}`,
-      );
+      const content = await readJsonFile<PackageJson>(filePath);
+      if (content && content.name === moduleName && content.version) {
+        originalVersion = content.version;
+        // Extract directory from path
+        const lastSlash = filePath.lastIndexOf("/");
+        moduleDir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        break;
+      }
+    } else if (filePath.endsWith("deno.json")) {
+      const content = await readJsonFile<DenoJson>(filePath);
+      if (content && content.name === moduleName && content.version) {
+        originalVersion = content.version;
+        // Extract directory from path
+        const lastSlash = filePath.lastIndexOf("/");
+        moduleDir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        break;
+      }
     }
   }
 
-  if (!newVersion) {
+  if (!originalVersion || !moduleDir) {
     console.error(`Could not find module ${moduleName} to bump its version.`);
     return;
+  }
+
+  // Handle release bump type to remove prerelease qualifier
+  if (bumpType === "release") {
+    const currentSemver = semver.parse(originalVersion);
+    if (!currentSemver.prerelease || currentSemver.prerelease.length === 0) {
+      console.log(
+        `${moduleName} is already a release version: ${originalVersion}`,
+      );
+      return;
+    }
+    // Remove prerelease suffix
+    newVersion =
+      `${currentSemver.major}.${currentSemver.minor}.${currentSemver.patch}`;
+
+    // Update package.json manually if it exists
+    const pkg = await readJsonFile<PackageJson>(`${moduleDir}/package.json`);
+    if (pkg) {
+      pkg.version = newVersion;
+      await writeJsonFile(`${moduleDir}/package.json`, pkg);
+    }
+
+    // Update deno.json if it exists (for deno-only modules)
+    const denoJsonPath = `${moduleDir}/deno.json`;
+    const denoConfig = await readJsonFile<DenoJson>(denoJsonPath);
+    if (denoConfig && denoConfig.version) {
+      denoConfig.version = newVersion;
+      await writeJsonFile(denoJsonPath, denoConfig);
+    }
+
+    console.log(
+      `Released ${moduleName} from ${originalVersion} to ${newVersion}`,
+    );
+  } else {
+    // Calculate version using semver for all modules
+    const currentSemver = semver.parse(originalVersion);
+
+    // Handle special bump types with preid
+    if (
+      bumpType === "premajor" || bumpType === "preminor" ||
+      bumpType === "prepatch" || bumpType === "prerelease"
+    ) {
+      // For pre-versions, use the preid if provided
+      const prereleaseIdentifier = preid || undefined;
+
+      if (
+        bumpType === "prerelease" && currentSemver.prerelease &&
+        currentSemver.prerelease.length > 0
+      ) {
+        // If already a prerelease, just increment the prerelease version
+        newVersion = semver.format(
+          semver.increment(currentSemver, "prerelease", prereleaseIdentifier)!,
+        );
+      } else {
+        // Otherwise use the appropriate pre-bump type
+        const releaseType = bumpType as
+          | "premajor"
+          | "preminor"
+          | "prepatch"
+          | "prerelease";
+        newVersion = semver.format(
+          semver.increment(currentSemver, releaseType, prereleaseIdentifier)!,
+        );
+      }
+    } else {
+      // Regular version bumps
+      const releaseType = bumpType as "major" | "minor" | "patch";
+      newVersion = semver.format(semver.increment(currentSemver, releaseType)!);
+    }
+
+    console.log(
+      `Bumped ${moduleName} from ${originalVersion} to ${newVersion}`,
+    );
+
+    // Update package.json if it exists
+    const pkg = await readJsonFile<PackageJson>(`${moduleDir}/package.json`);
+    if (pkg) {
+      pkg.version = newVersion;
+      await writeJsonFile(`${moduleDir}/package.json`, pkg);
+    }
+
+    // Update deno.json if it exists
+    const denoJsonPath = `${moduleDir}/deno.json`;
+    const denoConfig = await readJsonFile<DenoJson>(denoJsonPath);
+    if (denoConfig && denoConfig.version) {
+      denoConfig.version = newVersion;
+      await writeJsonFile(denoJsonPath, denoConfig);
+      console.log(`Updated ${denoJsonPath} to version ${newVersion}`);
+    }
+  }
+
+  // Update version.ts if it exists
+  const versionTsPath = `${moduleDir}/src/version.ts`;
+  try {
+    await Deno.stat(versionTsPath);
+    const versionContent = `// This file is generated - do not edit
+export const version = "${newVersion}";
+`;
+    await Deno.writeTextFile(versionTsPath, versionContent);
+    console.log(`Updated ${versionTsPath} to version ${newVersion}`);
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) {
+      console.error(`Error updating version.ts: ${error}`);
+    }
+  }
+
+  // Define module dependencies
+  const MODULE_DEPENDENCIES: Record<string, string[]> = {
+    "@nats-io/nats-core": [],
+    "@nats-io/transport-node": ["@nats-io/nats-core"],
+    "@nats-io/transport-deno": ["@nats-io/nats-core"],
+    "@nats-io/jetstream": ["@nats-io/nats-core"],
+    "@nats-io/kv": ["@nats-io/nats-core", "@nats-io/jetstream"],
+    "@nats-io/obj": ["@nats-io/nats-core", "@nats-io/jetstream"],
+    "@nats-io/services": ["@nats-io/nats-core"],
+  };
+
+  // Find all modules that depend on the bumped module
+  const dependentModules = new Set<string>();
+  for (const [mod, deps] of Object.entries(MODULE_DEPENDENCIES)) {
+    if (deps.includes(moduleName)) {
+      dependentModules.add(mod);
+    }
+  }
+
+  // If we bumped a dependency, we need to bump dependents too (but only if not already a dependent)
+  if (
+    !isDependent && dependentModules.size > 0 &&
+    (bumpType === "major" || bumpType === "minor")
+  ) {
+    console.log(`\nPropagating ${bumpType} bump to dependent modules...`);
+    for (const depModule of dependentModules) {
+      console.log(`\nBumping ${depModule} due to ${moduleName} dependency...`);
+      await bumpVersion(
+        depModule,
+        bumpType === "major" ? "major" : "minor",
+        preid,
+        true,
+      );
+    }
   }
 
   // Update all references to the bumped module
@@ -432,9 +709,12 @@ async function bumpVersion(
         for (const importPath in (content as DenoJson).imports) {
           const importString = (content as DenoJson).imports![importPath];
           // Escape special regex characters in module name
-          const escapedModuleName = moduleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const escapedModuleName = moduleName.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\$&",
+          );
           const match = importString.match(
-            new RegExp(`(jsr:${escapedModuleName})@([\\d\\.-]+)`),
+            new RegExp(`(jsr:${escapedModuleName})@([\\d.-]+)`),
           );
           if (match && match[2] !== newVersion) {
             (content as DenoJson).imports![importPath] = `${
@@ -563,8 +843,7 @@ async function fetchModuleVersions(
           ) || sortedVersions[0];
 
           // Find the latest prerelease
-          const latestPrerelease = sortedVersions.find((v) => v.includes("-"));
-          result.jsrPrerelease = latestPrerelease;
+          result.jsrPrerelease = sortedVersions.find((v) => v.includes("-"));
         }
       }
     } catch (_) {
@@ -629,20 +908,23 @@ async function getLastReleaseTag(): Promise<string | null> {
   return null;
 }
 
-async function getCommitsSinceTag(tag: string, path?: string): Promise<Commit[]> {
+async function getCommitsSinceTag(
+  tag: string,
+  path?: string,
+): Promise<Commit[]> {
   const commits: Commit[] = [];
   try {
     const args = ["log", `${tag}..HEAD`, "--pretty=format:%H|%s|%an|%aI"];
     if (path) {
       args.push("--", path);
     }
-    
+
     const cmd = new Deno.Command("git", {
       args,
       stdout: "piped",
       stderr: "piped",
     });
-    
+
     const { code, stdout } = await cmd.output();
     if (code === 0) {
       const output = new TextDecoder().decode(stdout).trim();
@@ -660,7 +942,9 @@ async function getCommitsSinceTag(tag: string, path?: string): Promise<Commit[]>
   return commits;
 }
 
-function analyzeCommits(commits: Commit[]): { suggestedBump: "major" | "minor" | "patch" | "none"; reason: string } {
+function analyzeCommits(
+  commits: Commit[],
+): { suggestedBump: "major" | "minor" | "patch" | "none"; reason: string } {
   if (commits.length === 0) {
     return { suggestedBump: "none", reason: "No changes" };
   }
@@ -668,39 +952,38 @@ function analyzeCommits(commits: Commit[]): { suggestedBump: "major" | "minor" |
   let hasMajor = false;
   let hasMinor = false;
   let hasPatch = false;
-  
+
   const changeTypes = new Set<string>();
 
   for (const commit of commits) {
     const message = commit.message;
     const lowerMessage = message.toLowerCase();
-    
+
     // Check for breaking changes
-    if (lowerMessage.includes("breaking change") || lowerMessage.includes("breaking:") || message.startsWith("!:") || /^[a-z]+!(\([^)]+\))?:/.test(message)) {
+    if (
+      lowerMessage.includes("breaking change") ||
+      lowerMessage.includes("breaking:") || message.startsWith("!:") ||
+      /^[a-z]+!(\([^)]+\))?:/.test(message)
+    ) {
       hasMajor = true;
       changeTypes.add("breaking");
-    }
-    // Check for features
+    } // Check for features
     else if (/^feat(\([^)]+\))?:/i.test(message)) {
       hasMinor = true;
       changeTypes.add("features");
-    }
-    // Check for fixes
+    } // Check for fixes
     else if (/^fix(\([^)]+\))?:/i.test(message)) {
       hasPatch = true;
       changeTypes.add("fixes");
-    }
-    // Check for performance improvements
+    } // Check for performance improvements
     else if (/^perf(\([^)]+\))?:/i.test(message)) {
       hasPatch = true;
       changeTypes.add("performance");
-    }
-    // Check for refactoring
+    } // Check for refactoring
     else if (/^refactor(\([^)]+\))?:/i.test(message)) {
       hasPatch = true;
       changeTypes.add("refactoring");
-    }
-    // Check for other changes
+    } // Check for other changes
     else if (
       /^(test|docs|style|build|ci)(\([^)]+\))?:/i.test(message) ||
       (/^chore(\([^)]+\))?:/i.test(message) && !lowerMessage.includes("deps"))
@@ -711,14 +994,16 @@ function analyzeCommits(commits: Commit[]): { suggestedBump: "major" | "minor" |
   }
 
   // Build concise reason string
-  let reason = "";
+  let reason: string;
   if (changeTypes.has("breaking")) {
     reason = "Breaking changes";
   } else if (changeTypes.has("features")) {
-    const others = Array.from(changeTypes).filter(t => t !== "features");
-    reason = others.length > 0 ? `Features + ${others.join(", ")}` : "Features added";
+    const others = Array.from(changeTypes).filter((t) => t !== "features");
+    reason = others.length > 0
+      ? `Features + ${others.join(", ")}`
+      : "Features added";
   } else if (changeTypes.has("fixes")) {
-    const others = Array.from(changeTypes).filter(t => t !== "fixes");
+    const others = Array.from(changeTypes).filter((t) => t !== "fixes");
     reason = others.length > 0 ? `Fixes + ${others.join(", ")}` : "Bug fixes";
   } else if (changeTypes.has("performance")) {
     reason = "Performance improvements";
@@ -741,7 +1026,11 @@ function analyzeCommits(commits: Commit[]): { suggestedBump: "major" | "minor" |
   }
 }
 
-async function suggestVersionBumps(): Promise<void> {
+async function suggestVersionBumps(
+  showDetails: boolean = false,
+  apply: boolean = false,
+  prerelease: boolean = true,
+): Promise<void> {
   const lastTag = await getLastReleaseTag();
   if (!lastTag) {
     console.error("Could not find the last release tag");
@@ -753,18 +1042,26 @@ async function suggestVersionBumps(): Promise<void> {
   const moduleVersions = await getModuleVersions();
   const suggestions: VersionSuggestion[] = [];
 
-  // Get module directories
+  // Get module directories - reuse logic from checkVersions/fixVersions
   const moduleDirs = new Map<string, string>();
-  for await (const dirEntry of Deno.readDir(".")) {
-    if (dirEntry.isDirectory && !dirEntry.name.startsWith(".")) {
-      const packageJsonPath = `${dirEntry.name}/package.json`;
-      try {
-        const pkg = await readJsonFile<PackageJson>(packageJsonPath);
-        if (pkg && pkg.name && pkg.name.startsWith(NATS_SCOPE)) {
-          moduleDirs.set(pkg.name, dirEntry.name);
-        }
-      } catch (_) {
-        // Ignore
+  const allPaths = await getAllPackageAndDenoJsonPaths();
+
+  for (const filePath of allPaths) {
+    if (filePath.endsWith("package.json")) {
+      const pkg = await readJsonFile<PackageJson>(filePath);
+      if (pkg && pkg.name && pkg.name.startsWith(NATS_SCOPE)) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(pkg.name, dir);
+      }
+    } else if (filePath.endsWith("deno.json")) {
+      const denoConfig = await readJsonFile<DenoJson>(filePath);
+      if (
+        denoConfig && denoConfig.name && denoConfig.name.startsWith(NATS_SCOPE)
+      ) {
+        const lastSlash = filePath.lastIndexOf("/");
+        const dir = lastSlash > 0 ? filePath.substring(0, lastSlash) : ".";
+        moduleDirs.set(denoConfig.name, dir);
       }
     }
   }
@@ -772,31 +1069,34 @@ async function suggestVersionBumps(): Promise<void> {
   // Analyze each module
   for (const [moduleName, currentVersion] of moduleVersions) {
     const moduleDir = moduleDirs.get(moduleName);
-    if (!moduleDir) continue;
+    if (!moduleDir) {
+      console.log(`Warning: No directory found for module ${moduleName}`);
+      continue;
+    }
 
     // Get commits for this module
     const commits = await getCommitsSinceTag(lastTag, moduleDir);
-    
+
     // Also check for commits that mention the module in the message
     const allCommits = await getCommitsSinceTag(lastTag);
     const moduleShortName = moduleName.replace("@nats-io/", "");
-    const relevantCommits = allCommits.filter(commit => {
+    const relevantCommits = allCommits.filter((commit) => {
       const msg = commit.message.toLowerCase();
-      return msg.includes(moduleShortName) || 
-             msg.includes(`(${moduleShortName})`) ||
-             msg.includes(`[${moduleShortName}]`);
+      return msg.includes(moduleShortName) ||
+        msg.includes(`(${moduleShortName})`) ||
+        msg.includes(`[${moduleShortName}]`);
     });
 
     // Combine and deduplicate commits
     const combinedCommits = [...commits];
     for (const commit of relevantCommits) {
-      if (!combinedCommits.find(c => c.hash === commit.hash)) {
+      if (!combinedCommits.find((c) => c.hash === commit.hash)) {
         combinedCommits.push(commit);
       }
     }
 
     const analysis = analyzeCommits(combinedCommits);
-    
+
     suggestions.push({
       module: moduleName,
       currentVersion,
@@ -804,6 +1104,87 @@ async function suggestVersionBumps(): Promise<void> {
       reason: analysis.reason,
       commits: combinedCommits,
     });
+  }
+
+  // Define module dependencies (same as in bumpVersion)
+  const MODULE_DEPENDENCIES: Record<string, string[]> = {
+    "@nats-io/nats-core": [],
+    "@nats-io/transport-node": ["@nats-io/nats-core"],
+    "@nats-io/transport-deno": ["@nats-io/nats-core"],
+    "@nats-io/jetstream": ["@nats-io/nats-core"],
+    "@nats-io/kv": ["@nats-io/nats-core", "@nats-io/jetstream"],
+    "@nats-io/obj": ["@nats-io/nats-core", "@nats-io/jetstream"],
+    "@nats-io/services": ["@nats-io/nats-core"],
+  };
+
+  // Propagate version bumps through dependencies
+  for (const suggestion of suggestions) {
+    if (
+      suggestion.suggestedBump !== "none" &&
+      suggestion.suggestedBump !== "patch"
+    ) {
+      // Find all modules that depend on this module
+      for (const [depModule, deps] of Object.entries(MODULE_DEPENDENCIES)) {
+        if (deps.includes(suggestion.module)) {
+          // Find the suggestion for the dependent module
+          const depSuggestion = suggestions.find((s) => s.module === depModule);
+          if (depSuggestion) {
+            // Store the original bump type for comparison
+            const originalBump = depSuggestion.suggestedBump;
+            const moduleShortName = suggestion.module.replace("@nats-io/", "");
+
+            if (suggestion.suggestedBump === "major") {
+              if (depSuggestion.suggestedBump !== "major") {
+                depSuggestion.suggestedBump = "major";
+              }
+              // Always add dependency info to reason
+              if (
+                !depSuggestion.reason.includes(`${moduleShortName} major bump`)
+              ) {
+                if (depSuggestion.reason === "No changes") {
+                  depSuggestion.reason =
+                    `Dependency ${moduleShortName} requires major bump`;
+                } else if (
+                  originalBump === "patch" || originalBump === "none"
+                ) {
+                  // Module had patch-level changes but needs major due to dependency
+                  depSuggestion.reason =
+                    `${depSuggestion.reason} (patch→major due to ${moduleShortName})`;
+                } else {
+                  depSuggestion.reason = depSuggestion.reason +
+                    ` + ${moduleShortName} major bump`;
+                }
+              }
+            } else if (
+              suggestion.suggestedBump === "minor" &&
+              depSuggestion.suggestedBump !== "major"
+            ) {
+              if (depSuggestion.suggestedBump !== "minor") {
+                depSuggestion.suggestedBump = "minor";
+              }
+              // Always add dependency info to reason
+              if (
+                !depSuggestion.reason.includes(`${moduleShortName} minor bump`)
+              ) {
+                if (depSuggestion.reason === "No changes") {
+                  depSuggestion.reason =
+                    `Dependency ${moduleShortName} requires minor bump`;
+                } else if (
+                  originalBump === "patch" || originalBump === "none"
+                ) {
+                  // Module had patch-level changes but needs minor due to dependency
+                  depSuggestion.reason =
+                    `${depSuggestion.reason} (patch→minor due to ${moduleShortName})`;
+                } else {
+                  depSuggestion.reason = depSuggestion.reason +
+                    ` + ${moduleShortName} minor bump`;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   // Sort suggestions by module order
@@ -829,20 +1210,57 @@ async function suggestVersionBumps(): Promise<void> {
   });
 
   // Prepare table data
-  const tableData = suggestions.map(suggestion => {
+  const tableData = suggestions.map((suggestion) => {
     let newVersion = suggestion.currentVersion;
     if (suggestion.suggestedBump !== "none") {
       const currentSemver = semver.parse(suggestion.currentVersion);
-      newVersion = semver.format(semver.increment(currentSemver, suggestion.suggestedBump)!);
+
+      // If prerelease is true and we're suggesting a version bump, create a prerelease version
+      if (prerelease) {
+        // When bumping to a new major/minor/patch from a prerelease, the prerelease counter resets to 0
+        // For example: 3.0.3-1 with minor bump becomes 3.1.0-0, not 3.1.0-2
+        if (currentSemver.prerelease && currentSemver.prerelease.length > 0) {
+          // Already in prerelease, we need to:
+          // 1. First bump to the target version (which removes prerelease)
+          // 2. Then convert to prerelease which will add -0
+          const releaseType = suggestion.suggestedBump as
+            | "major"
+            | "minor"
+            | "patch";
+          const baseVersion = semver.increment(currentSemver, releaseType);
+          // Now add prerelease suffix, which will be -0
+          newVersion = `${baseVersion!.major}.${baseVersion!.minor}.${
+            baseVersion!.patch
+          }-0`;
+        } else {
+          // Not a prerelease, use normal pre-bump
+          const preBumpType = suggestion.suggestedBump === "major"
+            ? "premajor"
+            : suggestion.suggestedBump === "minor"
+            ? "preminor"
+            : "prepatch";
+          const incremented = semver.increment(
+            currentSemver,
+            preBumpType as "premajor" | "preminor" | "prepatch",
+          );
+          newVersion = semver.format(incremented!);
+        }
+      } else {
+        newVersion = semver.format(
+          semver.increment(currentSemver, suggestion.suggestedBump)!,
+        );
+      }
     }
-    
+
     return {
       module: suggestion.module,
       current: suggestion.currentVersion,
-      suggested: suggestion.suggestedBump === "none" ? suggestion.currentVersion : newVersion,
+      suggested: suggestion.suggestedBump === "none"
+        ? suggestion.currentVersion
+        : newVersion,
       bump: suggestion.suggestedBump,
       commits: suggestion.commits.length,
-      reason: suggestion.reason.length > 50 ? suggestion.reason.substring(0, 47) + "..." : suggestion.reason,
+      reason: suggestion.reason,
     };
   });
 
@@ -851,41 +1269,92 @@ async function suggestVersionBumps(): Promise<void> {
   console.log("========================\n");
   console.table(tableData);
 
-  // Show detailed commits for modules needing bumps
-  const modulesNeedingBumps = suggestions.filter(s => s.suggestedBump !== "none");
-  if (modulesNeedingBumps.length > 0) {
-    console.log("\nDetailed Changes:");
-    console.log("-----------------");
-    for (const suggestion of modulesNeedingBumps) {
-      console.log(`\n${suggestion.module} (${suggestion.commits.length} commits):`);
-      const commitDetails = suggestion.commits.slice(0, 5).map(commit => ({
-        hash: commit.hash.substring(0, 7),
-        message: commit.message.length > 60 ? commit.message.substring(0, 57) + "..." : commit.message,
-        author: commit.author,
-      }));
-      console.table(commitDetails);
-      if (suggestion.commits.length > 5) {
-        console.log(`  ... and ${suggestion.commits.length - 5} more commits`);
+  // Show detailed commits for modules needing bumps (only if --show-details flag is set)
+  if (showDetails) {
+    const modulesNeedingBumps = suggestions.filter((s) =>
+      s.suggestedBump !== "none"
+    );
+    if (modulesNeedingBumps.length > 0) {
+      console.log("\nDetailed Changes:");
+      console.log("-----------------");
+      for (const suggestion of modulesNeedingBumps) {
+        console.log(
+          `\n${suggestion.module} (${suggestion.commits.length} commits):`,
+        );
+        const commitDetails = suggestion.commits.slice(0, 5).map((commit) => ({
+          hash: commit.hash.substring(0, 7),
+          message: commit.message.length > 60
+            ? commit.message.substring(0, 57) + "..."
+            : commit.message,
+          author: commit.author,
+        }));
+        console.table(commitDetails);
+        if (suggestion.commits.length > 5) {
+          console.log(
+            `  ... and ${suggestion.commits.length - 5} more commits`,
+          );
+        }
       }
     }
   }
 
-  // Show suggested versions summary
-  console.log("\nSuggested Versions:");
-  console.log("-------------------");
-  const versionSummary = suggestions.map(s => {
-    let newVersion = s.currentVersion;
-    if (s.suggestedBump !== "none") {
-      const currentSemver = semver.parse(s.currentVersion);
-      newVersion = semver.format(semver.increment(currentSemver, s.suggestedBump)!);
+  // Apply the suggested bumps if --apply flag is set
+  if (apply) {
+    const modulesToBump = suggestions.filter((s) => s.suggestedBump !== "none");
+    if (modulesToBump.length === 0) {
+      console.log("\nNo version bumps needed.");
+      return;
     }
-    return {
-      module: s.module,
-      version: newVersion,
-      action: s.suggestedBump === "none" ? "keep current" : `bump ${s.suggestedBump}`,
-    };
-  });
-  console.table(versionSummary);
+
+    console.log("\nApplying version bumps...");
+    console.log("========================\n");
+
+    // Sort modules by dependency order to bump dependencies first
+    const sortedModules = [...modulesToBump].sort((a, b) => {
+      const aIndex = sortOrder.indexOf(a.module);
+      const bIndex = sortOrder.indexOf(b.module);
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return a.module.localeCompare(b.module);
+    });
+
+    // Apply bumps to each module
+    // Note: We pass isDependent=true to prevent automatic propagation since we're handling all modules
+    for (const suggestion of sortedModules) {
+      // If prerelease is true, convert bump type to pre-version
+      let bumpType: string = suggestion.suggestedBump;
+      if (prerelease && suggestion.suggestedBump !== "none") {
+        if (suggestion.suggestedBump === "major") bumpType = "premajor";
+        else if (suggestion.suggestedBump === "minor") bumpType = "preminor";
+        else if (suggestion.suggestedBump === "patch") bumpType = "prepatch";
+      }
+
+      console.log(`Bumping ${suggestion.module} (${bumpType})...`);
+      await bumpVersion(suggestion.module, bumpType, undefined, true);
+      console.log("");
+    }
+
+    // Run a version check to ensure everything is consistent
+    console.log("\nVerifying version consistency...");
+    const hasInconsistencies = await checkVersions();
+    if (hasInconsistencies) {
+      console.error(
+        "\nWarning: Version inconsistencies detected after bumping. Running fix...",
+      );
+      await fixVersions();
+      // Check again
+      const stillHasInconsistencies = await checkVersions();
+      if (stillHasInconsistencies) {
+        console.error("\nError: Version inconsistencies persist after fix.");
+        Deno.exit(1);
+      }
+    } else {
+      console.log("\nAll versions bumped successfully!");
+    }
+  }
 }
 
 const args = Deno.args;
@@ -900,32 +1369,129 @@ if (command === "check") {
   await fixVersions();
 } else if (command === "bump") {
   const moduleName = args[1];
-  const bumpType = args[2] as "major" | "minor" | "patch" | "prerelease";
-  if (!moduleName || !bumpType) {
+  const bumpType = args[2];
+
+  // Check for --preid flag
+  const preidIndex = args.indexOf("--preid");
+  const preid = preidIndex !== -1 && args[preidIndex + 1]
+    ? args[preidIndex + 1]
+    : undefined;
+
+  const validBumpTypes = [
+    "major",
+    "minor",
+    "patch",
+    "premajor",
+    "preminor",
+    "prepatch",
+    "prerelease",
+    "release",
+  ];
+  if (!moduleName || !bumpType || !validBumpTypes.includes(bumpType)) {
     console.error(
-      "Usage: deno run -A bin/version_manager.ts bump <module_name> <major|minor|patch|prerelease>",
+      "Usage: deno run -A bin/version_manager.ts bump <module_name|all> <version_type> [--preid <identifier>]",
+    );
+    console.error(
+      "  module_name: specific module name or 'all' to bump all modules",
+    );
+    console.error(
+      "  version_type: major | minor | patch | premajor | preminor | prepatch | prerelease | release",
+    );
+    console.error(
+      "  --preid: Identifier for prerelease versions (e.g., alpha, beta, rc)",
     );
     Deno.exit(1);
   }
-  await bumpVersion(moduleName, bumpType);
+
+  if (moduleName === "all") {
+    // Bump all modules
+    const allFiles = await getAllPackageAndDenoJsonPaths();
+    const modules: string[] = [];
+
+    // Collect all module names
+    for (const filePath of allFiles) {
+      if (filePath.endsWith("package.json")) {
+        const pkg = await readJsonFile<PackageJson>(filePath);
+        if (pkg && pkg.name && pkg.name.startsWith(NATS_SCOPE)) {
+          modules.push(pkg.name);
+        }
+      } else if (filePath.endsWith("deno.json")) {
+        const denoConfig = await readJsonFile<DenoJson>(filePath);
+        if (
+          denoConfig && denoConfig.name &&
+          denoConfig.name.startsWith(NATS_SCOPE)
+        ) {
+          modules.push(denoConfig.name);
+        }
+      }
+    }
+
+    // Remove duplicates and sort
+    const uniqueModules = [...new Set(modules)].sort();
+
+    console.log(
+      `Bumping all modules (${uniqueModules.length} total) to ${bumpType}...\n`,
+    );
+
+    // Bump each module
+    for (const module of uniqueModules) {
+      console.log(`Bumping ${module}...`);
+      await bumpVersion(module, bumpType, preid, true);
+      console.log("");
+    }
+
+    // Run version check and fix if needed
+    console.log("\nVerifying version consistency...");
+    const hasInconsistencies = await checkVersions();
+    if (hasInconsistencies) {
+      console.error("\nFixing version inconsistencies...");
+      await fixVersions();
+    }
+    console.log("\nAll modules bumped successfully!");
+  } else {
+    await bumpVersion(moduleName, bumpType, preid);
+  }
 } else if (command === "ls" || command === "list") {
   // Check for --all flag
   const showAll = args.includes("--all");
   // Get module name (skip --all if it exists)
-  const moduleName = args.find((arg) => arg !== "ls" && arg !== "list" && arg !== "--all");
+  const moduleName = args.find((arg) =>
+    arg !== "ls" && arg !== "list" && arg !== "--all"
+  );
   await fetchRemoteVersions(moduleName, showAll);
 } else if (command === "suggest") {
-  await suggestVersionBumps();
+  const showDetails = args.includes("--show-details");
+  const apply = args.includes("--apply");
+  const noPrerelease = args.includes("--no-prerelease");
+  await suggestVersionBumps(showDetails, apply, !noPrerelease);
 } else {
   console.log("Usage:");
   console.log("  deno run -A bin/version_manager.ts check");
   console.log("  deno run -A bin/version_manager.ts fix");
   console.log(
-    "  deno run -A bin/version_manager.ts bump <module_name> <major|minor|patch|prerelease>",
+    "  deno run -A bin/version_manager.ts bump <module_name|all> <version_type> [--preid <identifier>]",
+  );
+  console.log(
+    "    module_name: specific module name or 'all' to bump all modules",
+  );
+  console.log(
+    "    version_type: major | minor | patch | premajor | preminor | prepatch | prerelease | release",
+  );
+  console.log(
+    "    --preid: Identifier for prerelease versions (e.g., alpha, beta, rc)",
   );
   console.log(
     "  deno run -A bin/version_manager.ts ls [module_name] [--all]",
   );
-  console.log("  deno run -A bin/version_manager.ts suggest");
+  console.log(
+    "  deno run -A bin/version_manager.ts suggest [--show-details] [--apply] [--no-prerelease]",
+  );
+  console.log(
+    "    --show-details: Show detailed commit information for modules needing bumps",
+  );
+  console.log("    --apply: Apply all suggested version bumps automatically");
+  console.log(
+    "    --no-prerelease: Generate stable versions instead of prerelease versions",
+  );
   Deno.exit(1);
 }
