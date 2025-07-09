@@ -14,8 +14,8 @@
  */
 export const Empty: Uint8Array = new Uint8Array(0);
 
-export const TE: TextEncoder = new TextEncoder();
-export const TD: TextDecoder = new TextDecoder();
+export const TE: InstanceType<typeof TextEncoder> = new TextEncoder();
+export const TD: InstanceType<typeof TextDecoder> = new TextDecoder();
 
 function concat(...bufs: Uint8Array[]): Uint8Array {
   let max = 0;
