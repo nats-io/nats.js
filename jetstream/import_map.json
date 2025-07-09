@@ -5,6 +5,6 @@
     "@nats-io/nats-core": "jsr:@nats-io/nats-core@3.0.3-1",
     "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@3.0.3-1/internal",
     "test_helpers": "../test_helpers/mod.ts",
-    "@std/io": "jsr:@std/io@0.225.0"
+    "@std/io": "jsr:@std/io@0.225.2"
   }
 }

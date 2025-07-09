@@ -26,7 +26,7 @@ import {
   encodeAccount,
   encodeOperator,
   encodeUser,
-} from "jsr:@nats-io/jwt@0.0.9-3";
+} from "jsr:@nats-io/jwt@0.0.11";
 import type {
   MsgImpl,
   NatsConnectionImpl,

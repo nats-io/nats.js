@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.0.3-1",
+  "version": "3.1.0",
   "files": [
     "lib/",
     "LICENSE",
@@ -37,8 +37,8 @@
     "@nats-io/nuid": "2.0.3"
   },
   "devDependencies": {
-    "@types/node": "^22.13.10",
+    "@types/node": "^24.0.11",
     "shx": "^0.4.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.3"
   }
 }

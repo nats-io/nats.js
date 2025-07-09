@@ -1,4 +1,4 @@
-import { parseArgs } from "jsr:@std/cli@0.224.3/parse-args";
+import { parseArgs } from "jsr:@std/cli@1.0.20/parse-args";
 import {
   basename,
   extname,

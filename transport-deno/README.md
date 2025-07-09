@@ -20,7 +20,7 @@ NATS client functionality.
 You can get the latest release version like this:
 
 ```typescript
-import * as nats from "jsr:@nats-io/nats-transport-deno";
+import * as nats from "jsr:@nats-io/transport-deno";
 ```
 
 To specify a specific released version, simply replace nats with

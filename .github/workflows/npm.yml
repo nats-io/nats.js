@@ -9,8 +9,8 @@ jobs:
   test:
     strategy:
       matrix:
-        node-version: [23.x]
-        deno-version: [2.2.x]
+        node-version: [24.x]
+        deno-version: [2.4.x]
 
     runs-on: ubuntu-latest
     permissions:

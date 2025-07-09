@@ -39,7 +39,7 @@ import {
   encodeOperator,
   encodeUser,
   fmtCreds,
-} from "jsr:@nats-io/jwt@0.0.9-3";
+} from "jsr:@nats-io/jwt@0.0.11";
 import { assertBetween } from "test_helpers";
 
 function disconnectReconnect(nc: NatsConnection): Promise<void> {

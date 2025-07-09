@@ -70,7 +70,7 @@ import {
   encodeAccount,
   encodeOperator,
   encodeUser,
-} from "jsr:@nats-io/jwt@0.0.9-3";
+} from "jsr:@nats-io/jwt@0.0.11";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
 import {
