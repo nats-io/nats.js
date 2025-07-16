@@ -288,9 +288,13 @@ export type KV = RoKV & {
    * Creates a new entry ensuring that the entry does not exist (or
    * the current version is deleted or the key is purged)
    * If the entry already exists, this operation fails.
+   *
+   * markerTTL is specified as a [Go duration strings](https://pkg.go.dev/maze.io/x/duration#ParseDuration)
+   * ("10s", "1m", "1h"...)
+   *
    * @param k
    * @param data
-   * @param markerTTL - in milliseconds
+   * @param markerTTL - duration is specified as a string
    */
   create(k: string, data: Payload, markerTTL?: string): Promise<number>;
 
@@ -356,12 +360,6 @@ export type KvPutOptions = {
    * put will fail.
    */
   previousSeq: number;
-  /**
-   * If set, the entry will notify when deleted after the specify number
-   * of millis. Note that for this option to work, the KvBucket must have the
-   * markerTTL option.
-   */
-  ttl: string;
 
   /**
    * Timeout value in milliseconds for the put, overrides Jetstream context's

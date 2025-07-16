@@ -564,10 +564,7 @@ export class Bucket implements KV {
     let firstErr;
     try {
       const opts: Partial<KvPutOptions> = { previousSeq: 0 };
-      if (markerTTL) {
-        opts.ttl = markerTTL;
-      }
-      const n = await this.put(k, data, opts);
+      const n = await this._put(k, data, opts, markerTTL);
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
@@ -604,10 +601,11 @@ export class Bucket implements KV {
     return this.put(k, data, { previousSeq: version, timeout });
   }
 
-  async put(
+  async _put(
     k: string,
     data: Payload,
     opts: Partial<KvPutOptions> = {},
+    markerTTL?: string,
   ): Promise<number> {
     const ek = this.encodeKey(k);
     this.validateKey(ek);
@@ -618,9 +616,9 @@ export class Bucket implements KV {
       o.headers = h;
       h.set(PubHeaders.ExpectedLastSubjectSequenceHdr, `${opts.previousSeq}`);
     }
-    if (opts.ttl) {
+    if (markerTTL) {
       const h = o.headers || headers();
-      h.set(PubHeaders.MessageTTL, opts.ttl);
+      h.set(PubHeaders.MessageTTL, markerTTL);
     }
     try {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
@@ -628,6 +626,14 @@ export class Bucket implements KV {
     } catch (err) {
       return Promise.reject(err);
     }
+  }
+
+  put(
+    k: string,
+    data: Payload,
+    opts: Partial<KvPutOptions> = {},
+  ): Promise<number> {
+    return this._put(k, data, opts);
   }
 
   async get(
