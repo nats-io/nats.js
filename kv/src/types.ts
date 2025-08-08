@@ -30,6 +30,7 @@ export type KvEntry = {
   delta?: number;
   operation: "PUT" | "DEL" | "PURGE";
   length: number;
+  rawKey: string;
 
   /**
    * Convenience method to parse the entry payload as JSON. This method
@@ -49,24 +50,120 @@ export type KvWatchEntry = KvEntry & {
 };
 
 /**
- * Generic type for encoding and decoding values
- * before they are stored or returned to the client.
+ * A key codec is used to encode and decode keys before they are stored
+ * or returned to the client in a Key-Value store.
+ *
+ * The codec transforms each token (part between dots) in a key string, allowing
+ * for custom encoding/decoding while preserving the hierarchical structure of NATS subjects.
+ *
+ * ## Purpose
+ * - Enables custom encoding of keys (e.g., base64, encryption, or custom mappings)
+ * - Preserves the ability to use NATS subject wildcards for filtering
+ * - Ensures proper storage and retrieval of keys with special characters
+ *
+ * ## Requirements
+ * 1. Must preserve the dot-delimited structure of NATS subjects
+ * 2. Must handle wildcard tokens (`*` and `>`) without modification
+ * 3. Must be able to properly encode/decode each token independently
+ * 4. Must be deterministic (same input always produces same output)
+ *
+ * ## Example
+ * ```
+ * // Original key: "users.john.profile"
+ * // Encoded key: "dXNlcnM=.am9obg==.cHJvZmlsZQ=="
+ *
+ * // With wildcards (these remain unchanged):
+ * // Original key: "users.*.profile"
+ * // Encoded key: "dXNlcnM=.*.cHJvZmlsZQ=="
+ * ```
+ *
+ * Note: This codec is specifically for subject-compatible transformations of keys,
+ * not for general data transformation or serialization. It operates at the token level
+ * to preserve NATS subject semantics, ensuring that filtering, watches, and other
+ * subject-based operations continue to work properly.
+ */
+
+export type KvKeyCodec = {
+  /**
+   * Encodes a key or key token before storage
+   */
+  encode(k: string): string;
+  /**
+   * Decodes a key or key token after retrieval
+   */
+  decode(k: string): string;
+};
+
+/**
+ * @deprecated
  */
 export type KvCodec<T> = {
   encode(k: T): T;
-
   decode(k: T): T;
 };
 
+/**
+ * A payload codec for transforming data before storage and after retrieval in a Key-Value store.
+ *
+ * ## Purpose
+ * The KvPayloadCodec handles the transformation of values between the application layer and
+ * the storage layer in the NATS Key-Value store. All values in NATS KV are ultimately stored
+ * as binary data (Uint8Array), and this codec provides a way to customize how data is
+ * encoded/decoded.
+ *
+ * ## Data Flow
+ * 1. When storing: Application data (string or Uint8Array) → encode() → Uint8Array (stored in NATS)
+ * 2. When retrieving: Uint8Array (from NATS) → decode() → Uint8Array (returned to application)
+ *
+ * ## Important Notes
+ * - The codec always returns Uint8Array, but KvEntry provides convenience methods (string(), json())
+ *   for parsing the binary data into other formats
+ * - Even when the input is a string, the codec must convert it to and work with Uint8Array
+ * - The decode method must always return a Uint8Array, even if your application uses string values
+ * - Custom codecs can implement compression, encryption, or other transformations
+ *
+ * ## Example Use Cases
+ * - Compression: Reduce the size of stored data
+ * - Encryption: Secure sensitive data at rest
+ *
+ * @example
+ * ```typescript
+ * // Simple compression codec using a hypothetical compression library
+ * const CompressionCodec = (): KvPayloadCodec => {
+ *   return {
+ *     encode(v: Payload): Uint8Array {
+ *       // Convert string to Uint8Array if needed
+ *       const data = typeof v === "string" ? new TextEncoder().encode(v) : v;
+ *       // Apply compression
+ *       return compressData(data);
+ *     },
+ *     decode(d: Uint8Array): Uint8Array {
+ *       // Decompress the data
+ *       return decompressData(d);
+ *     }
+ *   };
+ * };
+ * ```
+ */
+export type KvPayloadCodec = {
+  encode(v: Payload): Uint8Array;
+  decode(d: Uint8Array): Uint8Array;
+};
+
+/**
+ * A KvCodecs object contains two codecs: one for keys and one for values.
+ * These codecs are used to encode and decode keys and values before they are stored
+ * or retrieved from the KV.
+ */
 export type KvCodecs = {
   /**
    * Codec for Keys in the KV
    */
-  key: KvCodec<string>;
+  key: KvKeyCodec;
   /**
    * Codec for Data in the KV
    */
-  value: KvCodec<Uint8Array>;
+  value: KvPayloadCodec;
 };
 
 export type KvLimits = {
