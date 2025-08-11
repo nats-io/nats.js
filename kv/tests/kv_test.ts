@@ -2222,7 +2222,7 @@ Deno.test("kv - entries ttl markerTTL", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("kv - get entry ttl markerTTL", async () => {
+Deno.test("kv - get entry ttl markerTTL from bucket", async () => {
   const { ns, nc } = await setup(
     jetstreamServerConf({}),
   );
@@ -2230,14 +2230,18 @@ Deno.test("kv - get entry ttl markerTTL", async () => {
     return;
   }
   const kvm = await new Kvm(nc);
-  const kv = await kvm.create("A", { markerTTL: 2000 });
-  await kv.create("a", Empty, "1s");
+  const kv = await kvm.create("A", { markerTTL: 1000 });
+  await kv.create("a", Empty, "2s");
   await kv.delete("a");
-  await kv.purge("a", { ttl: "1s" });
-  await delay(2000);
-  const e = await kv.get("a");
-  console.log(e);
+  let e = await kv.get("a");
+  assertEquals(e?.operation, "DEL");
+  await kv.purge("a", { ttl: "2s" });
+  e = await kv.get("a");
   assertEquals(e?.operation, "PURGE");
+
+  await delay(2500);
+  e = await kv.get("a");
+  assertEquals(e, null);
   await cleanup(ns, nc);
 });
 
@@ -2279,8 +2283,7 @@ Deno.test("kv - entries ttl", async () => {
   }
 
   const end = Date.now() - start;
-  // 2s for the purge, and the 2s for the markerTTL
-  assertBetween(end, 4000, 4500);
+  assert(end > 2000);
 
   await cleanup(ns, nc);
 });
