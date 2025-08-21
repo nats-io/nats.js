@@ -480,37 +480,28 @@ export class NodeTransport implements Transport {
   }
 }
 
-export async function nodeResolveHost(s: string): Promise<string[]> {
-  const a = deferred<string[] | Error>();
-  const aaaa = deferred<string[] | Error>();
+export function nodeResolveHost(s: string): Promise<string[]> {
+  const ips = deferred<string[]>();
 
-  dns.resolve4(s, (err: Error, records: string[]) => {
-    if (err) {
-      a.resolve(err);
-    } else {
-      a.resolve(records);
-    }
-  });
+  dns.lookup(
+    s,
+    { all: true },
+    //@ts-ignore: callback changes shape when all is true
+    (err: Error, address: { address: string; family: number }[]) => {
+      if (err) {
+        ips.reject(err);
+        return;
+      }
+      const buf = [];
+      for (const r of address) {
+        buf.push(r.address);
+      }
+      if (buf.length === 0) {
+        buf.push(s);
+      }
+      ips.resolve(buf);
+    },
+  );
 
-  dns.resolve6(s, (err: Error, records: string[]) => {
-    if (err) {
-      aaaa.resolve(err);
-    } else {
-      aaaa.resolve(records);
-    }
-  });
-
-  const ips: string[] = [];
-  const da = await a;
-  if (Array.isArray(da)) {
-    ips.push(...da);
-  }
-  const daaaa = await aaaa;
-  if (Array.isArray(daaaa)) {
-    ips.push(...daaaa);
-  }
-  if (ips.length === 0) {
-    ips.push(s);
-  }
   return ips;
 }
