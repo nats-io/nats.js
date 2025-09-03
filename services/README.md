@@ -1,5 +1,5 @@
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
-![jetstream](https://github.com/nats-io/nats.js/actions/workflows/services.yml/badge.svg)
+![services](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/services/index.html)
 
 [![JSR](https://jsr.io/badges/@nats-io/services)](https://jsr.io/@nats-io/services)
