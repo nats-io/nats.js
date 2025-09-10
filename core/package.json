@@ -37,8 +37,8 @@
     "@nats-io/nuid": "2.0.3"
   },
   "devDependencies": {
-    "@types/node": "^24.0.11",
+    "@types/node": "^24.3.1",
     "shx": "^0.4.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.2"
   }
 }

@@ -16,7 +16,7 @@
 import { connect } from "./connect.ts";
 import type { Msg, NatsConnection } from "../src/internal_mod.ts";
 import { createInbox, DataBuffer, deferred } from "../src/internal_mod.ts";
-import { assert, assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { NatsServer } from "../../test_helpers/launcher.ts";
 
 function mh(nc: NatsConnection, subj: string): Promise<Msg> {

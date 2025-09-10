@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { Bench, createInbox, Metric } from "../src/mod.ts";
 import { connect } from "./connect.ts";
 import type { BenchOpts } from "../src/mod.ts";

@@ -14,7 +14,7 @@
  */
 
 import { connect, millis, Msg } from "../src/mod.ts";
-import { sha256 } from "https://denopkg.com/chiefbiiko/sha256@v1.0.0/mod.ts";
+import { sha256 } from "@chiefbiiko/sha256";
 
 const servers = Deno.env.get("NATS_URL") || "nats://localhost:4222";
 const nc = await connect({ servers });

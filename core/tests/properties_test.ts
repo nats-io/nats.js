@@ -19,7 +19,7 @@ import {
   assertExists,
   assertFalse,
   assertMatch,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import type {
   Authenticator,

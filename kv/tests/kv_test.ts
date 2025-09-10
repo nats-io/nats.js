@@ -52,7 +52,7 @@ import {
   assertIsError,
   assertRejects,
   assertThrows,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import type { KV, KvEntry, KvOptions, KvWatchEntry } from "../src/types.ts";
 

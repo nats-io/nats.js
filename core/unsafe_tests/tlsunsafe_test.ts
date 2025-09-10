@@ -1,8 +1,8 @@
-import { join, resolve } from "jsr:@std/path";
+import { join, resolve } from "@std/path";
 import { cleanup, connect, NatsServer, wsServerConf } from "test_helpers";
 import { delay, wsconnect } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 Deno.test("tls-unsafe - handshake first", async () => {
   const cwd = Deno.cwd();

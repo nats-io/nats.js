@@ -17,7 +17,7 @@ import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
 import { compare, parseSemVer } from "@nats-io/nats-core/internal";
 
 import { NatsServer } from "./launcher.ts";
-import { red, yellow } from "jsr:@std/fmt/colors";
+import { red, yellow } from "@std/fmt/colors";
 export { connect } from "./connect.ts";
 export { check } from "./check.ts";
 export { Lock } from "./lock.ts";

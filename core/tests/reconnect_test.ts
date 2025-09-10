@@ -12,12 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, assertInstanceOf, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertInstanceOf, fail } from "@std/assert";
 import { connect } from "./connect.ts";
 import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,
   DataBuffer,
+  deadline,
   deferred,
   delay,
   tokenAuthenticator,
@@ -25,7 +26,6 @@ import {
 import type { NatsConnectionImpl } from "../src/nats.ts";
 
 import { cleanup, setup } from "test_helpers";
-import { deadline } from "jsr:@std/async";
 import { ConnectionError } from "../src/errors.ts";
 
 Deno.test("reconnect - should receive when some servers are invalid", async () => {

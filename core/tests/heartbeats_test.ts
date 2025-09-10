@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, fail } from "jsr:@std/assert";
+import { assert, assertEquals, fail } from "@std/assert";
 
 import { deferred, delay, Heartbeat } from "../src/internal_mod.ts";
 import type { PH, Status } from "../src/internal_mod.ts";

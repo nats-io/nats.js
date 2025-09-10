@@ -22,7 +22,7 @@ import {
   assertExists,
   assertRejects,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { delay, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { jetstream, JetStreamError, jetstreamManager } from "../src/mod.ts";

@@ -14,12 +14,7 @@
  */
 
 import { compare, Feature, Features, parseSemVer } from "../src/semver.ts";
-import {
-  assert,
-  assertEquals,
-  assertFalse,
-  assertThrows,
-} from "jsr:@std/assert";
+import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 
 Deno.test("semver", () => {
   const pt: { a: string; b: string; r: number }[] = [

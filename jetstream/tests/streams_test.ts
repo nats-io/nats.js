@@ -21,11 +21,7 @@ import {
 } from "test_helpers";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
-import {
-  assertEquals,
-  assertExists,
-  assertRejects,
-} from "https://deno.land/std@0.221.0/assert/mod.ts";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { initStream } from "./jstest_util.ts";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 

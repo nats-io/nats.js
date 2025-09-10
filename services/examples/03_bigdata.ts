@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/transport-deno";
+import { connect } from "@nats-io/transport-deno";
 import { Svcm } from "../src/mod.ts";
 import { humanizeBytes } from "./03_util.ts";
 import type { DataRequest } from "./03_util.ts";

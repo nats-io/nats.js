@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
 import { Lock } from "test_helpers";

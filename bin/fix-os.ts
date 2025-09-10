@@ -12,13 +12,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { parse } from "https://deno.land/std@0.221.0/flags/mod.ts";
+import { parse } from "@std/flags";
 import { ObjectStoreImpl, ServerObjectInfo } from "../os/objectstore.ts";
-import {
-  connect,
-  ConnectionOptions,
-  credsAuthenticator,
-} from "https://raw.githubusercontent.com/nats-io/nats.deno/main/src/mod.ts";
+import { connect, ConnectionOptions, credsAuthenticator } from "nats-deno";
 
 const argv = parse(
   Deno.args,

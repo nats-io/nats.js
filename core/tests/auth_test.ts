@@ -21,12 +21,8 @@ import {
   assertRejects,
   assertStringIncludes,
   fail,
-} from "jsr:@std/assert";
-import {
-  encodeAccount,
-  encodeOperator,
-  encodeUser,
-} from "jsr:@nats-io/jwt@0.0.11";
+} from "@std/assert";
+import { encodeAccount, encodeOperator, encodeUser } from "@nats-io/jwt";
 import type {
   MsgImpl,
   NatsConnectionImpl,

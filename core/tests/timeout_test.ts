@@ -16,7 +16,7 @@ import {
   assertInstanceOf,
   assertRejects,
   assertStringIncludes,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { createInbox, Empty, errors } from "../src/internal_mod.ts";
 import { cleanup, setup } from "../../test_helpers/mod.ts";
 

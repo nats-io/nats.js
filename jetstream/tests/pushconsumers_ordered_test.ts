@@ -18,7 +18,7 @@ import {
   assertExists,
   assertFalse,
   assertRejects,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { DeliverPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 import type { JsMsg } from "../src/mod.ts";
 

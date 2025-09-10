@@ -20,7 +20,7 @@ import type {
   NatsConnection,
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
-import { assert, assertEquals, assertExists, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertExists, fail } from "@std/assert";
 import type { NatsServer } from "../../test_helpers/launcher.ts";
 
 Deno.test("resub - iter", async () => {

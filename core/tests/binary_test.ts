@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { createInbox, deferred } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
 import { cleanup, setup } from "test_helpers";

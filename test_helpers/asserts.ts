@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { assertGreaterOrEqual, assertLessOrEqual } from "jsr:@std/assert";
+import { assertGreaterOrEqual, assertLessOrEqual } from "@std/assert";
 
 export function assertBetween(n: number, low: number, high: number) {
   assertGreaterOrEqual(n, low, `${n} >= ${low}`);

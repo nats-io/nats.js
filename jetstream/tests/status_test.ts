@@ -16,11 +16,7 @@
 import { isMessageNotFound, JetStreamStatus } from "../src/jserrors.ts";
 import type { StreamAPIImpl } from "../src/jsmstream_api.ts";
 import { Empty, type Msg, type Payload } from "@nats-io/nats-core/internal";
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-} from "https://deno.land/std@0.221.0/assert/mod.ts";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { MsgHdrsImpl } from "../../core/src/headers.ts";
 import { cleanup, setup } from "test_helpers";
 import { jetstreamServerConf } from "../../test_helpers/mod.ts";

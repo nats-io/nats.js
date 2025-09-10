@@ -29,7 +29,7 @@ import {
   type OverflowMinPendingAndMinAck,
   PriorityPolicy,
 } from "../src/jsapi_types.ts";
-import { assertEquals, assertExists } from "jsr:@std/assert";
+import { assertEquals, assertExists } from "@std/assert";
 import {
   deferred,
   delay,

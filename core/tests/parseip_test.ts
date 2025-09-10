@@ -15,7 +15,7 @@
 
 import { ipV4, parseIP } from "../src/internal_mod.ts";
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 Deno.test("ipparser", () => {
   const tests = [

@@ -20,7 +20,7 @@ import {
   assertIsError,
   assertRejects,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import { deferred, delay } from "@nats-io/nats-core";
 

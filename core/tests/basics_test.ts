@@ -20,7 +20,7 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import {
   collect,

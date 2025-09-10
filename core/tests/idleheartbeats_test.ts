@@ -19,7 +19,7 @@ import {
   assertEquals,
   assertExists,
   assertNotEquals,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 Deno.test("idleheartbeat - basic", async () => {
   const d = deferred<number>();

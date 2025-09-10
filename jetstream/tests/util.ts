@@ -15,7 +15,7 @@
 
 import { delay } from "@nats-io/nats-core";
 import type { Consumer, Stream } from "../src/types.ts";
-import { fail } from "jsr:@std/assert";
+import { fail } from "@std/assert";
 import { StreamImpl } from "../src/jsmstream_api.ts";
 import { ConsumerNotFoundError, StreamNotFoundError } from "../src/jserrors.ts";
 

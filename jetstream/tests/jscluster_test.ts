@@ -21,7 +21,7 @@ import {
   assertExists,
   assertRejects,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 Deno.test("jetstream - mirror alternates", async () => {
   const servers = await NatsServer.jetstreamCluster(3);

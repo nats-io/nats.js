@@ -20,7 +20,7 @@ import {
   assertExists,
   assertRejects,
   assertStringIncludes,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   type ConsumerNotification,
   DeliverPolicy,

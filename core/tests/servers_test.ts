@@ -18,7 +18,7 @@ import {
   setTransportFactory,
 } from "../src/internal_mod.ts";
 import type { ServerInfo } from "../src/internal_mod.ts";
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 Deno.test("servers - single", () => {
   const servers = new Servers(["127.0.0.1:4222"], { randomize: false });

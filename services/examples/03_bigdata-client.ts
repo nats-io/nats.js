@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { parse } from "jsr:@std/flags";
+import { parse } from "@std/flags";
 import { connect, type ConnectionOptions } from "@nats-io/transport-deno";
 
 import { humanizeBytes } from "./03_util.ts";

@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 import { connect } from "./connect.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { Lock, NatsServer } from "test_helpers";
 import {
   createInbox,

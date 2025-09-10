@@ -1,5 +1,5 @@
 import { deferred } from "@nats-io/nats-core";
-import { join } from "jsr:@std/path";
+import { join } from "@std/path";
 
 export class Certs {
   #data!: Record<string, string>;

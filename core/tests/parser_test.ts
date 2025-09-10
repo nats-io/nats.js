@@ -29,7 +29,7 @@ import type {
   ParserEvent,
   Publisher,
 } from "../src/internal_mod.ts";
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const te = new TextEncoder();
 const td = new TextDecoder();
