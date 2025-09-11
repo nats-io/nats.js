@@ -395,7 +395,15 @@ export class NodeTransport implements Transport {
   }
 
   discard() {
-    // ignored - this is not required, as there's no throttling
+    this.done = true;
+    if (this.socket) {
+      try {
+        this.socket.removeAllListeners();
+        this.socket.destroy();
+      } catch {
+        // We tried, just ignore it
+      }
+    }
   }
 
   disconnect(): void {
