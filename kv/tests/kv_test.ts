@@ -28,6 +28,7 @@ import type {
   ConnectionOptions,
   NatsConnection,
   NatsConnectionImpl,
+  Payload,
   QueuedIterator,
 } from "@nats-io/nats-core/internal";
 
@@ -2390,6 +2391,75 @@ Deno.test("kv - put/update timeouts", async () => {
     assertIsError(err, Error, "timeout");
     assertBetween(Date.now() - start, 4_900, 5_100);
   }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - encoder", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const subjectEncoder = (key: string): string => {
+    const chunks: string[] = [];
+    for (const t of key.split(".")) {
+      switch (t) {
+        case ">":
+        case "*":
+          chunks.push(t);
+          break;
+        default:
+          chunks.push(t.split("").reverse().join(""));
+          break;
+      }
+    }
+    return chunks.join(".");
+  };
+
+  const reverseSubjectCodec = {
+    encode: subjectEncoder,
+    decode: subjectEncoder,
+  };
+
+  const payloadEncoder = (v: Payload): Uint8Array => {
+    if (typeof v === "string") {
+      return new TextEncoder().encode(v.split("").reverse().join(""));
+    }
+    let vv = new TextDecoder().decode(v);
+    vv = vv.split("").reverse().join("");
+    return new TextEncoder().encode(vv);
+  };
+
+  const reverseCodec = {
+    encode: payloadEncoder,
+    decode: payloadEncoder,
+  };
+
+  const kvm = new Kvm(jetstream(nc));
+  const kv = await kvm.create("encoded", {
+    codec: {
+      key: reverseSubjectCodec,
+      value: reverseCodec,
+    },
+  });
+
+  await kv.put("abc.hello.one", "hello");
+  const e = await kv.get("abc.hello.one");
+  assertExists(e);
+  assertEquals(e.string(), "hello");
+
+  const raw = await kvm.open("encoded", { bindOnly: true });
+  const e2 = await raw.get("cba.olleh.eno");
+  assertExists(e2);
+  assertEquals(e2.string(), "olleh");
+
+  const w = await kv.watch({ key: "abc.>" });
+  await (async () => {
+    for await (const e of w) {
+      assertEquals(e.key, "abc.hello.one");
+      assertEquals(e.string(), "hello");
+      assertEquals(e.rawKey, "cba.olleh.eno");
+      break;
+    }
+  })().then();
 
   await cleanup(ns, nc);
 });

@@ -23,6 +23,8 @@ import {
   nuid,
   parseSemVer,
   QueuedIteratorImpl,
+  type ReviverFn,
+  TD,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -73,10 +75,10 @@ import type {
 
 import type {
   KV,
-  KvCodec,
   KvCodecs,
   KvDeleteOptions,
   KvEntry,
+  KvKeyCodec,
   KvOptions,
   KvPurgeOptions,
   KvPutOptions,
@@ -87,13 +89,28 @@ import type {
 
 import { kvPrefix, KvWatchInclude } from "./types.ts";
 
-export function Base64KeyCodec(): KvCodec<string> {
+export function Base64KeyCodec(): KvKeyCodec {
+  const fn = (key: string, codec: (n: string) => string): string => {
+    const chunks: string[] = [];
+    for (const t of key.split(".")) {
+      switch (t) {
+        case ">":
+        case "*":
+          chunks.push(t);
+          break;
+        default:
+          chunks.push(codec(t));
+          break;
+      }
+    }
+    return chunks.join(".");
+  };
   return {
     encode(key: string): string {
-      return btoa(key);
+      return fn(key, btoa);
     },
     decode(bkey: string): string {
-      return atob(bkey);
+      return fn(bkey, atob);
     },
   };
 }
@@ -109,8 +126,8 @@ export function NoopKvCodecs(): KvCodecs {
       },
     },
     value: {
-      encode(v: Uint8Array): Uint8Array {
-        return v;
+      encode(v: Payload): Uint8Array {
+        return typeof v === "string" ? new TextEncoder().encode(v) : v;
       },
       decode(v: Uint8Array): Uint8Array {
         return v;
@@ -552,12 +569,17 @@ export class Bucket implements KV {
   }
 
   smToEntry(sm: StoredMsg): KvEntry {
-    return new KvStoredEntryImpl(this.bucket, this.prefixLen, sm);
+    return new KvStoredEntryImpl(this.bucket, this.prefixLen, sm, this.codec);
   }
 
   jmToWatchEntry(jm: JsMsg, isUpdate: boolean): KvWatchEntry {
-    const key = this.decodeKey(jm.subject.substring(this.prefixLen));
-    return new KvJsMsgEntryImpl(this.bucket, key, jm, isUpdate);
+    return new KvJsMsgEntryImpl(
+      this.bucket,
+      this.prefixLen,
+      jm,
+      isUpdate,
+      this.codec,
+    );
   }
 
   async create(k: string, data: Payload, markerTTL?: string): Promise<number> {
@@ -610,6 +632,8 @@ export class Bucket implements KV {
     const ek = this.encodeKey(k);
     this.validateKey(ek);
 
+    data = this.codec.value.encode(data);
+
     const o = { timeout: opts?.timeout } as JetStreamPublishOptions;
     if (opts.previousSeq !== undefined) {
       const h = headers();
@@ -661,7 +685,7 @@ export class Bucket implements KV {
         return null;
       }
       const ke = this.smToEntry(sm);
-      if (ke.key !== ek) {
+      if (ke.rawKey !== ek) {
         return null;
       }
       return ke;
@@ -1089,19 +1113,30 @@ class KvStoredEntryImpl implements KvEntry {
   bucket: string;
   sm: StoredMsg;
   prefixLen: number;
+  codec: KvCodecs;
 
-  constructor(bucket: string, prefixLen: number, sm: StoredMsg) {
+  constructor(
+    bucket: string,
+    prefixLen: number,
+    sm: StoredMsg,
+    codec: KvCodecs,
+  ) {
     this.bucket = bucket;
     this.prefixLen = prefixLen;
     this.sm = sm;
+    this.codec = codec;
   }
 
-  get key(): string {
+  get rawKey(): string {
     return this.sm.subject.substring(this.prefixLen);
   }
 
+  get key(): string {
+    return this.codec.key.decode(this.rawKey);
+  }
+
   get value(): Uint8Array {
-    return this.sm.data;
+    return this.codec.value.decode(this.sm.data);
   }
 
   get delta(): number {
@@ -1134,30 +1169,46 @@ class KvStoredEntryImpl implements KvEntry {
     return this.sm.data.length;
   }
 
-  json<T>(): T {
-    return this.sm.json();
+  json<T>(reviver?: ReviverFn): T {
+    return JSON.parse(TD.decode(this.value), reviver);
   }
 
   string(): string {
-    return this.sm.string();
+    return TD.decode(this.value);
   }
 }
 
 class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
   bucket: string;
-  key: string;
   sm: JsMsg;
+  prefixLen: number;
   update: boolean;
+  codec: KvCodecs;
 
-  constructor(bucket: string, key: string, sm: JsMsg, isUpdate: boolean) {
+  constructor(
+    bucket: string,
+    prefixLen: number,
+    sm: JsMsg,
+    isUpdate: boolean,
+    codec: KvCodecs,
+  ) {
     this.bucket = bucket;
-    this.key = key;
+    this.prefixLen = prefixLen;
     this.sm = sm;
     this.update = isUpdate;
+    this.codec = codec;
+  }
+
+  get rawKey(): string {
+    return this.sm.subject.substring(this.prefixLen);
+  }
+
+  get key(): string {
+    return this.codec.key.decode(this.rawKey);
   }
 
   get value(): Uint8Array {
-    return this.sm.data;
+    return this.codec.value.decode(this.sm.data);
   }
 
   get created(): Date {
@@ -1194,11 +1245,11 @@ class KvJsMsgEntryImpl implements KvEntry, KvWatchEntry {
     return this.update;
   }
 
-  json<T>(): T {
-    return this.sm.json();
+  json<T>(reviver?: ReviverFn): T {
+    return JSON.parse(TD.decode(this.value), reviver);
   }
 
   string(): string {
-    return this.sm.string();
+    return TD.decode(this.value);
   }
 }
