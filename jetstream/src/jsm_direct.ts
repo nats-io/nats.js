@@ -268,11 +268,9 @@ export class DirectMsgImpl implements DirectMsg {
 
   get pending(): number {
     const v = this.header.last(DirectMsgHeaders.NumPending);
-    // if we have a pending - this pending will include the number of messages
-    // in the stream + the end of batch signal - better to remove the eob signal
-    // from the count so the client can estimate how many messages are
-    // in the stream. If a batch is 1 message, the pending is not included.
-    return typeof v === "string" ? parseInt(v) - 1 : -1;
+    // pre-2.12, we reduced the count by 1, as the server reported
+    // the eod message
+    return typeof v === "string" ? parseInt(v) : -1;
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
