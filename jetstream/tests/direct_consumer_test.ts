@@ -29,7 +29,7 @@ import {
 
 Deno.test("direct consumer - next", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.11.0")) {
+  if (await notCompatible(ns, nc, "2.12.0")) {
     return;
   }
   const jsm = await jetstreamManager(nc);
@@ -59,7 +59,7 @@ Deno.test("direct consumer - next", async () => {
 
 Deno.test("direct consumer - batch", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.11.0")) {
+  if (await notCompatible(ns, nc, "2.12.0")) {
     return;
   }
   const jsm = await jetstreamManager(nc);
@@ -109,7 +109,7 @@ Deno.test("direct consumer - batch", async () => {
 
 Deno.test("direct consumer - consume", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
-  if (await notCompatible(ns, nc, "2.11.0")) {
+  if (await notCompatible(ns, nc, "2.12.0")) {
     return;
   }
   const jsm = await jetstreamManager(nc);
