@@ -2552,7 +2552,7 @@ Deno.test("jsm - consumer create paused", async () => {
   }
 
   const jsm = await jetstreamManager(nc);
-  jsm.streams.add({
+  await jsm.streams.add({
     name: "A",
     subjects: ["a.>"],
   });
@@ -2575,7 +2575,7 @@ Deno.test("jsm - pause/unpause", async () => {
   }
 
   const jsm = await jetstreamManager(nc);
-  jsm.streams.add({
+  await jsm.streams.add({
     name: "A",
     subjects: ["a.>"],
   });
