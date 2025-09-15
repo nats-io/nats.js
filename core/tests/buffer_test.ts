@@ -7,7 +7,7 @@
 // This code removes all Deno specific functionality to enable its use
 // in a browser environment
 
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
   DenoBuffer,
   MAX_SIZE,

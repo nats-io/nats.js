@@ -33,13 +33,13 @@ import type {
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
 
-import { assertEquals, assertThrows } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import {
   encodeAccount,
   encodeOperator,
   encodeUser,
   fmtCreds,
-} from "jsr:@nats-io/jwt@0.0.11";
+} from "@nats-io/jwt";
 import { assertBetween } from "test_helpers";
 
 function disconnectReconnect(nc: NatsConnection): Promise<void> {

@@ -18,7 +18,7 @@ import {
   Base64UrlCodec,
   Base64UrlPaddedCodec,
 } from "../src/base64.ts";
-import { assert, assertEquals, assertFalse } from "jsr:@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 
 Deno.test("b64 - Base64Codec", () => {
   // should match btoa

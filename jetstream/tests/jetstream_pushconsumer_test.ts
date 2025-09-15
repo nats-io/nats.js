@@ -34,12 +34,7 @@ import {
   syncIterator,
 } from "@nats-io/nats-core";
 import type { BoundPushConsumerOptions, PubAck } from "../src/types.ts";
-import {
-  assert,
-  assertEquals,
-  assertExists,
-  assertRejects,
-} from "jsr:@std/assert";
+import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   AckPolicy,
   DeliverPolicy,

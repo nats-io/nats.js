@@ -1,5 +1,5 @@
 import { connect, createInbox, wsconnect } from "../src/mod.ts";
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 
 Deno.test("basics", () => {
   assertEquals(typeof connect, "function");

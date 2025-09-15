@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { join } from "jsr:@std/path";
+import { parseArgs } from "@std/cli/parse-args";
+import { join } from "@std/path";
 import { loadVersions, SemVer } from "./lib/bundle_versions.ts";
 
 // Check that a particular bundle has consistent versions across

@@ -19,7 +19,7 @@ import {
   assertNotEquals,
   assertRejects,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   AckPolicy,
   jetstream,

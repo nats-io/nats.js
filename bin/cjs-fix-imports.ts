@@ -1,10 +1,5 @@
-import { parseArgs } from "jsr:@std/cli@1.0.20/parse-args";
-import {
-  basename,
-  extname,
-  join,
-  resolve,
-} from "https://deno.land/std@0.136.0/path/mod.ts";
+import { parseArgs } from "@std/cli/parse-args";
+import { basename, extname, join, resolve } from "@std/path";
 
 const argv = parseArgs(
   Deno.args,

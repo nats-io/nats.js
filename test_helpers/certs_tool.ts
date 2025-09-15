@@ -1,4 +1,4 @@
-import { parseArgs } from "jsr:@std/cli/parse-args";
+import { parseArgs } from "@std/cli";
 import { Certs } from "./certs.ts";
 
 // this tool packs a bunch of certs into a JSON file keyed after its name

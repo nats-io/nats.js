@@ -16,7 +16,7 @@
 import { NatsServer } from "../../test_helpers/launcher.ts";
 import { createInbox, DataBuffer } from "../src/internal_mod.ts";
 import { connect } from "./connect.ts";
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 function makeBuffer(N: number): Uint8Array {
   const buf = new Uint8Array(N);

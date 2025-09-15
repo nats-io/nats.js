@@ -9,12 +9,7 @@ import {
 import { isBoundPushConsumerOptions } from "../src/types.ts";
 import { cleanup, jetstreamServerConf, Lock, setup } from "test_helpers";
 import { nanos } from "@nats-io/nats-core";
-import {
-  assert,
-  assertEquals,
-  assertExists,
-  assertFalse,
-} from "jsr:@std/assert";
+import { assert, assertEquals, assertExists, assertFalse } from "@std/assert";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
 import { deadline, delay } from "@nats-io/nats-core/internal";
 

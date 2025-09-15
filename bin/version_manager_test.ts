@@ -1,5 +1,5 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parse } from "https://deno.land/std@0.224.0/jsonc/parse.ts";
+import { assertEquals } from "@std/assert";
+import { parse } from "@std/jsonc/parse";
 
 const testDir = await Deno.makeTempDir({ prefix: "version_manager_test_" });
 

@@ -16,7 +16,7 @@
 import { nanos } from "@nats-io/nats-core";
 import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
-import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "@std/assert";
 import { initStream } from "./jstest_util.ts";
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 

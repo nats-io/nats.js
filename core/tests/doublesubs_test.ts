@@ -16,7 +16,7 @@ import { NatsServer } from "../../test_helpers/launcher.ts";
 
 import { deferred, Empty, extend, headers } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { assertArrayIncludes, assertEquals } from "jsr:@std/assert";
+import { assertArrayIncludes, assertEquals } from "@std/assert";
 import { connect } from "./connect.ts";
 
 async function runDoubleSubsTest(tls: boolean) {

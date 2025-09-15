@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cli } from "jsr:@aricart/cobra";
+import { cli } from "@aricart/cobra";
 import { connect } from "@nats-io/transport-deno";
 import { collect, parseSemVer } from "@nats-io/nats-core/internal";
 
@@ -28,8 +28,8 @@ import {
 } from "../src/mod.ts";
 
 import type { ServiceClientImpl } from "../src/serviceclient.ts";
-import type { JSONSchemaType, ValidateFunction } from "npm:ajv";
-import { Ajv } from "npm:ajv";
+import type { JSONSchemaType, ValidateFunction } from "ajv";
+import { Ajv } from "ajv";
 
 const ajv = new Ajv();
 

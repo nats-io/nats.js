@@ -1,7 +1,7 @@
 #!/usr/bin/env deno run --allow-all --unstable
 
-import { parse } from "jsr:@std/flags";
-import { connect, type ConnectionOptions } from "jsr:@nats-io/transport-deno";
+import { parse } from "@std/flags";
+import { connect, type ConnectionOptions } from "@nats-io/transport-deno";
 
 const argv = parse(
   Deno.args,

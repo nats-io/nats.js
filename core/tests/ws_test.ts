@@ -19,7 +19,7 @@ import {
   assertExists,
   assertFalse,
   assertRejects,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import {
   createInbox,

@@ -20,7 +20,7 @@ import type {
 } from "../src/internal_mod.ts";
 import { createInbox, deferred, delay, Empty } from "../src/internal_mod.ts";
 
-import { assert, assertEquals, assertRejects, fail } from "jsr:@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "@std/assert";
 import { errors } from "../src/errors.ts";
 
 async function requestManyCount(noMux = false): Promise<void> {

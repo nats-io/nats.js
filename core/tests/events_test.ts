@@ -14,12 +14,11 @@
  */
 import { Lock, NatsServer, ServerSignals } from "test_helpers";
 import { connect } from "./connect.ts";
-import { assertEquals } from "jsr:@std/assert";
-import { delay } from "../src/internal_mod.ts";
+import { assertEquals } from "@std/assert";
+import { deferred, delay } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
 import { setup } from "test_helpers";
 import { cleanup } from "../../test_helpers/mod.ts";
-import { deferred } from "https://deno.land/x/nats@v1.10.2/nats-base-client/mod.ts";
 
 Deno.test("events - close on close", async () => {
   const { ns, nc } = await setup();

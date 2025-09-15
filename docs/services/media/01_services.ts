@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { connect, type QueuedIterator } from "jsr:@nats-io/transport-deno";
+import { connect, type QueuedIterator } from "@nats-io/transport-deno";
 
 import {
   ServiceError,
@@ -22,7 +22,7 @@ import {
   Svcm,
 } from "../src/mod.ts";
 import type { ServiceMsg, ServiceStats } from "../src/mod.ts";
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 
 // connect to NATS on demo.nats.io
 const nc = await connect({ servers: ["demo.nats.io"] });

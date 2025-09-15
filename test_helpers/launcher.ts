@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 // deno-lint-ignore-file no-explicit-any
-import { join, resolve } from "jsr:@std/path";
-import { rgb24 } from "jsr:@std/fmt/colors";
+import { join, resolve } from "@std/path";
+import { rgb24 } from "@std/fmt/colors";
 import { check, jsopts } from "./mod.ts";
 import {
   ConnectionOptions,

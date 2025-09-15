@@ -48,7 +48,7 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import { JetStreamClientImpl, JetStreamManagerImpl } from "../src/jsclient.ts";
 import {

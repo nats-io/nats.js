@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { connect } from "jsr:@nats-io/transport-deno";
+import { connect } from "@nats-io/transport-deno";
 import { ServiceError, Svcm } from "../src/mod.ts";
 import type { ServiceMsg } from "../src/mod.ts";
 

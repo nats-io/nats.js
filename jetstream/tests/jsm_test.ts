@@ -20,7 +20,7 @@ import {
   assertRejects,
   assertThrows,
   fail,
-} from "jsr:@std/assert";
+} from "@std/assert";
 
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { Feature } from "@nats-io/nats-core/internal";
@@ -66,11 +66,7 @@ import {
   setup,
 } from "test_helpers";
 import { validateName } from "../src/jsutil.ts";
-import {
-  encodeAccount,
-  encodeOperator,
-  encodeUser,
-} from "jsr:@nats-io/jwt@0.0.11";
+import { encodeAccount, encodeOperator, encodeUser } from "@nats-io/jwt";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
 import type { ConsumerAPIImpl } from "../src/jsmconsumer_api.ts";
 import {

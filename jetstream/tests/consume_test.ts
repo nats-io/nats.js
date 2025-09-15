@@ -20,7 +20,7 @@ import {
   assertExists,
   assertFalse,
   assertRejects,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import { initStream, setupStreamAndConsumer } from "./jstest_util.ts";
 import {
   deadline,

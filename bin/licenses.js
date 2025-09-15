@@ -1,6 +1,6 @@
-import $ from "jsr:@david/dax";
+import $ from "@david/dax";
 $.setPrintCommand(true);
-import checker from "npm:license-checker";
+import checker from "license-checker";
 
 const modules = [
   "core",

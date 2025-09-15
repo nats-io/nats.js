@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertRejects } from "jsr:@std/assert";
+import { assertRejects } from "@std/assert";
 import { NatsServer } from "test_helpers";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";

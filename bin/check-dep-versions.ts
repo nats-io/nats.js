@@ -19,7 +19,7 @@
 // raises the minimum version of the dependency to currently released versions
 // of the dependency.
 
-import { join } from "jsr:@std/path";
+import { join } from "@std/path";
 import { loadPackageFile, SemVer } from "./lib/bundle_versions.ts";
 
 type PackageJSON = {

@@ -19,7 +19,7 @@ import {
   assertFalse,
   assertRejects,
   assertStringIncludes,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   AckPolicy,
   DeliverPolicy,

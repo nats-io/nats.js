@@ -22,7 +22,7 @@ import {
   Subscriptions,
 } from "../src/internal_mod.ts";
 import type { Msg, ProtocolHandler } from "../src/internal_mod.ts";
-import { assertEquals, assertRejects, equal } from "jsr:@std/assert";
+import { assertEquals, assertRejects, equal } from "@std/assert";
 import { errors } from "../src/errors.ts";
 
 Deno.test("protocol - mux subscription cancel", async () => {

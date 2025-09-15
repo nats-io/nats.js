@@ -15,7 +15,7 @@
 
 import { cleanup, jetstreamServerConf, setup } from "test_helpers";
 import { initStream } from "./jstest_util.ts";
-import { assertEquals, assertExists, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deadline,
   deferred,

@@ -17,8 +17,8 @@
  * All operations are local only.
  */
 
-import { parse } from "https://deno.land/std@0.224.0/jsonc/parse.ts";
-import * as semver from "https://deno.land/std@0.224.0/semver/mod.ts";
+import { parse } from "@std/jsonc/parse";
+import * as semver from "@std/semver";
 
 interface PackageJson {
   name: string;

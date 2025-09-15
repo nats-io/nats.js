@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 import { deferred, timeout } from "@nats-io/nats-core/internal";
-import { assert } from "jsr:@std/assert";
+import { assert } from "@std/assert";
 
 export function consume<T>(iter: Iterable<T>, ms = 1000): Promise<T[]> {
   const to = timeout<T[]>(ms);

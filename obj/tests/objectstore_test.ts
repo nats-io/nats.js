@@ -27,7 +27,7 @@ import {
   assertExists,
   assertRejects,
   equal,
-} from "jsr:@std/assert";
+} from "@std/assert";
 import {
   DataBuffer,
   Empty,
@@ -38,7 +38,7 @@ import {
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import type { ObjectInfo, ObjectStoreMeta } from "../src/types.ts";
 import { jetstreamManager, StorageType } from "@nats-io/jetstream";
-import { equals } from "https://deno.land/std@0.221.0/bytes/mod.ts";
+import { equals } from "@std/bytes";
 import { digestType, Objm } from "../src/objectstore.ts";
 import { Base64UrlPaddedCodec } from "../src/base64.ts";
 import { sha256 } from "js-sha256";
