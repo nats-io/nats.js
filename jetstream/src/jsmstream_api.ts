@@ -33,7 +33,10 @@ import {
   nuid,
   TD,
 } from "@nats-io/nats-core/internal";
-import type { StreamNames } from "./jsbaseclient_api.ts";
+import type {
+  JetStreamApiRequestOptions,
+  StreamNames,
+} from "./jsbaseclient_api.ts";
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import { minValidation, validateStreamName } from "./jsutil.ts";
@@ -467,6 +470,27 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     }
   }
 
+  // https://github.com/nats-io/nats-server/blob/df55efb16ca6e0f13782857125eb8822d6607dd0/server/jetstream_versioning.go#L46
+  minStreamApi(config: Partial<StreamConfig>): number {
+    if (this.v2Api(config)) {
+      return 2;
+    } else if (this.v1Api(config)) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+
+  v1Api(config: Partial<StreamConfig>): boolean {
+    return config.allow_msg_ttl === true ||
+      config.subject_delete_marker_ttl !== 0;
+  }
+
+  v2Api(config: Partial<StreamConfig>): boolean {
+    return config.allow_msg_counter === true || config.allow_atomic === true ||
+      config.allow_msg_schedules === true;
+  }
+
   async add(
     cfg: WithRequired<Partial<StreamConfig>, "name">,
   ): Promise<StreamInfo> {
@@ -475,9 +499,17 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     cfg.mirror = convertStreamSourceDomain(cfg.mirror);
     //@ts-ignore: the sources are either set or not - so no item should be undefined in the list
     cfg.sources = cfg.sources?.map(convertStreamSourceDomain);
+
+    const opts: Partial<JetStreamApiRequestOptions> = {};
+    const minApiVersion = this.minStreamApi(cfg);
+    if (minApiVersion > 0) {
+      opts.minApiVersion = minApiVersion;
+    }
+
     const r = await this._request(
       `${this.prefix}.STREAM.CREATE.${cfg.name}`,
       cfg,
+      opts,
     );
     const si = r as StreamInfo;
     this._fixInfo(si);
@@ -512,9 +544,16 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     //@ts-ignore: the sources are either set or not - so no item should be undefined in the list
     update.sources = update.sources?.map(convertStreamSourceDomain);
 
+    const opts: Partial<JetStreamApiRequestOptions> = {};
+    const minApiVersion = this.minStreamApi(cfg);
+    if (minApiVersion > 0) {
+      opts.minApiVersion = minApiVersion;
+    }
+
     const r = await this._request(
       `${this.prefix}.STREAM.UPDATE.${name}`,
       update,
+      opts,
     );
     const si = r as StreamInfo;
     this._fixInfo(si);

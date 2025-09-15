@@ -12,7 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import {
+  BaseApiClientImpl,
+  type JetStreamApiRequestOptions,
+} from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import {
   minValidation,
@@ -30,7 +33,6 @@ import {
   InvalidArgumentError,
 } from "@nats-io/nats-core/internal";
 import type {
-  ConsumerApiOptions,
   ConsumerConfig,
   ConsumerCreateOptions,
   ConsumerInfo,
@@ -57,7 +59,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   async addUpdate(
     stream: string,
     cfg: ConsumerConfig,
-    opts: ConsumerApiOptions,
+    opts: Partial<JetStreamApiRequestOptions>,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
     opts = opts || {};
@@ -160,8 +162,39 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
         : `${this.prefix}.CONSUMER.CREATE.${stream}`;
     }
 
-    const r = await this._request(subj, cr);
+    // check for minAPI
+    const minApiVersion = this.minConsumerAPI(cr.config);
+    if (minApiVersion !== 0) {
+      opts = opts || {};
+      opts.minApiVersion = minApiVersion;
+    }
+
+    const r = await this._request(subj, cr, opts);
     return r as ConsumerInfo;
+  }
+
+  //  https://github.com/nats-io/nats-server/blob/df55efb16ca6e0f13782857125eb8822d6607dd0/server/jetstream_versioning.go#L131
+  minConsumerAPI(config: Partial<ConsumerConfig>): number {
+    return this.v1Api(config) ? 1 : 0;
+  }
+
+  v1Api(config: Partial<ConsumerConfig>): boolean {
+    if (typeof config.pause_until === "string" && config.pause_until !== "") {
+      return true;
+    }
+    if (
+      config.priority_policy !== undefined &&
+      config.priority_policy !== PriorityPolicy.None
+    ) {
+      return true;
+    }
+    if (
+      typeof config.priority_timeout === "number" && config.priority_timeout > 0
+    ) {
+      return true;
+    }
+    return Array.isArray(config.priority_groups) &&
+      config.priority_groups.length > 0;
   }
 
   add(
