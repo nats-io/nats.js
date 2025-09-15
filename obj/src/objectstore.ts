@@ -924,12 +924,18 @@ export class ObjectStoreImpl implements ObjectStore {
     }
     const max_age = opts?.ttl || 0;
     delete opts.ttl;
+
+    // extract replicas, as this is an objectstore concept - streams are num_replicas
+    // servers 2.12+ reject unknown properties
+    const { replicas } = opts;
+    delete opts.replicas;
+
     // pacify the tsc compiler downstream
     const sc = Object.assign({ max_age }, opts) as unknown as StreamConfig;
     sc.name = this.stream;
     sc.allow_direct = true;
     sc.allow_rollup_hdrs = true;
-    sc.num_replicas = opts.replicas || 1;
+    sc.num_replicas = replicas || 1;
     sc.discard = DiscardPolicy.New;
     sc.subjects = [`$O.${this.name}.C.>`, `$O.${this.name}.M.>`];
     if (opts.placement) {
