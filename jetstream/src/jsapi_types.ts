@@ -178,6 +178,21 @@ export type StreamConfig = StreamUpdateConfig & {
    * header will be ignored.
    */
   "allow_msg_ttl": boolean;
+
+  /**
+   * Enables a stream to only be used for counter CRDTs.
+   */
+  "allow_msg_counter": boolean;
+
+  /**
+   * Enables atomic batch publishing into the stream.
+   */
+  "allow_atomic": boolean;
+
+  /**
+   * Enables the scheduling of messages in a stream.
+   */
+  "allow_msg_schedules": boolean;
 };
 
 /**

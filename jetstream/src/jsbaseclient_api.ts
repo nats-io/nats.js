@@ -19,6 +19,7 @@ import {
   Empty,
   errors,
   extend,
+  headers,
   RequestError,
 } from "@nats-io/nats-core/internal";
 import type {
@@ -27,7 +28,7 @@ import type {
   NatsConnectionImpl,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
-import type { ApiResponse } from "./jsapi_types.ts";
+import type { ApiResponse, ConsumerApiOptions } from "./jsapi_types.ts";
 import type { JetStreamOptions } from "./types.ts";
 import {
   ConsumerNotFoundError,
@@ -55,6 +56,11 @@ export type StreamNames = {
 
 export type StreamNameBySubject = {
   subject: string;
+};
+
+export type JetStreamApiRequestOptions = RequestOptions & ConsumerApiOptions & {
+  retries?: number;
+  minApiVersion?: number;
 };
 
 export class BaseApiClientImpl {
@@ -90,7 +96,7 @@ export class BaseApiClientImpl {
   async _request(
     subj: string,
     data: unknown = null,
-    opts?: Partial<RequestOptions> & { retries?: number },
+    opts?: Partial<JetStreamApiRequestOptions>,
   ): Promise<unknown> {
     opts = opts || {} as RequestOptions;
     opts.timeout = this.timeout;
@@ -100,9 +106,16 @@ export class BaseApiClientImpl {
       a = new TextEncoder().encode(JSON.stringify(data));
     }
 
-    let { retries } = opts as {
-      retries: number;
-    };
+    let { retries, minApiVersion } = opts;
+
+    delete opts.minApiVersion;
+    delete opts.retries;
+
+    if (typeof minApiVersion === "number") {
+      const h = opts.headers ? opts.headers : headers();
+      h.set("Nats-Required-Api-Level", minApiVersion + "");
+      opts.headers = h;
+    }
 
     retries = retries || 1;
     retries = retries === -1 ? Number.MAX_SAFE_INTEGER : retries;
