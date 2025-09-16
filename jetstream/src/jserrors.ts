@@ -128,11 +128,11 @@ export class JetStreamStatus {
     return discard;
   }
 
-  isBadRequest() {
+  isBadRequest(): boolean {
     return this.code === 400;
   }
 
-  isConsumerDeleted() {
+  isConsumerDeleted(): boolean {
     return this.code === 409 && this.description === "consumer deleted";
   }
 
