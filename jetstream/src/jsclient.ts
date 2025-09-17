@@ -212,6 +212,29 @@ export class JetStreamClientImpl extends BaseApiClientImpl
           `${opts.ttl}`,
         );
       }
+
+      if (opts.schedule) {
+        const so = opts.schedule;
+        if (so.specification) {
+          if (typeof so.specification === "string") {
+            mh.set(PubHeaders.Schedule, so.specification);
+          } else if (so.specification instanceof Date) {
+            mh.set(
+              PubHeaders.Schedule,
+              "@at " + so.specification.toISOString(),
+            );
+          }
+        }
+        if (so.target) {
+          mh.set(PubHeaders.ScheduleTarget, so.target);
+        }
+        if (so.source) {
+          mh.set(PubHeaders.ScheduleSource, so.source);
+        }
+        if (so.ttl) {
+          mh.set(PubHeaders.ScheduleTTL, so.ttl);
+        }
+      }
     }
 
     const to = opts.timeout || this.timeout;

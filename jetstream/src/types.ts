@@ -98,6 +98,31 @@ export type PubAck = {
   duplicate: boolean;
 };
 
+export type ScheduleOptions = {
+  /**
+   * The schedule specification format.
+   * Currently only supports:
+   * "@at <date in isostring format>" - e.g., `new Date(Date.now() + 60_000).toISOString()`
+   *
+   * Note: The ADR-51 specification defines additional formats that may be supported in future
+   * server versions.
+   */
+  specification: string | Date;
+
+  /**
+   * The subject the message will be delivered to
+   */
+  target: string;
+  /**
+   * Instructs the schedule to read the last message on the given subject and publish. If the subject is empty, nothing is published. Wildcards are NOT supported.
+   */
+  source?: string;
+  /**
+   * Sets a message TTL if the stream supports per-message TTL.
+   */
+  ttl?: string;
+};
+
 /**
  * Options for messages published to JetStream
  */
@@ -170,6 +195,12 @@ export type JetStreamPublishOptions = {
      * └────────────────────┴────────┘
      */
     lastSubjectSequenceSubject: string;
+
+    /**
+     * The expected last sequence on the stream for a message with this subject
+     * and this value.
+     */
+    lastSubjectSequenceValue: number;
   }>;
 
   /**
@@ -184,6 +215,11 @@ export type JetStreamPublishOptions = {
    * Default is 1.
    */
   retries?: number;
+
+  /**
+   * Specifies the schedule for the message.
+   */
+  schedule?: ScheduleOptions;
 };
 
 /**

@@ -178,6 +178,11 @@ export type StreamConfig = StreamUpdateConfig & {
    * Enables a NATS stream implementation of CRDT operations
    */
   "allow_msg_counter": boolean;
+
+  /**
+   * Enables the scheduling of messages in a stream.
+   */
+  "allow_msg_schedules": boolean;
 };
 
 /**
@@ -1291,5 +1296,9 @@ export const PubHeaders = {
    * enable {@link StreamConfig#allow_msg_ttl}.
    */
   MessageTTL: "Nats-TTL",
+  Schedule: "Nats-Schedule",
+  ScheduleTarget: "Nats-Schedule-Target",
+  ScheduleSource: "Nats-Schedule-Source",
+  ScheduleTTL: "Nats-Schedule-TTL",
 } as const;
 export type PubHeaders = typeof PubHeaders[keyof typeof PubHeaders];
