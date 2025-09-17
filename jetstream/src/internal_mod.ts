@@ -182,5 +182,6 @@ export {
   JetStreamApiCodes,
   JetStreamApiError,
   JetStreamError,
+  JetStreamStatus,
   jserrors,
 } from "./jserrors.ts";

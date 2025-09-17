@@ -178,6 +178,11 @@ export type StreamConfig = StreamUpdateConfig & {
    * header will be ignored.
    */
   "allow_msg_ttl": boolean;
+
+  /**
+   * Enables a NATS stream implementation of CRDT operations
+   */
+  "allow_msg_counter": boolean;
 };
 
 /**
