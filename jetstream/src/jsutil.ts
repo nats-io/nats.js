@@ -15,15 +15,15 @@
 
 import { InvalidNameError } from "./jserrors.ts";
 
-export function validateDurableName(name?: string) {
+export function validateDurableName(name?: string): string {
   return minValidation("durable", name);
 }
 
-export function validateStreamName(name?: string) {
+export function validateStreamName(name?: string): string {
   return minValidation("stream", name);
 }
 
-export function minValidation(context: string, name = "") {
+export function minValidation(context: string, name = ""): string {
   // minimum validation on streams/consumers matches nats cli
   if (name === "") {
     throw Error(`${context} name required`);

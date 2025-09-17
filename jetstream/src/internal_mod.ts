@@ -56,6 +56,7 @@ export type {
   Debug,
   DeleteableConsumer,
   Destroyable,
+  DirectMsg,
   DirectStreamAPI,
   Discard,
   ExceededLimits,
@@ -99,7 +100,10 @@ export type {
 
 export type { PushConsumerMessagesImpl } from "./pushconsumer.ts";
 
-export type { StreamNames } from "./jsbaseclient_api.ts";
+export { BaseApiClientImpl, type StreamNames } from "./jsbaseclient_api.ts";
+
+export { DirectMsgImpl } from "./jsm_direct.ts";
+
 export type {
   AccountLimits,
   ApiError,
@@ -113,11 +117,13 @@ export type {
   ConsumerCreateOptions,
   ConsumerInfo,
   ConsumerUpdateConfig,
+  DirectBatch,
   DirectBatchLimits,
   DirectBatchOptions,
   DirectBatchStartSeq,
   DirectBatchStartTime,
   DirectLastFor,
+  DirectMaxBytes,
   DirectMsgRequest,
   ExternalStream,
   JetStreamAccountStats,
@@ -183,5 +189,8 @@ export {
   JetStreamApiError,
   JetStreamError,
   JetStreamStatus,
+  JetStreamStatusError,
   jserrors,
 } from "./jserrors.ts";
+
+export { validateStreamName } from "./jsutil.ts";
