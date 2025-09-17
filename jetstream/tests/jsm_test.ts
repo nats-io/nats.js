@@ -2825,3 +2825,31 @@ Deno.test("jsm - message ttls", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("jsm - mirrors can be removed", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+  });
+
+  let si = await jsm.streams.add({
+    name: "B",
+    mirror: {
+      name: "A",
+      subject_transforms: [{ src: "a", dest: "b" }],
+    },
+  });
+
+  assertExists(si.config.mirror);
+
+  si = await jsm.streams.update("B", { mirror: undefined });
+  assertEquals(si.config.mirror, undefined);
+
+  await cleanup(ns, nc);
+});

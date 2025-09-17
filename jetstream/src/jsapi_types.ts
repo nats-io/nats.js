@@ -155,11 +155,6 @@ export type StreamConfig = StreamUpdateConfig & {
    */
   "max_consumers": number;
   /**
-   * Maintains a 1:1 mirror of another stream with name matching this property.
-   * When a mirror is configured subjects and sources must be empty.
-   */
-  mirror?: StreamSource; // same as a source
-  /**
    * Sealed streams do not allow messages to be deleted via limits or API,
    * sealed streams can not be unsealed via configuration update.
    * Can only be set on already created streams via the Update API
@@ -301,6 +296,12 @@ export type StreamUpdateConfig = {
    * Sets a duration for adding server markers for delete, purge and max age limits.
    */
   "subject_delete_marker_ttl"?: Nanos;
+
+  /**
+   * Maintains a 1:1 mirror of another stream with name matching this property.
+   * When a mirror is configured subjects and sources must be empty.
+   */
+  mirror?: StreamSource; // same as a source
 };
 
 export type Republish = {
