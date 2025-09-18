@@ -27,6 +27,7 @@ import type {
   ConsumerCreateOptions,
   DeliverPolicy,
   DirectLastFor,
+  PrioritizedOptions,
   PullOptions,
   ReplayPolicy,
 } from "./jsapi_types.ts";
@@ -472,7 +473,8 @@ export type ConsumeBytes =
   & ConsumeCallback
   & AbortOnMissingResource
   & Bind
-  & Partial<OverflowOptions>;
+  & Partial<OverflowOptions>
+  & Partial<PrioritizedOptions>;
 
 export type ConsumeMessages =
   & Partial<MaxMessages>
@@ -482,7 +484,8 @@ export type ConsumeMessages =
   & ConsumeCallback
   & AbortOnMissingResource
   & Bind
-  & Partial<OverflowOptions>;
+  & Partial<OverflowOptions>
+  & Partial<PrioritizedOptions>;
 
 export type ConsumeOptions =
   | ConsumeBytes
@@ -496,7 +499,8 @@ export type FetchBytes =
   & Expires
   & IdleHeartbeat
   & Bind
-  & Partial<OverflowOptions>;
+  & Partial<OverflowOptions>
+  & Partial<PrioritizedOptions>;
 /**
  * Options for fetching messages
  */
@@ -505,7 +509,8 @@ export type FetchMessages =
   & Expires
   & IdleHeartbeat
   & Bind
-  & Partial<OverflowOptions>;
+  & Partial<OverflowOptions>
+  & Partial<PrioritizedOptions>;
 
 export type FetchOptions = FetchBytes | FetchMessages;
 export type PullConsumerOptions = FetchOptions | ConsumeOptions;

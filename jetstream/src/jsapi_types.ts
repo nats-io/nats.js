@@ -1140,6 +1140,7 @@ export const PriorityPolicy = {
   None: "none",
   Overflow: "overflow",
   PinnedClient: "pinned_client",
+  Prioritized: "prioritized",
 } as const;
 export type PriorityPolicy = typeof PriorityPolicy[keyof typeof PriorityPolicy];
 
@@ -1213,36 +1214,44 @@ export type PinnedOptions = {
   min_ack_pending: never;
 };
 
+export type PrioritizedOptions = {
+  group: string;
+  priority: number;
+};
+
 /**
  * Options for a JetStream pull subscription which define how long
  * the pull request will remain open and limits the amount of data
  * that the server could return.
  */
-export type PullOptions = Partial<OverflowMinPendingAndMinAck> & {
-  /**
-   * Max number of messages to retrieve in a pull.
-   */
-  batch: number;
-  /**
-   * If true, the request for messages will end when received by the server
-   */
-  "no_wait": boolean;
-  /**
-   * If set, the number of milliseconds to wait for the number of messages
-   * specified in {@link batch}
-   */
-  expires: number;
-  /**
-   * If set, the max number of bytes to receive. The server will limit the
-   * number of messages in the batch to fit within this setting.
-   */
-  "max_bytes": number;
+export type PullOptions =
+  & Partial<OverflowMinPendingAndMinAck>
+  & Partial<PrioritizedOptions>
+  & {
+    /**
+     * Max number of messages to retrieve in a pull.
+     */
+    batch: number;
+    /**
+     * If true, the request for messages will end when received by the server
+     */
+    "no_wait": boolean;
+    /**
+     * If set, the number of milliseconds to wait for the number of messages
+     * specified in {@link batch}
+     */
+    expires: number;
+    /**
+     * If set, the max number of bytes to receive. The server will limit the
+     * number of messages in the batch to fit within this setting.
+     */
+    "max_bytes": number;
 
-  /**
-   * Number of nanos between messages for the server to emit an idle_heartbeat
-   */
-  "idle_heartbeat": number;
-};
+    /**
+     * Number of nanos between messages for the server to emit an idle_heartbeat
+     */
+    "idle_heartbeat": number;
+  };
 
 export type DeliveryInfo = {
   /**

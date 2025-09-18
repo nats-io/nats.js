@@ -290,11 +290,12 @@ function validatePriorityGroups(pg: unknown): void {
     if (
       pg.priority_policy !== PriorityPolicy.None &&
       pg.priority_policy !== PriorityPolicy.Overflow &&
-      pg.priority_policy !== PriorityPolicy.PinnedClient
+      pg.priority_policy !== PriorityPolicy.PinnedClient &&
+      pg.priority_policy !== PriorityPolicy.Prioritized
     ) {
       throw InvalidArgumentError.format(
         ["priority_policy"],
-        "must be 'none', 'overflow', or 'pinned_client'",
+        "must be 'none', 'prioritized', 'overflow', or 'pinned_client'",
       );
     }
   }

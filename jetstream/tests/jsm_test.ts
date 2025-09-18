@@ -2711,7 +2711,7 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
         });
       },
       Error,
-      "'priority_policy' must be 'none', 'overflow', or 'pinned_client'",
+      "'priority_policy' must be 'none', 'prioritized', 'overflow', or 'pinned_client'",
     );
   });
 
@@ -2727,7 +2727,7 @@ Deno.test("jsm - pull consumer priority groups", async (t) => {
         });
       },
       Error,
-      "'priority_policy' must be 'none', 'overflow', or 'pinned_client'",
+      "'priority_policy' must be 'none', 'prioritized', 'overflow', or 'pinned_client'",
     );
   });
 
