@@ -13,12 +13,20 @@
  * limitations under the License.
  */
 
-import { cleanup, jetstreamServerConf, setup } from "test_helpers";
+import {
+  cleanup,
+  jetstreamServerConf,
+  notCompatible,
+  setup,
+} from "test_helpers";
 import { type BatchPublisherImpl, jetstreamManager } from "../src/jsclient.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 
 Deno.test("batch publisher - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({
     name: "batch",
@@ -43,6 +51,9 @@ Deno.test("batch publisher - basics", async () => {
 
 Deno.test("batch publisher - out of sequence", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
   const jsm = await jetstreamManager(nc);
 
   await jsm.streams.add({
@@ -69,6 +80,9 @@ Deno.test("batch publisher - out of sequence", async () => {
 
 Deno.test("batch publisher - two streams", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({
     name: "a",
@@ -110,6 +124,9 @@ Deno.test("batch publisher - two streams", async () => {
 
 Deno.test("batch publisher - expect last seq", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({
     name: "a",
@@ -139,6 +156,9 @@ Deno.test("batch publisher - expect last seq", async () => {
 
 Deno.test("batch publisher - no atomics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
   const jsm = await jetstreamManager(nc);
   await jsm.streams.add({
     name: "a",
