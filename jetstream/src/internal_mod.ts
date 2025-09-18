@@ -34,6 +34,10 @@ export {
 export type {
   AbortOnMissingResource,
   Advisory,
+  Batch,
+  BatchAck,
+  BatchMessageOptions,
+  BatchMessageOptionsWithReply,
   Bind,
   BoundPushConsumerOptions,
   Close,

@@ -15,11 +15,17 @@
 
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
+
 import {
   backoff,
+  deferred,
   delay,
   Empty,
+  errors,
+  headers,
+  nuid,
   QueuedIteratorImpl,
+  RequestError,
 } from "@nats-io/nats-core/internal";
 
 import { ConsumersImpl, StreamAPIImpl, StreamsImpl } from "./jsmstream_api.ts";
@@ -27,6 +33,10 @@ import { ConsumersImpl, StreamAPIImpl, StreamsImpl } from "./jsmstream_api.ts";
 import type {
   Advisory,
   AdvisoryKind,
+  Batch,
+  BatchAck,
+  BatchMessageOptions,
+  BatchMessageOptionsWithReply,
   ConsumerAPI,
   Consumers,
   DirectStreamAPI,
@@ -39,7 +49,6 @@ import type {
   StreamAPI,
   Streams,
 } from "./types.ts";
-import { errors, headers, RequestError } from "@nats-io/nats-core/internal";
 
 import type {
   Msg,
@@ -172,11 +181,29 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     return this.prefix;
   }
 
-  async publish(
+  startBatch(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<Batch> {
+    const d = deferred<Batch>();
+    const bp = new BatchPublisherImpl(this);
+    bp.first(subj, payload, opts)
+      .then(() => {
+        d.resolve(bp);
+      })
+      .catch((err: Error) => {
+        d.reject(err);
+      });
+
+    return d;
+  }
+
+  async _publish(
     subj: string,
     data: Payload = Empty,
     opts?: Partial<JetStreamPublishOptions>,
-  ): Promise<PubAck> {
+  ): Promise<Msg> {
     opts = opts || {};
     opts = { ...opts };
     opts.expect = opts.expect || {};
@@ -274,12 +301,121 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         }
       }
     }
+    return r!;
+  }
 
-    const pa = this.parseJsResponse(r!) as PubAck;
+  async publish(
+    subj: string,
+    data: Payload = Empty,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<PubAck> {
+    const r = await this._publish(subj, data, opts);
+    const pa = this.parseJsResponse(r) as PubAck;
     if (pa.stream === "") {
       throw new JetStreamError("invalid ack response");
     }
     pa.duplicate = pa.duplicate ? pa.duplicate : false;
     return pa;
+  }
+}
+
+export class BatchPublisherImpl implements Batch {
+  nc: NatsConnection;
+  js: JetStreamClientImpl;
+  readonly id: string;
+  count: number;
+  done: boolean;
+  constructor(js: JetStreamClient) {
+    this.count = 0;
+    this.id = nuid.next();
+    this.js = js as JetStreamClientImpl;
+    this.nc = this.js.nc;
+    this.done = false;
+  }
+
+  async first(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<void> {
+    opts = opts || {};
+    opts.headers = opts?.headers || headers();
+    opts.headers.set("Nats-Batch-Id", this.id);
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
+
+    const r = await this.js._publish(subj, payload, opts);
+    if (r.data.length > 0) {
+      this.js.parseJsResponse(r);
+    }
+  }
+
+  add(subj: string, payload?: Payload, opts?: BatchMessageOptions): void;
+  add(
+    subj: string,
+    payload?: Payload,
+    opts?: BatchMessageOptionsWithReply,
+  ): Promise<void>;
+  add(
+    subj: string,
+    payload?: Payload,
+    opts: BatchMessageOptions | BatchMessageOptionsWithReply = {},
+  ): void | Promise<void> {
+    if (this.done) {
+      throw new Error("batch publisher is done");
+    }
+    opts.headers = opts?.headers || headers();
+    opts.headers.set("Nats-Batch-Id", this.id);
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
+
+    const hasAck = "ack" in opts && opts.ack === true;
+    if (hasAck) {
+      const d = deferred<void>();
+      this.js._publish(subj, payload, {
+        headers: opts.headers,
+        timeout: (opts as BatchMessageOptionsWithReply).timeout,
+      }).then((m) => {
+        if (m.data.length > 0) {
+          this.js.parseJsResponse(m);
+        }
+        d.resolve();
+      }).catch((err) => {
+        this.done = true;
+        d.reject(err);
+      });
+      return d;
+    } else {
+      return this.nc.publish(subj, payload, { headers: opts.headers });
+    }
+  }
+
+  async commit(
+    subj: string,
+    payload?: Payload,
+    opts: Partial<RequestOptions> = {},
+  ): Promise<BatchAck> {
+    if (this.done) {
+      throw new Error("batch publisher is done");
+    } else {
+      this.done = true;
+    }
+
+    opts.headers = opts?.headers || headers();
+    opts.headers.set("Nats-Batch-Id", this.id);
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
+    opts.headers.set("Nats-Batch-Commit", "1");
+
+    const r = await this.js._publish(subj, payload, {
+      headers: opts.headers,
+      timeout: opts.timeout || 0,
+    });
+
+    const ack = r.json<BatchAck>();
+    if (ack.count !== this.count) {
+      throw new Error("batch didn't contain number of published messages");
+    }
+    return ack;
   }
 }
