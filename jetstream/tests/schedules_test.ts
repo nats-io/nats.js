@@ -24,7 +24,7 @@ import {
 Deno.test("schedules - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
 
-  if (await notCompatible(ns, nc, "2.11.0")) {
+  if (await notCompatible(ns, nc, "2.12.0")) {
     return;
   }
 
