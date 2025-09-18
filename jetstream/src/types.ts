@@ -205,7 +205,7 @@ export type JetStreamPublishOptions = {
   }>;
 
   /**
-   * Sets {@link PubHeaders#MessageTtl} this only applies to streams that enable
+   * Sets {@link PubHeaders#MessageTTL} this only applies to streams that enable
    * {@link StreamConfig#allow_msg_ttl}. The format of this value is "1s" or "1h",
    * etc, or a plain number interpreted as the number of seconds.
    */
@@ -936,6 +936,14 @@ export type JetStreamClient = {
     options?: Partial<JetStreamPublishOptions>,
   ): Promise<PubAck>;
 
+  /**
+   * Starts a batch publish operation on a stream by publishing this first message.
+   * Additional messages are added to the batch using the returned Batch API and
+   * committing the batch.
+   * @param subj
+   * @param payload
+   * @param opts
+   */
   startBatch(
     subj: string,
     payload?: Payload,
