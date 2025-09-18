@@ -133,6 +133,7 @@ export type {
   PushConsumerOptions,
   Republish,
   Reset,
+  ScheduleOptions,
   SeqMsgRequest,
   SequenceInfo,
   StartTimeMsgRequest,

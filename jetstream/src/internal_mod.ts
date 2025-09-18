@@ -89,6 +89,7 @@ export type {
   PushConsumer,
   PushConsumerOptions,
   Reset,
+  ScheduleOptions,
   StoredMsg,
   Stream,
   StreamAPI,
