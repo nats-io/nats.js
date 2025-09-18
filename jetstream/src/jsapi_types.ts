@@ -646,6 +646,26 @@ export type ClusterInfo = {
    * The members of the RAFT cluster
    */
   replicas?: PeerInfo[];
+
+  /**
+   * Name of the raft group managing the asset
+   */
+  raft_group?: string;
+
+  /**
+   * The ISO timestamp when the RAFT leader was elected.
+   */
+  leader_since?: string;
+
+  /**
+   * The account through which the cluster traffic flows through
+   */
+  traffic_account?: string;
+
+  /**
+   * True if the traffic_account is a system account
+   */
+  system_account?: boolean;
 };
 
 export type PeerInfo = {
