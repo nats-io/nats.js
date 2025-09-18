@@ -27,6 +27,7 @@ import {
   type ConsumerConfig,
   DeliverPolicy,
   type OverflowMinPendingAndMinAck,
+  type PrioritizedOptions,
   PriorityPolicy,
 } from "../src/jsapi_types.ts";
 import { assertEquals, assertExists } from "@std/assert";
@@ -140,7 +141,7 @@ Deno.test("jetstream - last of", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jetstream - priority group", async (t) => {
+Deno.test("jetstream - priority group overflow", async (t) => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.11.0")) {
     return;
@@ -301,6 +302,165 @@ Deno.test("jetstream - priority group", async (t) => {
       group: "overflow",
       min_pending: 10,
       min_ack_pending: 100,
+      expires: 1000,
+    });
+  });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - priority group prioritized", async (t) => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "A",
+    subjects: [`a`],
+    allow_atomic: true,
+  });
+
+  const js = jetstream(nc);
+
+  const b = await js.startBatch("a", Empty);
+  for (let i = 0; i < 98; i++) {
+    await b.add("a", Empty, { ack: i % 20 === 0 });
+  }
+  const done = await b.commit("a", Empty);
+  assertEquals(done.count, 100);
+
+  const opts = {
+    durable_name: "a",
+    deliver_policy: DeliverPolicy.All,
+    ack_policy: AckPolicy.Explicit,
+    priority_groups: ["prioritized"],
+    priority_policy: PriorityPolicy.Prioritized,
+  };
+
+  await jsm.consumers.add("A", opts);
+
+  function spyPull(): Promise<Msg> {
+    const d = deferred<Msg>();
+    nc.subscribe(`$JS.API.CONSUMER.MSG.NEXT.A.a`, {
+      callback: (err, msg) => {
+        if (err) {
+          d.reject(err);
+        }
+        d.resolve(msg);
+      },
+    });
+
+    return d;
+  }
+
+  await t.step("consume", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+
+      const d = spyPull();
+      const c1 = await c.consume(opts);
+      const done = (async () => {
+        for await (const m of c1) {
+          m.ack();
+        }
+      })();
+
+      const m = await d;
+      c1.stop();
+      await done;
+
+      // check the pull options have the priority options
+      const po = m.json<PrioritizedOptions>();
+      assertEquals(po.group, opts.group);
+      assertEquals(po.priority, opts.priority);
+    }
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 1,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 8,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 5,
+    });
+  });
+
+  await t.step("fetch", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+
+      const d = spyPull();
+      const iter = await c.fetch(opts);
+      for await (const m of iter) {
+        m.ack();
+      }
+
+      const m = await d;
+      // check the pull options have the priority options
+      const po = m.json<PrioritizedOptions>();
+      assertEquals(po.group, opts.group);
+      assertEquals(po.priority, opts.priority);
+    }
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 1,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 8,
+      expires: 1000,
+    });
+
+    await check({
+      max_messages: 2,
+      group: "prioritized",
+      priority: 5,
+      expires: 1000,
+    });
+  });
+
+  await t.step("next", async () => {
+    async function check(opts: ConsumeOptions): Promise<void> {
+      const c = await js.consumers.get("A", "a");
+      const d = spyPull();
+      await c.next(opts);
+
+      const m = await d;
+      const po = m.json<PrioritizedOptions>();
+      assertEquals(po.group, opts.group);
+      assertEquals(po.priority, opts.priority);
+    }
+
+    await check({
+      group: "prioritized",
+      priority: 2,
+      expires: 1000,
+    });
+
+    await check({
+      group: "prioritized",
+      priority: 8,
+      expires: 1000,
+    });
+
+    await check({
+      group: "prioritized",
+      priority: 5,
       expires: 1000,
     });
   });

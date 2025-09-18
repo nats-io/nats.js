@@ -42,6 +42,7 @@ import type {
   ConsumerConfig,
   ConsumerInfo,
   OverflowMinPendingAndMinAck,
+  PrioritizedOptions,
   PullOptions,
 } from "./jsapi_types.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
@@ -105,6 +106,7 @@ type InternalPullOptions =
   & IdleHeartbeat
   & ThresholdMessages
   & OverflowMinPendingAndMinAck
+  & PrioritizedOptions
   & ThresholdBytes
   & ClientPinId;
 
@@ -115,6 +117,13 @@ export function isOverflowOptions(
   return oo && typeof oo.group === "string" ||
     typeof oo.min_pending === "number" ||
     typeof oo.min_ack_pending === "number";
+}
+
+export function isPrioritizedOptions(
+  opts: unknown,
+): opts is PrioritizedOptions {
+  const oo = opts as PrioritizedOptions;
+  return oo && typeof oo.group === "string" && typeof oo.priority === "number";
 }
 
 export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
@@ -136,6 +145,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   inReset: boolean;
   closeListener: ConnectionClosedListener;
   isPinned: boolean;
+  isPriority: boolean;
+  override noIterator: boolean;
   natsPinId: string;
 
   // callback: ConsumerCallbackFn;
@@ -152,6 +163,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
     this.inReset = false;
     this.isPinned = false;
+    this.isPriority = false;
     this.natsPinId = "";
 
     if (this.consumer.ordered) {
@@ -190,6 +202,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         copts as OverflowMinPendingAndMinAck;
       this.isPinned = min_pending === undefined &&
         min_ack_pending === undefined;
+      const { priority } = copts as PrioritizedOptions;
+      this.isPriority = typeof priority === "number";
     }
 
     this.closeListener = {
@@ -708,6 +722,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         opts.min_ack_pending = this.opts.min_ack_pending;
       }
     }
+    if (isPrioritizedOptions(this.opts)) {
+      opts.group = this.opts.group;
+      opts.priority = this.opts.priority;
+    }
     return opts;
   }
 
@@ -813,6 +831,14 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       }
       if (opts.min_pending) {
         args.min_pending = opts.min_pending;
+      }
+    } else if (isPrioritizedOptions(opts)) {
+      validatePrioritizedPullOptions(opts);
+      if (opts.group) {
+        args.group = opts.group;
+      }
+      if (typeof opts.priority === "number") {
+        args.priority = opts.priority;
       }
     }
 
@@ -1044,6 +1070,25 @@ export function validateOverflowPullOptions(opts: unknown) {
     if (min_ack_pending && typeof min_ack_pending !== "number") {
       throw errors.InvalidArgumentError.format(
         ["min_ack_pending"],
+        "must be a number",
+      );
+    }
+  }
+}
+
+export function validatePrioritizedPullOptions(opts: unknown) {
+  if (isPrioritizedOptions(opts)) {
+    minValidation("group", opts.group);
+    if (opts.group.length > 16) {
+      throw errors.InvalidArgumentError.format(
+        "group",
+        "must be 16 characters or less",
+      );
+    }
+    const { priority } = opts;
+    if (priority && typeof priority !== "number") {
+      throw errors.InvalidArgumentError.format(
+        ["priority"],
         "must be a number",
       );
     }
