@@ -18,6 +18,7 @@ import type {
   Nanos,
   Payload,
   QueuedIterator,
+  RequestOptions,
   ReviverFn,
   WithRequired,
 } from "@nats-io/nats-core/internal";
@@ -837,6 +838,46 @@ export function isPullConsumer(v: PushConsumer | Consumer): v is Consumer {
 export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
   return v.isPushConsumer();
 }
+export type BatchPublishOptions = {
+  /**
+   * Headers associated with the message. You can create an instance of
+   * MsgHdrs with the headers() function.
+   */
+  headers?: MsgHdrs;
+};
+
+export type BatchPublishWithReply = {
+  /**
+   * The number of milliseconds to wait for the PubAck
+   */
+  timeout?: number;
+
+  /**
+   * Request acknowledgement of the message (only set this on some of the
+   * messages, as this introduces a round trip to the server)
+   */
+  ack: boolean;
+} & BatchPublishOptions;
+
+export type BatchPublisher = {
+  readonly id: string;
+  publish(subj: string, payload?: Payload, opts?: BatchPublishOptions): void;
+  publish(
+    subj: string,
+    payload?: Payload,
+    opts?: BatchPublishWithReply,
+  ): Promise<void>;
+  end(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<RequestOptions>,
+  ): Promise<BatchPubAck>;
+};
+
+export type BatchPubAck = {
+  batch: string;
+  count: number;
+} & PubAck;
 
 /**
  * A type for interacting data stored in JetStream
@@ -855,6 +896,12 @@ export type JetStreamClient = {
     payload?: Payload,
     options?: Partial<JetStreamPublishOptions>,
   ): Promise<PubAck>;
+
+  batchPublisher(
+    subj: string,
+    payload?: Payload,
+    opts?: { timeout?: number; headers?: MsgHdrs },
+  ): Promise<BatchPublisher>;
 
   /**
    * Returns the JS API prefix as processed from the JetStream Options

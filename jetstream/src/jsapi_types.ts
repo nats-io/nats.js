@@ -183,6 +183,11 @@ export type StreamConfig = StreamUpdateConfig & {
    * Enables the scheduling of messages in a stream.
    */
   "allow_msg_schedules": boolean;
+
+  /**
+   * Enables the ability to send atomic batches to the stream
+   */
+  "allow_atomic": boolean;
 };
 
 /**
