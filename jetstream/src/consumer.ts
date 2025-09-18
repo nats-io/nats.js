@@ -146,7 +146,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   closeListener: ConnectionClosedListener;
   isPinned: boolean;
   isPriority: boolean;
-  override noIterator: boolean;
   natsPinId: string;
 
   // callback: ConsumerCallbackFn;
