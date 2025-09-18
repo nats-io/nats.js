@@ -23,7 +23,6 @@ import {
   Empty,
   errors,
   headers,
-  type MsgHdrs,
   nuid,
   QueuedIteratorImpl,
   RequestError,
@@ -34,10 +33,10 @@ import { ConsumersImpl, StreamAPIImpl, StreamsImpl } from "./jsmstream_api.ts";
 import type {
   Advisory,
   AdvisoryKind,
-  BatchPubAck,
-  BatchPublisher,
-  BatchPublishOptions,
-  BatchPublishWithReply,
+  Batch,
+  BatchAck,
+  BatchMessageOptions,
+  BatchMessageOptionsWithReply,
   ConsumerAPI,
   Consumers,
   DirectStreamAPI,
@@ -182,12 +181,12 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     return this.prefix;
   }
 
-  batchPublisher(
+  startBatch(
     subj: string,
     payload?: Payload,
-    opts?: { timeout?: number; headers?: MsgHdrs },
-  ): Promise<BatchPublisher> {
-    const d = deferred<BatchPublisher>();
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<Batch> {
+    const d = deferred<Batch>();
     const bp = new BatchPublisherImpl(this);
     bp.first(subj, payload, opts)
       .then(() => {
@@ -320,14 +319,14 @@ export class JetStreamClientImpl extends BaseApiClientImpl
   }
 }
 
-export class BatchPublisherImpl implements BatchPublisher {
+export class BatchPublisherImpl implements Batch {
   nc: NatsConnection;
   js: JetStreamClientImpl;
   readonly id: string;
-  seq: number;
+  count: number;
   done: boolean;
   constructor(js: JetStreamClient) {
-    this.seq = 0;
+    this.count = 0;
     this.id = nuid.next();
     this.js = js as JetStreamClientImpl;
     this.nc = this.js.nc;
@@ -337,42 +336,49 @@ export class BatchPublisherImpl implements BatchPublisher {
   async first(
     subj: string,
     payload?: Payload,
-    opts?: { timeout?: number; headers?: MsgHdrs },
+    opts?: Partial<JetStreamPublishOptions>,
   ): Promise<void> {
     opts = opts || {};
     opts.headers = opts?.headers || headers();
     opts.headers.set("Nats-Batch-Id", this.id);
-    this.seq++;
-    opts.headers.set("Nats-Batch-Sequence", this.seq.toString());
-    await this.js._publish(subj, payload, opts);
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
+
+    const r = await this.js._publish(subj, payload, opts);
+    if (r.data.length > 0) {
+      this.js.parseJsResponse(r);
+    }
   }
 
-  publish(subj: string, payload?: Payload, opts?: BatchPublishOptions): void;
-  publish(
+  add(subj: string, payload?: Payload, opts?: BatchMessageOptions): void;
+  add(
     subj: string,
     payload?: Payload,
-    opts?: BatchPublishWithReply,
+    opts?: BatchMessageOptionsWithReply,
   ): Promise<void>;
-  publish(
+  add(
     subj: string,
     payload?: Payload,
-    opts: BatchPublishOptions | BatchPublishWithReply = {},
+    opts: BatchMessageOptions | BatchMessageOptionsWithReply = {},
   ): void | Promise<void> {
     if (this.done) {
       throw new Error("batch publisher is done");
     }
     opts.headers = opts?.headers || headers();
     opts.headers.set("Nats-Batch-Id", this.id);
-    this.seq++;
-    opts.headers.set("Nats-Batch-Sequence", this.seq.toString());
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
 
     const hasAck = "ack" in opts && opts.ack === true;
     if (hasAck) {
       const d = deferred<void>();
       this.js._publish(subj, payload, {
         headers: opts.headers,
-        timeout: (opts as BatchPublishWithReply).timeout,
-      }).then((_) => {
+        timeout: (opts as BatchMessageOptionsWithReply).timeout,
+      }).then((m) => {
+        if (m.data.length > 0) {
+          this.js.parseJsResponse(m);
+        }
         d.resolve();
       }).catch((err) => {
         this.done = true;
@@ -384,11 +390,11 @@ export class BatchPublisherImpl implements BatchPublisher {
     }
   }
 
-  async end(
+  async commit(
     subj: string,
     payload?: Payload,
     opts: Partial<RequestOptions> = {},
-  ): Promise<BatchPubAck> {
+  ): Promise<BatchAck> {
     if (this.done) {
       throw new Error("batch publisher is done");
     } else {
@@ -397,8 +403,8 @@ export class BatchPublisherImpl implements BatchPublisher {
 
     opts.headers = opts?.headers || headers();
     opts.headers.set("Nats-Batch-Id", this.id);
-    this.seq++;
-    opts.headers.set("Nats-Batch-Sequence", this.seq.toString());
+    this.count++;
+    opts.headers.set("Nats-Batch-Sequence", this.count.toString());
     opts.headers.set("Nats-Batch-Commit", "1");
 
     const r = await this.js._publish(subj, payload, {
@@ -406,8 +412,8 @@ export class BatchPublisherImpl implements BatchPublisher {
       timeout: opts.timeout || 0,
     });
 
-    const ack = r.json<BatchPubAck>();
-    if (ack.count !== this.seq) {
+    const ack = r.json<BatchAck>();
+    if (ack.count !== this.count) {
       throw new Error("batch didn't contain number of published messages");
     }
     return ack;

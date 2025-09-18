@@ -28,15 +28,15 @@ Deno.test("batch publisher - basics", async () => {
 
   const js = jsm.jetstream();
 
-  const bp = await js.batchPublisher("q", "a");
+  const bp = await js.startBatch("q", "a");
   for (let i = 0; i < 98; i++) {
-    bp.publish("q", i.toString(), { ack: i % 20 === 0 });
+    bp.add("q", i.toString(), { ack: i % 20 === 0 });
   }
-  const end = await bp.end("q", "lastone");
-  assertEquals(end.seq, 100);
-  assertEquals(end.stream, "batch");
-  assertEquals(end.count, 100);
-  assertEquals(end.batch, bp.id);
+  const ack = await bp.commit("q", "lastone");
+  assertEquals(ack.seq, 100);
+  assertEquals(ack.stream, "batch");
+  assertEquals(ack.count, 100);
+  assertEquals(ack.batch, bp.id);
 
   await cleanup(ns, nc);
 });
@@ -52,16 +52,106 @@ Deno.test("batch publisher - out of sequence", async () => {
   });
 
   const js = jsm.jetstream();
-  const bp = await js.batchPublisher("q", "a");
+  const bp = await js.startBatch("q", "a");
   const bpi = bp as BatchPublisherImpl;
-  bpi.seq++;
+  bpi.count++;
 
   await assertRejects(
     () => {
-      return bp.end("q", "c");
+      return bp.commit("q", "c");
     },
     Error,
     "batch didn't contain number of published messages",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("batch publisher - two streams", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "a",
+    allow_atomic: true,
+    subjects: ["a"],
+  });
+
+  await jsm.streams.add({
+    name: "b",
+    allow_atomic: true,
+    subjects: ["b"],
+  });
+
+  const js = jsm.jetstream();
+
+  const bp = await js.startBatch("a", "a");
+
+  await assertRejects(
+    () => {
+      return bp.add("b", "b", { ack: true });
+    },
+    Error,
+    "atomic publish batch is incomplete",
+  );
+
+  await assertRejects(
+    () => {
+      return bp.commit("a", "a");
+    },
+    Error,
+    "batch publisher is done",
+  );
+
+  const si = await jsm.streams.info("b");
+  assertEquals(si.state.messages, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("batch publisher - expect last seq", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "a",
+    allow_atomic: true,
+    subjects: ["a"],
+  });
+
+  const js = jsm.jetstream();
+
+  // this should have failed...
+  const b = await js.startBatch("a", "a", {
+    expect: {
+      lastSequence: 5,
+    },
+  });
+  // this fails but the message is doggy
+  await assertRejects(
+    () => {
+      return b.commit("a", "");
+    },
+    Error,
+    "batch didn't contain number of published messages",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("batch publisher - no atomics", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "a",
+    subjects: ["a"],
+  });
+
+  const js = jsm.jetstream();
+  await assertRejects(
+    () => {
+      return js.startBatch("a", "a");
+    },
+    Error,
+    "atomic publish is disabled",
   );
 
   await cleanup(ns, nc);
