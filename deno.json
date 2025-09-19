@@ -4,21 +4,21 @@
   },
   "imports": {
     "test_helpers": "./test_helpers/mod.ts",
-    "@std/cli": "jsr:@std/cli@1.0.20",
-    "@std/path": "jsr:@std/path@1.0.8",
-    "@std/flags": "jsr:@std/flags@1.0.0", 
+    "@std/cli": "jsr:@std/cli@1.0.22",
+    "@std/path": "jsr:@std/path@1.1.2",
+    "@std/flags": "jsr:@std/flags@1.0.0",
     "@aricart/cobra": "jsr:@aricart/cobra@1.0.3",
-    "esbuild": "npm:esbuild@0.24.0",
-    "@luca/esbuild-deno-loader": "jsr:@luca/esbuild-deno-loader@0.10.3",
-    "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@3.1.0",
-    "@david/dax": "jsr:@david/dax@0.42.0",
+    "esbuild": "npm:esbuild@0.25.10",
+    "@luca/esbuild-deno-loader": "jsr:@luca/esbuild-deno-loader@0.11.1",
+    "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@3.1.1-1",
+    "@david/dax": "jsr:@david/dax@0.43.2",
     "license-checker": "npm:license-checker@25.0.1",
-    "@std/assert": "jsr:@std/assert@1.0.8",
-    "@std/async": "jsr:@std/async@1.0.8",
-    "@std/bytes": "jsr:@std/bytes@1.0.4",
-    "@std/fmt": "jsr:@std/fmt@1.0.3",
-    "@std/jsonc": "jsr:@std/jsonc@1.0.1",
-    "@std/semver": "jsr:@std/semver@1.0.3",
+    "@std/assert": "jsr:@std/assert@1.0.14",
+    "@std/async": "jsr:@std/async@1.0.14",
+    "@std/bytes": "jsr:@std/bytes@1.0.6",
+    "@std/fmt": "jsr:@std/fmt@1.0.8",
+    "@std/jsonc": "jsr:@std/jsonc@1.0.2",
+    "@std/semver": "jsr:@std/semver@1.0.5",
     "@nats-io/jwt": "jsr:@nats-io/jwt@0.0.11",
     "@chiefbiiko/sha256": "https://denopkg.com/chiefbiiko/sha256@v1.0.0/mod.ts",
     "nats-deno": "https://raw.githubusercontent.com/nats-io/nats.deno/main/src/mod.ts",
@@ -59,14 +59,43 @@
     "enable-npm-workspace": "mv _package.json package.json"
   },
   "fmt": {
-    "include": ["transport-deno/", "bin/", "core/", "debug/", "jetstream/", "kv/", "obj/", "services/", "*.md", "transport-node/", "test_helpers/"],
-    "exclude": ["core/lib", "jetstream/lib", "kv/lib","obj/lib", "services/lib", "transport-node/lib", "transport-ws/lib", "*/build", "docs/"]
+    "include": [
+      "transport-deno/",
+      "bin/",
+      "core/",
+      "debug/",
+      "jetstream/",
+      "kv/",
+      "obj/",
+      "services/",
+      "*.md",
+      "transport-node/",
+      "test_helpers/"
+    ],
+    "exclude": [
+      "core/lib",
+      "jetstream/lib",
+      "kv/lib",
+      "obj/lib",
+      "services/lib",
+      "transport-node/lib",
+      "transport-ws/lib",
+      "*/build",
+      "docs/"
+    ]
   },
   "lint": {
-    "exclude": ["*/lib", "*/build", "docs/", "*/lib"]
+    "exclude": [
+      "*/lib",
+      "*/build",
+      "docs/",
+      "*/lib"
+    ]
   },
   "test": {
-    "exclude": ["transport-node/tests"]
+    "exclude": [
+      "transport-node/tests"
+    ]
   },
   "scopes": {
     "*": {
