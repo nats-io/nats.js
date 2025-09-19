@@ -518,10 +518,12 @@ export const PersistMode = {
    */
   Default: "default",
   /**
-   * Writes to the stream are committed, but writes to the stream data is synced
-   * asynchronously. Publish acknowledgement is sent before the sync to the store
-   * is completed. There could result in data-loss if the server crashes before the
-   * sync is completed. This provides better performance.
+   * Writes to the stream are committed, but writes to the disk are asynchronously synced.
+   * The publish acknowledgement is sent before the sync to the disk is complete.
+   * This could result in data-loss if the server crashes before the sync is completed, however
+   * with an R3+ stream, the replication provides in-flight redundancy to reduce the likelihood of
+   * this occurring with distinct fault domains.
+   * This can significantly increase the publish throughput.
    */
   Async: "async",
 };
