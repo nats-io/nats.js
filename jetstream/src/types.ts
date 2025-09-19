@@ -126,6 +126,64 @@ export type ScheduleOptions = {
 };
 
 /**
+ * StreamExpectations are used implement some assertions before adding a message
+ * to the stream.
+ */
+export type StreamExpectations = {
+  /**
+   * The expected last msgID of the last message received by the stream.
+   */
+  lastMsgID: string;
+  /**
+   * The expected stream capturing the message
+   */
+  streamName: string;
+  /**
+   * The expected last sequence on the stream.
+   */
+  lastSequence: number;
+  /**
+   * The expected last sequence on the stream for a message with this subject
+   */
+  lastSubjectSequence: number;
+  /**
+   * This option is used in conjunction with {@link lastSubjectSequence}. It enables a
+   * constraint on the sequence to be based on the specified subject (which can
+   * have wildcards) rather than the subject of the message being published.
+   *
+   * Here's an example set of sequences for specific subjects:
+   *
+   * ┌─────────┬────────┐
+   * │ subj    │ Seq    │
+   * ├─────────┼────────┤
+   * │ a.1.foo │ 1      │
+   * │ a.1.bar │ 6      │
+   * │ a.2.foo │ 3      │
+   * │ a.3.bar │ 4      │
+   * │ a.1.baz │ 5      │
+   * │ a.2.baz │ 7      │
+   * └─────────┴────────┘
+   *
+   *  The LastSubjectSequenceSubject for wildcards in the last token
+   *  Are evaluated for to the largest sequence matching the subject:
+   * ┌────────────────────┬────────┐
+   * | Last Subj Seq Subj | Seq    |
+   * ├────────────────────┼────────┤
+   * │ a.1.*              │ 6      │
+   * │ a.2.*              │ 7      │
+   * │ a.3.*              │ 4      │
+   * └────────────────────┴────────┘
+   */
+  lastSubjectSequenceSubject: string;
+
+  /**
+   * The expected last sequence on the stream for a message with this subject
+   * and this value.
+   */
+  lastSubjectSequenceValue: number;
+};
+
+/**
  * Options for messages published to JetStream
  */
 export type JetStreamPublishOptions = {
@@ -151,62 +209,10 @@ export type JetStreamPublishOptions = {
    * These settings allow you to implement deduplication and consistency
    * strategies.
    */
-  expect: Partial<{
-    /**
-     * The expected last msgID of the last message received by the stream.
-     */
-    lastMsgID: string;
-    /**
-     * The expected stream capturing the message
-     */
-    streamName: string;
-    /**
-     * The expected last sequence on the stream.
-     */
-    lastSequence: number;
-    /**
-     * The expected last sequence on the stream for a message with this subject
-     */
-    lastSubjectSequence: number;
-    /**
-     * This option is used in conjunction with {@link lastSubjectSequence}. It enables a
-     * constraint on the sequence to be based on the specified subject (which can
-     * have wildcards) rather than the subject of the message being published.
-     *
-     * Here's an example set of sequences for specific subjects:
-     *
-     * ┌─────────┬────────┐
-     * │ subj    │ Seq    │
-     * ├─────────┼────────┤
-     * │ a.1.foo │ 1      │
-     * │ a.1.bar │ 6      │
-     * │ a.2.foo │ 3      │
-     * │ a.3.bar │ 4      │
-     * │ a.1.baz │ 5      │
-     * │ a.2.baz │ 7      │
-     * └─────────┴────────┘
-     *
-     *  The LastSubjectSequenceSubject for wildcards in the last token
-     *  Are evaluated for to the largest sequence matching the subject:
-     * ┌────────────────────┬────────┐
-     * | Last Subj Seq Subj | Seq    |
-     * ├────────────────────┼────────┤
-     * │ a.1.*              │ 6      │
-     * │ a.2.*              │ 7      │
-     * │ a.3.*              │ 4      │
-     * └────────────────────┴────────┘
-     */
-    lastSubjectSequenceSubject: string;
-
-    /**
-     * The expected last sequence on the stream for a message with this subject
-     * and this value.
-     */
-    lastSubjectSequenceValue: number;
-  }>;
+  expect: Partial<StreamExpectations>;
 
   /**
-   * Sets {@link PubHeaders#MessageTTL} this only applies to streams that enable
+   * Sets {@link PubHeaders.MessageTTL} this only applies to streams that enable
    * {@link StreamConfig#allow_msg_ttl}. The format of this value is "1s" or "1h",
    * etc, or a plain number interpreted as the number of seconds.
    */
@@ -843,26 +849,20 @@ export function isPullConsumer(v: PushConsumer | Consumer): v is Consumer {
 export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
   return v.isPushConsumer();
 }
-export type BatchMessageOptions = {
-  /**
-   * Headers associated with the message. You can create an instance of
-   * MsgHdrs with the headers() function.
-   */
-  headers?: MsgHdrs;
-};
+
+export type BatchMessageOptions =
+  & Partial<Omit<JetStreamPublishOptions, "msgID" | "expect">>
+  & {
+    expect?: Partial<Omit<StreamExpectations, "lastMsgID">>;
+  };
 
 export type BatchMessageOptionsWithReply = {
-  /**
-   * The number of milliseconds to wait for the PubAck
-   */
-  timeout?: number;
-
   /**
    * Request acknowledgement of the message (only set this on some of the
    * messages, as this introduces a round trip to the server)
    */
   ack: boolean;
-} & BatchMessageOptions;
+} & Partial<BatchMessageOptions>;
 
 /**
  * A Batch represents a number of messages staged into a stream
@@ -891,7 +891,11 @@ export type Batch = {
    * @param payload
    * @param opts
    */
-  add(subj: string, payload?: Payload, opts?: BatchMessageOptions): void;
+  add(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<BatchMessageOptions>,
+  ): void;
   /**
    * Appends the next message to the batch, but will wait for the server to
    * acknowledge the message.
@@ -902,7 +906,7 @@ export type Batch = {
   add(
     subj: string,
     payload?: Payload,
-    opts?: BatchMessageOptionsWithReply,
+    opts?: Partial<BatchMessageOptionsWithReply>,
   ): Promise<void>;
   /**
    * Commits the batch. This will publish the last message on the batch
