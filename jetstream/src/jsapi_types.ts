@@ -188,6 +188,12 @@ export type StreamConfig = StreamUpdateConfig & {
    * Enables the ability to send atomic batches to the stream
    */
   "allow_atomic": boolean;
+
+  /**
+   * Sets the persistence model for the stream - the default is PersistMode.Default.
+   * This is a 2.12 feature.
+   */
+  "persist_mode": PersistMode;
 };
 
 /**
@@ -503,6 +509,24 @@ export const StoreCompression = {
 } as const;
 export type StoreCompression =
   typeof StoreCompression[keyof typeof StoreCompression];
+
+export const PersistMode = {
+  /**
+   * All writes are committed, flushed, and stream data is synced
+   * to disk before the publish acknowledgement is sent. This is the default mode,
+   * and provides the strongest data durability guarantee.
+   */
+  Default: "default",
+  /**
+   * Writes to the stream are committed, but writes to the stream data is synced
+   * asynchronously. Publish acknowledgement is sent before the sync to the store
+   * is completed. There could be data-loss if the server crashes before the
+   * sync is completed. This provides better performance.
+   */
+  Async: "async",
+};
+
+export type PersistMode = typeof PersistMode[keyof typeof PersistMode];
 
 /**
  * Options for StreamAPI info requests
