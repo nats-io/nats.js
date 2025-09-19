@@ -26,6 +26,7 @@ export {
   JetStreamApiError,
   JetStreamError,
   JsHeaders,
+  PersistMode,
   PubHeaders,
   ReplayPolicy,
   RepublishHeaders,

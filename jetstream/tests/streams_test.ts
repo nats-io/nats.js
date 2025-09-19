@@ -19,7 +19,12 @@ import {
   notCompatible,
   setup,
 } from "test_helpers";
-import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
+import {
+  AckPolicy,
+  jetstream,
+  jetstreamManager,
+  PersistMode,
+} from "../src/mod.ts";
 
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { initStream } from "./jstest_util.ts";
@@ -163,6 +168,44 @@ Deno.test("streams - first_seq fails if wrong server", async () => {
     },
     Error,
     "stream 'first_seq' requires server 2.10.0",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("streams - persist mode", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+
+  let si = await jsm.streams.add({
+    name: "A",
+    subjects: ["a"],
+    persist_mode: PersistMode.Default,
+  });
+  assertEquals(si.config.persist_mode, undefined);
+  let md = si.config.metadata || {};
+  assertEquals(md["_nats.req.level"], "0");
+
+  si = await jsm.streams.add({
+    name: "B",
+    subjects: ["b"],
+    persist_mode: PersistMode.Async,
+  });
+  assertEquals(si.config.persist_mode, PersistMode.Async);
+  md = si.config.metadata || {};
+  assertEquals(md["_nats.req.level"], "2");
+
+  await assertRejects(
+    () => {
+      // @ts-expect-error: testing server rejection
+      return jsm.streams.update("B", { persist_mode: PersistMode.Default });
+    },
+    Error,
+    "can not change persist mode",
   );
 
   await cleanup(ns, nc);
