@@ -213,7 +213,7 @@ export type JetStreamPublishOptions = {
 
   /**
    * Sets {@link PubHeaders.MessageTTL} this only applies to streams that enable
-   * {@link StreamConfig#allow_msg_ttl}. The format of this value is "1s" or "1h",
+   * `StreamConfig.allow_msg_ttl`. The format of this value is "1s" or "1h",
    * etc, or a plain number interpreted as the number of seconds.
    */
   ttl?: string;
@@ -250,7 +250,7 @@ export type Destroyable = {
 };
 
 /**
- * An type for listing. Returns a promise with typed list.
+ * A generic type for listing. Returns a promise with typed list.
  */
 export type Lister<T> = {
   [Symbol.asyncIterator](): AsyncIterator<T>;
