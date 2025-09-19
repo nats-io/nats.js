@@ -512,9 +512,9 @@ export type StoreCompression =
 
 export const PersistMode = {
   /**
-   * All writes are committed, flushed, and stream data is synced
-   * to disk before the publish acknowledgement is sent. This is the default mode,
-   * and provides the strongest data durability guarantee.
+   * All writes are committed and stream data is synced to disk before the publish
+   * acknowledgement is sent.
+   * This is the default mode, and provides the strongest data durability guarantee.
    */
   Default: "default",
   /**
