@@ -608,7 +608,7 @@ export type StreamState = {
   "num_deleted": number;
   /**
    * IDs of messages that were deleted using the Message Delete API or Interest-based streams removing messages out of order
-   * {@link StreamInfoRequestOptions.deleted_details} is specified on
+   * when `StreamInfoRequestOptions.deleted_details` is specified on
    * the request.
    */
   deleted: number[];
@@ -1006,7 +1006,7 @@ export type ConsumerConfig = ConsumerUpdateConfig & {
    */
   "deliver_group"?: string;
   /**
-   * A unique name for a durable consumer. Set {@link name} for ephemeral consumers
+   * A unique name for a durable consumer. Set `name` for ephemeral consumers
    */
   "durable_name"?: string;
   /**
@@ -1120,12 +1120,12 @@ export type ConsumerUpdateConfig = PriorityGroups & {
   "mem_storage"?: boolean;
   /**
    * Deliver only messages that match the subject filter
-   * This is exclusive of {@link filter_subjects}
+   * This is exclusive of `filter_subjects`
    */
   "filter_subject"?: string;
   /**
    * Deliver only messages that match the specified filters.
-   * This is exclusive of {@link filter_subject}.
+   * This is exclusive of `filter_subject`.
    */
   "filter_subjects"?: string[];
   /**
@@ -1238,7 +1238,7 @@ export type PullOptions =
     "no_wait": boolean;
     /**
      * If set, the number of milliseconds to wait for the number of messages
-     * specified in {@link batch}
+     * specified in `batch`
      */
     expires: number;
     /**
@@ -1307,7 +1307,7 @@ export const PubHeaders = {
     "Nats-Expected-Last-Subject-Sequence-Subject",
   /**
    * Sets the TTL for a message (Nanos value). Only have effect on streams that
-   * enable {@link StreamConfig#allow_msg_ttl}.
+   * enable `StreamConfig.allow_msg_ttl`.
    */
   MessageTTL: "Nats-TTL",
   Schedule: "Nats-Schedule",

@@ -8,6 +8,7 @@ export type {
   KvLimits,
   KvOptions,
   KvPayloadCodec,
+  KvPurgeOptions,
   KvPutOptions,
   KvStatus,
   KvWatchEntry,

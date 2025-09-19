@@ -147,6 +147,7 @@ export type {
   OverflowOptions,
   PeerInfo,
   Placement,
+  PrioritizedOptions,
   PriorityGroups,
   PriorityPolicy,
   PullOptions,
