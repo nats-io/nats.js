@@ -359,7 +359,7 @@ export class BatchPublisherImpl implements Batch {
   add(
     subj: string,
     payload?: Payload,
-    opts: BatchMessageOptions | BatchMessageOptionsWithReply = {},
+    opts: BatchMessageOptions | BatchMessageOptionsWithReply = { ack: false },
   ): void | Promise<void> {
     if (this.done) {
       throw new Error("batch publisher is done");

@@ -97,6 +97,7 @@ export type {
   StoredMsg,
   Stream,
   StreamAPI,
+  StreamExpectations,
   StreamNotFound,
   Streams,
   ThresholdBytes,
