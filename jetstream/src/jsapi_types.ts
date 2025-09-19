@@ -520,7 +520,7 @@ export const PersistMode = {
   /**
    * Writes to the stream are committed, but writes to the stream data is synced
    * asynchronously. Publish acknowledgement is sent before the sync to the store
-   * is completed. There could be data-loss if the server crashes before the
+   * is completed. There could result in data-loss if the server crashes before the
    * sync is completed. This provides better performance.
    */
   Async: "async",

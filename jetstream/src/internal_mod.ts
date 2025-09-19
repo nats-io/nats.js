@@ -179,6 +179,7 @@ export {
   AckPolicy,
   DeliverPolicy,
   DiscardPolicy,
+  PersistMode,
   PubHeaders,
   ReplayPolicy,
   RetentionPolicy,
