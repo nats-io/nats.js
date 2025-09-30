@@ -146,6 +146,8 @@ export { isIPV4OrHostname, Servers } from "./servers.ts";
 
 export { wsconnect, wsUrlParseFn } from "./ws_transport.ts";
 
+export type { WsConnectionOptions, WsSocketFactory } from "./ws_transport.ts";
+
 export {
   AuthorizationError,
   ClosedConnectionError,

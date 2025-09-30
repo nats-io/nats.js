@@ -33,11 +33,26 @@ import { errors, InvalidArgumentError } from "./errors.ts";
 const VERSION = version;
 const LANG = "nats.ws";
 
+/**
+ * WsSocketFactory is a factory that returns a WebSocket and a boolean
+ * indicating if the connection is encrypted. Client code is responsible
+ * for creating a W3C WebSocket compliant transport.
+ *
+ * @param u the url to connect to
+ * @param opts the connection options
+ * @returns a promise that resolves to a WebSocket and a boolean indicating if
+ * the connection is encrypted
+ */
 export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
   socket: WebSocket;
   encrypted: boolean;
 }>;
-interface WsConnectionOptions extends ConnectionOptions {
+
+/**
+ * WsConnectionOptions exposes wsconnect specific options not applicable to
+ * other transports.
+ */
+export interface WsConnectionOptions extends ConnectionOptions {
   wsFactory?: WsSocketFactory;
 }
 
@@ -334,7 +349,7 @@ export function wsUrlParseFn(u: string, encrypted?: boolean): string {
 }
 
 export function wsconnect(
-  opts: ConnectionOptions = {},
+  opts: ConnectionOptions | WsConnectionOptions = {},
 ): Promise<NatsConnection> {
   setTransportFactory({
     defaultPort: 443,
