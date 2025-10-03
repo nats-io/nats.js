@@ -72,6 +72,11 @@ Deno.test("basics - connect hostport", async () => {
   await nc.close();
 });
 
+Deno.test("basics - scott", async () => {
+  const nc = await connect({ servers: "demo.nats.io:4222", debug: true });
+  await nc.close();
+});
+
 Deno.test("basics - connect servers", async () => {
   const ns = await NatsServer.start();
   const nc = await connect({ servers: [`${ns.hostname}:${ns.port}`] });

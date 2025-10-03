@@ -1231,13 +1231,25 @@ export type AdvisoryKind = typeof AdvisoryKind[keyof typeof AdvisoryKind];
 export type Stream = {
   name: string;
 
+  /**
+   * Returns the info (optionally cached) on the stream.
+   * @param cached
+   * @param opts
+   */
   info(
     cached?: boolean,
     opts?: Partial<StreamInfoRequestOptions>,
   ): Promise<StreamInfo>;
 
+  /**
+   * Returns a list of streams that are equivalent alternates to this one.
+   */
   alternates(): Promise<StreamAlternate[]>;
 
+  /**
+   * Return the alternate (best RRT) for this stream. This is the
+   * first alternate returned by the server.
+   */
   best(): Promise<Stream>;
 
   /**
@@ -1250,6 +1262,11 @@ export type Stream = {
     name?: string | Partial<OrderedConsumerOptions>,
   ): Promise<Consumer>;
 
+  /**
+   * Returns the specified push consumer.
+   * @param stream
+   * @param name the name of the consumer, or an ordered consumer specification.
+   */
   getPushConsumer(
     stream: string,
     name?:
@@ -1264,8 +1281,17 @@ export type Stream = {
   //     | BoundPushConsumerOptions,
   // ): Promise<PushConsumer>;
 
+  /**
+   * Retrieves the specified message using the specified query.
+   * @param query
+   */
   getMessage(query: MsgRequest): Promise<StoredMsg | null>;
 
+  /**
+   * Deletes the specified message sequence
+   * @param seq
+   * @param erase - default is true
+   */
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
 };
 

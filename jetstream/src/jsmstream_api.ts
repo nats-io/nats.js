@@ -396,7 +396,7 @@ export class StreamImpl implements Stream {
     return this.api.getMessage(this.name, query);
   }
 
-  deleteMessage(seq: number, erase?: boolean): Promise<boolean> {
+  deleteMessage(seq: number, erase = true): Promise<boolean> {
     return this.api.deleteMessage(this.name, seq, erase);
   }
 }
