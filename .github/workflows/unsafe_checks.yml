@@ -1,0 +1,47 @@
+name: Unsafe Tests
+
+on:
+  workflow_call:
+
+jobs:
+  test-unsafe:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        deno-version: [2.4.x]
+
+    steps:
+      - name: Git Checkout Sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Deno ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Install nats-server
+        uses: aricart/install-binary@v1.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+          cache: true
+
+      - name: Test Unsafe
+        env:
+          NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
+          TMPDIR: ${{ runner.temp }}
+          CI: true
+        run: |
+          deno task test-unsafe
+          deno coverage ./coverage/unsafe --exclude=test_helpers --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov
+
+      - name: Upload coverage
+        uses: coverallsapp/github-action@v2
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel: true
+          flag-name: unsafe
+          file: ./coverage/out.lcov

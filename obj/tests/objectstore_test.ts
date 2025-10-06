@@ -93,6 +93,34 @@ function digest(data: Uint8Array): string {
   return `${digestType}${digest}`;
 }
 
+Deno.test("objectstore - list stores", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  const objm = new Objm(nc);
+  let stores = await objm.list().next();
+  assertEquals(stores.length, 0);
+
+  await objm.create("store1");
+  stores = await objm.list().next();
+  assertEquals(stores.length, 1);
+  assertEquals(stores[0].bucket, "store1");
+
+  await objm.create("store2");
+  stores = await objm.list().next();
+  assertEquals(stores.length, 2);
+
+  const names = stores.map((s) => s.bucket).sort();
+  assertEquals(names, ["store1", "store2"]);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("objectstore - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {

@@ -75,8 +75,205 @@ import {
   setup,
 } from "test_helpers";
 import type { QueuedIteratorImpl } from "@nats-io/nats-core/internal";
-import { Kvm } from "../src/kv.ts";
+import {
+  defaultBucketOpts,
+  hasWildcards,
+  Kvm,
+  validateSearchKey,
+} from "../src/kv.ts";
 import { assertBetween, flakyTest } from "../../test_helpers/mod.ts";
+
+Deno.test("kv - Base64KeyCodec encodes and decodes", () => {
+  const codec = Base64KeyCodec();
+
+  // Simple key
+  const encoded = codec.encode("foo");
+  assertEquals(encoded, btoa("foo"));
+  assertEquals(codec.decode(encoded), "foo");
+
+  // Key with dots
+  const multiPart = "foo.bar.baz";
+  const encodedMulti = codec.encode(multiPart);
+  assertEquals(encodedMulti, `${btoa("foo")}.${btoa("bar")}.${btoa("baz")}`);
+  assertEquals(codec.decode(encodedMulti), multiPart);
+
+  // Wildcard * should not be encoded
+  const withStar = "foo.*.baz";
+  const encodedStar = codec.encode(withStar);
+  assertEquals(encodedStar, `${btoa("foo")}.*.${btoa("baz")}`);
+  assertEquals(codec.decode(encodedStar), withStar);
+
+  // Wildcard > should not be encoded
+  const withGt = "foo.bar.>";
+  const encodedGt = codec.encode(withGt);
+  assertEquals(encodedGt, `${btoa("foo")}.${btoa("bar")}.>`);
+  assertEquals(codec.decode(encodedGt), withGt);
+
+  // Multiple wildcards
+  const mixed = "foo.*.bar.>";
+  const encodedMixed = codec.encode(mixed);
+  assertEquals(encodedMixed, `${btoa("foo")}.*.${btoa("bar")}.>`);
+  assertEquals(codec.decode(encodedMixed), mixed);
+});
+
+Deno.test("kv - NoopKvCodecs passes through unchanged", () => {
+  const codecs = NoopKvCodecs();
+
+  // Key codec is noop
+  assertEquals(codecs.key.encode("foo"), "foo");
+  assertEquals(codecs.key.decode("bar"), "bar");
+
+  // Value codec converts string to Uint8Array
+  const strValue = "test";
+  const encoded = codecs.value.encode(strValue);
+  assert(encoded instanceof Uint8Array);
+  assertEquals(encoded, new TextEncoder().encode(strValue));
+
+  // Value codec passes through Uint8Array unchanged
+  const bytes = new Uint8Array([1, 2, 3]);
+  assertEquals(codecs.value.encode(bytes), bytes);
+
+  // Value decode returns Uint8Array unchanged
+  assertEquals(codecs.value.decode(bytes), bytes);
+});
+
+Deno.test("kv - defaultBucketOpts returns expected defaults", () => {
+  const opts = defaultBucketOpts();
+  assertEquals(opts.replicas, 1);
+  assertEquals(opts.history, 1);
+  assertEquals(opts.timeout, 2000);
+  assertEquals(opts.max_bytes, -1);
+  assertEquals(opts.maxValueSize, -1);
+  assertEquals(opts.storage, StorageType.File);
+  assertExists(opts.codec);
+});
+
+Deno.test("kv - hasWildcards detects wildcards", () => {
+  // No wildcards
+  assertEquals(hasWildcards("foo"), false);
+  assertEquals(hasWildcards("foo.bar"), false);
+  assertEquals(hasWildcards("foo.bar.baz"), false);
+
+  // With * wildcard
+  assertEquals(hasWildcards("foo.*"), true);
+  assertEquals(hasWildcards("*.bar"), true);
+  assertEquals(hasWildcards("foo.*.baz"), true);
+
+  // With > wildcard at end
+  assertEquals(hasWildcards("foo.>"), true);
+  assertEquals(hasWildcards("foo.bar.>"), true);
+
+  // Combined wildcards
+  assertEquals(hasWildcards("foo.*.>"), true);
+
+  // Invalid: > not at end
+  assertThrows(
+    () => hasWildcards("foo.>.bar"),
+    Error,
+    "invalid key",
+  );
+
+  // Invalid: starts with .
+  assertThrows(
+    () => hasWildcards(".foo"),
+    Error,
+    "invalid key",
+  );
+
+  // Invalid: ends with .
+  assertThrows(
+    () => hasWildcards("foo."),
+    Error,
+    "invalid key",
+  );
+});
+
+Deno.test("kv - validateSearchKey validates search keys", () => {
+  // Valid search keys (including wildcards)
+  const good = [
+    "foo",
+    "foo.bar",
+    "foo.*",
+    "*.bar",
+    "foo.>",
+    "foo.*.bar",
+    "a.b.>",
+    "*",
+    ">",
+  ];
+  for (const v of good) {
+    try {
+      validateSearchKey(v);
+    } catch (err) {
+      throw new Error(
+        `expected '${v}' to be a valid search key, but was rejected: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+
+  // Invalid search keys
+  const bad = [
+    ".foo",
+    "foo.",
+    ".foo.bar",
+    "foo.bar.",
+    "foo..bar",
+    ".",
+    "foo!bar",
+    "foo$bar",
+    "foo bar",
+  ];
+  for (const v of bad) {
+    assertThrows(
+      () => validateSearchKey(v),
+      Error,
+      "invalid key",
+      `expected '${v}' to be invalid search key`,
+    );
+  }
+});
+
+Deno.test("kv - decodeKey decodes encoded keys", () => {
+  const codec = Base64KeyCodec();
+  const bucket = {
+    codec: { key: codec },
+    decodeKey(ekey: string): string {
+      const chunks: string[] = [];
+      for (const t of ekey.split(".")) {
+        switch (t) {
+          case ">":
+          case "*":
+            chunks.push(t);
+            break;
+          default:
+            chunks.push(this.codec.key.decode(t));
+            break;
+        }
+      }
+      return chunks.join(".");
+    },
+  };
+
+  // Simple key
+  assertEquals(bucket.decodeKey(btoa("foo")), "foo");
+
+  // Multi-part key
+  const encoded = `${btoa("foo")}.${btoa("bar")}.${btoa("baz")}`;
+  assertEquals(bucket.decodeKey(encoded), "foo.bar.baz");
+
+  // Wildcards should not be decoded
+  const withStar = `${btoa("foo")}.*.${btoa("baz")}`;
+  assertEquals(bucket.decodeKey(withStar), "foo.*.baz");
+
+  const withGt = `${btoa("foo")}.${btoa("bar")}.>`;
+  assertEquals(bucket.decodeKey(withGt), "foo.bar.>");
+
+  // Mixed wildcards
+  const mixed = `${btoa("a")}.*.${btoa("b")}.>`;
+  assertEquals(bucket.decodeKey(mixed), "a.*.b.>");
+});
 
 Deno.test("kv - key validation", () => {
   const bad = [
@@ -232,6 +429,12 @@ async function crud(bucket: Bucket): Promise<void> {
   assertEquals(status.bucket, bucket.bucket);
   assertEquals(status.ttl, 0);
   assertEquals(status.streamInfo.config.name, `${kvPrefix}${bucket.bucket}`);
+  assertEquals(status.storage, StorageType.File);
+  assertEquals(status.replicas, 1);
+  assertEquals(status.maxValueSize, -1);
+  assertEquals(status.placement.cluster, "");
+  assertEquals(status.republish.src, "");
+  assertEquals(status.republish.dest, "");
 
   await bucket.put("k", "hello");
   let r = await bucket.get("k");
@@ -1360,6 +1563,11 @@ Deno.test("kv - direct message", async () => {
   assertEquals(m.revision, 1);
   assertEquals(m.operation, "PUT");
   assertEquals(m.bucket, "a");
+  assertEquals(m.string(), "hello");
+  assertEquals(m.value, new TextEncoder().encode("hello"));
+  assertEquals(m.length, 5);
+  assertEquals(m.rawKey, "a");
+  assert(m.created instanceof Date);
 
   await kv.delete("a");
 
