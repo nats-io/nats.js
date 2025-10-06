@@ -17,8 +17,10 @@ jobs:
     uses: ./.github/workflows/deno_checks.yml
   test-node:
     uses: ./.github/workflows/node_checks.yml
+  test-unsafe:
+    uses: ./.github/workflows/unsafe_checks.yml
   coveralls-finish:
-    needs: [test-deno, test-node]
+    needs: [test-deno, test-node, test-unsafe]
     runs-on: ubuntu-latest
     steps:
       - name: Coveralls Finished
