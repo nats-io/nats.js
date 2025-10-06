@@ -45,6 +45,7 @@ Deno.test("tls-unsafe - handshake first", async () => {
 
 Deno.test({
   name: "wss - wss connect default",
+  ignore: Deno.env.get("CI") === "true", // Skip in CI - requires binding to privileged port 443
   async fn() {
     const tlsConfig = await NatsServer.tlsConfig();
     const tls = tlsConfig.tls;
