@@ -7,6 +7,8 @@ import { assertEquals } from "@std/assert";
 Deno.test("tls-unsafe - handshake first", async () => {
   const cwd = Deno.cwd();
   const config = {
+    trace: true,
+    debug: true,
     host: "localhost",
     tls: {
       handshake_first: true,
