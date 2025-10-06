@@ -183,6 +183,11 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         }
         const status = JetStreamStatus.maybeParseStatus(msg);
         if (status) {
+          if (status.isNoResults()) {
+            push({}, () => {
+              iter.stop();
+            });
+          }
           if (status.isEndOfBatch()) {
             push({}, () => {
               iter.stop();
