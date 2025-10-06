@@ -15,6 +15,7 @@
 
 import {
   DenoBuffer,
+  describe,
   Empty,
   headers,
   Kind,
@@ -536,3 +537,18 @@ function parserClobberTest(hdrs = false): void {
     check(i, m);
   }
 }
+
+Deno.test("parser - describe", () => {
+  assertEquals(describe({ kind: Kind.MSG }), "MSG: ");
+  assertEquals(describe({ kind: Kind.OK }), "OK: ");
+  assertEquals(describe({ kind: Kind.PING }), "PING: ");
+  assertEquals(describe({ kind: Kind.PONG }), "PONG: ");
+  assertEquals(
+    describe({ kind: Kind.ERR, data: te.encode("error message") }),
+    "ERR: error message",
+  );
+  assertEquals(
+    describe({ kind: Kind.INFO, data: te.encode('{"server_id":"test"}') }),
+    'INFO: {"server_id":"test"}',
+  );
+});
