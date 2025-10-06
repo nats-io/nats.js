@@ -17,3 +17,11 @@ jobs:
     uses: ./.github/workflows/deno_checks.yml
   test-node:
     uses: ./.github/workflows/node_checks.yml
+  coveralls-finish:
+    needs: [test-deno, test-node]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Coveralls Finished
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true
