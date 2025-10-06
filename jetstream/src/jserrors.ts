@@ -176,6 +176,10 @@ export class JetStreamStatus {
     return this.code === 404 && this.description === "message not found";
   }
 
+  isNoResults(): boolean {
+    return this.code === 404 && this.description === "no results";
+  }
+
   isMessageSizeExceedsMaxBytes(): boolean {
     return this.code === 409 &&
       this.description === "message size exceeds maxbytes";

@@ -492,13 +492,7 @@ Deno.test("direct - last message for", async (t) => {
   }
 
   await t.step("not matched filter", async () => {
-    await assertRejects(
-      async () => {
-        await assertBatch({ opts: { multi_last: ["c"] }, expect: [] });
-      },
-      JetStreamError,
-      "no results",
-    );
+    await assertBatch({ opts: { multi_last: ["c"] }, expect: [] });
   });
 
   await t.step("single filter", async () => {
@@ -577,6 +571,52 @@ Deno.test("direct - batch next_by_subj", async () => {
   for (let i = 0; i < 26; i++) {
     assertEquals(msgs[i], "b");
   }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - batch no messages", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf(), { debug: true });
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  const jsm = await jetstreamManager(nci) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a", "b", "z"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const iter = await jsm.direct.getLastMessagesFor("A", {
+    multi_last: ["a", "b", "z"],
+    batch: 100,
+  });
+  for await (const m of iter) {
+    console.log(m.seq);
+  }
+  assertEquals(iter.getProcessed(), 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - get no messages", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf(), { debug: true });
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  const jsm = await jetstreamManager(nci) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a", "b", "z"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const m = await jsm.direct.getMessage("A", { last_by_subj: "a" });
+  assertEquals(m, null);
 
   await cleanup(ns, nc);
 });
