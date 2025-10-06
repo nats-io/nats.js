@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         deno-version: [2.4.x]
-        module: [core, jetstream, kv, obj, services, transport-deno]
+        module: [core, jetstream, kv, obj, services, transport-deno, unsafe]
 
     steps:
       - name: Git Checkout Sources

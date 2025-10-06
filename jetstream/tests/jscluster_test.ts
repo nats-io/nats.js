@@ -161,7 +161,13 @@ Deno.test(
     assertExists(s);
     assertEquals(s.name, "src");
 
-    const alternates = await s.alternates();
+    // Wait for mirror to be registered and appear in alternates
+    let alternates: Awaited<ReturnType<typeof s.alternates>> = [];
+    for (let i = 0; i < 10; i++) {
+      alternates = await s.alternates();
+      if (alternates.length === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     assertEquals(2, alternates.length);
     assertArrayIncludes(alternates.map((a) => a.name), ["src", "mirror"]);
 

@@ -165,7 +165,10 @@ export function validateKey(k: string) {
 }
 
 export function validateSearchKey(k: string) {
-  if (k.startsWith(".") || k.endsWith(".") || !validSearchKey.test(k)) {
+  if (
+    k.startsWith(".") || k.endsWith(".") || k.includes("..") ||
+    !validSearchKey.test(k)
+  ) {
     throw new Error(`invalid key: ${k}`);
   }
 }
