@@ -554,12 +554,29 @@ export class NatsConnectionImpl implements NatsConnection {
     return this.protocol.features;
   }
 
-  reconnect(): Promise<void> {
+  reconnect(server?: string | string[]): Promise<void> {
     if (this.isClosed()) {
       return Promise.reject(new errors.ClosedConnectionError());
     }
     if (this.isDraining()) {
       return Promise.reject(new errors.DrainingConnectionError());
+    }
+    if (server !== undefined) {
+      if (!Array.isArray(server)) {
+        server = [server];
+      }
+      for (const s of server) {
+        if (!s || typeof s !== "string") {
+          return Promise.reject(
+            InvalidArgumentError.format("server", "must be a hostname"),
+          );
+        }
+      }
+
+      this.protocol.servers.clear(true);
+      for (const s of server) {
+        this.protocol.servers.addServer(s);
+      }
     }
     return this.protocol.reconnect();
   }
