@@ -491,15 +491,22 @@ export interface NatsConnection {
    * - If the reconnection policy given to the client doesn't allow reconnects, the
    * connection will close.
    *
-   * - Messages that are inbound or outbound could  be lost.
+   * - Messages that are inbound or outbound could be lost.
    *
    * - All requests that are in flight will be rejected.
    *
    * Note that the returned promise will reject if the client is already closed, or if
    * it is in the process of draining. If the client is currently disconnected,
    * this API has no effect, as the client is already attempting to reconnect.
+   *
+   * If a server or list of servers is specified, the client will clear its current
+   * server list (the one provided to connect), and set the specified list as the
+   * new server list - previous servers are forgotten, and then attempt reconnects.
+   * If connecting to a TLS secured server, the hostname(s) must match.
+   *
+   * @param server an optional server or list of servers to reconnect to.
    */
-  reconnect(): Promise<void>;
+  reconnect(server?: string | string[]): Promise<void>;
 }
 
 /**

@@ -573,7 +573,7 @@ export class NatsConnectionImpl implements NatsConnection {
         }
       }
 
-      this.protocol.servers.clear();
+      this.protocol.servers.clear(true);
       for (const s of server) {
         this.protocol.servers.addServer(s);
       }
