@@ -218,11 +218,8 @@ export class Servers {
     this.currentServer = this.servers[0];
   }
 
-  clear(forgetTLS?: boolean): void {
+  clear(): void {
     this.servers.length = 0;
-    if (forgetTLS === true) {
-      this.tlsName = "";
-    }
   }
 
   updateTLSName(): void {
