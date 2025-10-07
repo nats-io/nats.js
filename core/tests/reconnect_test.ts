@@ -12,7 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, assertInstanceOf, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertExists,
+  assertInstanceOf,
+  assertRejects,
+  fail,
+} from "@std/assert";
 import { connect } from "./connect.ts";
 import { Lock, NatsServer } from "test_helpers";
 import {
@@ -467,5 +474,116 @@ Deno.test("reconnect - authentication timeout reconnects", async () => {
 
   assert(!nc.isClosed());
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("reconnect - reconnect to new servers", async () => {
+  const ns = await NatsServer.start();
+
+  const nci = await connect({
+    port: ns.port,
+    debug: true,
+  }) as NatsConnectionImpl;
+
+  const done = deferred();
+
+  (async () => {
+    for await (const s of nci.status()) {
+      console.log(s);
+      if (s.type === "reconnect") {
+        if (s.server === "demo.nats.io:4222") {
+          done.resolve();
+        }
+      }
+    }
+  })().then();
+
+  await nci.reconnect("demo.nats.io");
+
+  assert(!nci.isClosed());
+  assertEquals(nci.protocol.servers.getServers().length, 1);
+  const demo = nci.protocol.servers.getServers()[0];
+  assertEquals(demo.hostname, "demo.nats.io");
+  assertEquals(demo.gossiped, false);
+
+  await done;
+  await cleanup(ns, nci);
+});
+
+Deno.test("reconnect - bad args", async () => {
+  const ns = await NatsServer.start();
+  const nc = await connect({ port: ns.port }) as NatsConnectionImpl;
+  const server = nc.protocol.servers.getServers()[0]!;
+
+  async function check(s?: string | string[]): Promise<void> {
+    await assertRejects(
+      () => nc.reconnect(s),
+      Error,
+      "must be a hostname",
+    );
+    assertEquals(nc.protocol.servers.getServers().length, 1);
+    assertExists(nc.protocol.servers.getServers()[0]);
+    assertEquals(nc.protocol.servers.getServers()[0], server);
+  }
+
+  const tests = [
+    ["localhost", "", "demo.nats.io"],
+    [123 as unknown as string],
+    ["localhost", null as unknown as string, "demo.nats.io"],
+    "",
+  ];
+
+  for (const t of tests) {
+    await check(t);
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("reconnect - accepts valid array", async () => {
+  const ns = await NatsServer.start();
+  const nc = await connect({ port: ns.port }) as NatsConnectionImpl;
+
+  const done = deferred();
+
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        done.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  await nc.reconnect(["demo.nats.io"]);
+
+  assertEquals(nc.protocol.servers.getServers().length, 1);
+  assertEquals(nc.protocol.servers.getServers()[0].hostname, "demo.nats.io");
+
+  await done;
+  await cleanup(ns, nc);
+});
+
+Deno.test("reconnect - accepts string", async () => {
+  const ns = await NatsServer.start();
+  const nc = await connect({ port: ns.port }) as NatsConnectionImpl;
+
+  const done = deferred();
+
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        done.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  await nc.reconnect("demo.nats.io");
+
+  assertEquals(nc.protocol.servers.getServers().length, 1);
+  assertEquals(nc.protocol.servers.getServers()[0].hostname, "demo.nats.io");
+
+  await done;
   await cleanup(ns, nc);
 });
