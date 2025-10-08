@@ -2671,3 +2671,21 @@ Deno.test("kv - encoder", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - watcherPrefix", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  const js = jetstream(nc, { watcherPrefix: "hello" });
+  const kv = await new Kvm(js).create("A");
+
+  const iter = await kv.watch({ key: "a.>" }) as QueuedIteratorImpl<
+    KvWatchEntry
+  >;
+  const pci = iter._data as PushConsumer;
+  const { config: { deliver_subject } } = await pci.info(true);
+  assertEquals(deliver_subject?.split(".")[0], "hello");
+
+  iter.stop();
+
+  await cleanup(ns, nc);
+});

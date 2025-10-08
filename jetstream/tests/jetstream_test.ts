@@ -1374,3 +1374,81 @@ Deno.test("jetstream - jsm base timeout", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("jetstream - watcherPrefix", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  async function transitive(js: JetStreamClient): Promise<void> {
+    const { watcherPrefix } = js.getOptions();
+    const jsm = await js.jetstreamManager();
+    assertEquals(watcherPrefix, jsm.getOptions().watcherPrefix);
+
+    const js2 = jsm.jetstream();
+    assertEquals(watcherPrefix, js2.getOptions().watcherPrefix);
+  }
+
+  let js = jetstream(nc);
+  assertEquals(js.getOptions().watcherPrefix, undefined);
+
+  const jsm = await jetstreamManager(nc);
+  assertEquals(jsm.getOptions().watcherPrefix, undefined);
+
+  const nc2 = await connect({ port: ns.port, inboxPrefix: "hello" });
+  js = jetstream(nc2);
+  assertEquals(js.getOptions().watcherPrefix, "hello");
+  await transitive(js);
+
+  js = jetstream(nc2, { watcherPrefix: "bar" });
+  assertEquals(js.getOptions().watcherPrefix, "bar");
+  await transitive(js);
+
+  assertThrows(
+    () => {
+      jetstream(nc2, { watcherPrefix: "hello.*" });
+    },
+    Error,
+    "'prefix' cannot have wildcards ('hello.*')",
+  );
+
+  await assertRejects(
+    () => {
+      return jetstreamManager(nc, { watcherPrefix: "hello.*" });
+    },
+    Error,
+    "'prefix' cannot have wildcards ('hello.*')",
+  );
+
+  await cleanup(ns, nc, nc2);
+});
+
+Deno.test("jetstream - watcher deliver_subject", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+
+  async function assertDeliverTo(
+    js: JetStreamClient,
+    deliverPrefix: string,
+  ): Promise<void> {
+    const pc = await js.consumers.getPushConsumer("A");
+    const { config: { deliver_subject } } = await pc.info(true);
+    assertEquals(deliver_subject?.split(".")[0], deliverPrefix);
+    await pc.delete();
+  }
+
+  // with no prefix, defaults to inbox
+  let js = jetstream(nc);
+  await assertDeliverTo(js, "_INBOX");
+
+  // respects inboxPrefix
+  const nc2 = await connect({ port: ns.port, inboxPrefix: "hallo" });
+  js = jetstream(nc2);
+  await assertDeliverTo(js, "hallo");
+
+  // override inboxPrefix
+  js = jetstream(nc2, { watcherPrefix: "hola" });
+  await assertDeliverTo(js, "hola");
+
+  await cleanup(ns, nc, nc2);
+});
