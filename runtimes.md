@@ -53,6 +53,38 @@ deno init
 deno add jsr:@nats-io/transport-deno
 ```
 
+## TypeScript Compiler Configuration (Node)
+
+If you are writing your code in TypeScript under node using the `tsc` compiler,
+you will need to configure `tsc` properly so it can find its way around the
+module. You will want a configuration file that looks like this:
+
+```json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "outDir": "lib/",
+    "moduleResolution": "nodenext",
+    "sourceMap": true,
+    "declaration": true,
+    "allowJs": true,
+    "removeComments": false,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "lib/**/*"
+  ]
+}
+```
+
+Of key importance are the `target`, `module`, `moduleResolution`. The `nodenext`
+identifies that the packages can contain `exports`, and will enable the compiler
+and IDEs to properly resolve imports in your code.
+
 ## Let's add a simple program that we can run
 
 Added to the `nats-dev/<runtime>/index.ts` you used above.
