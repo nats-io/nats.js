@@ -18,6 +18,7 @@ import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
 import {
   backoff,
+  createInbox,
   deferred,
   delay,
   Empty,
@@ -174,6 +175,14 @@ export class JetStreamClientImpl extends BaseApiClientImpl
       this.opts,
       { checkAPI },
     ) as JetStreamManagerOptions;
+
+    // fail early if watcherPrefix is bad
+    try {
+      createInbox(opts.watcherPrefix);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+
     return jetstreamManager(this.nc, opts);
   }
 

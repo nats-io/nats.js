@@ -15,6 +15,7 @@
 
 import {
   backoff,
+  createInbox,
   delay,
   Empty,
   errors,
@@ -65,6 +66,8 @@ export class BaseApiClientImpl {
 
   constructor(nc: NatsConnection, opts?: JetStreamOptions) {
     this.nc = nc as NatsConnectionImpl;
+    opts = opts || {} as JetStreamOptions;
+    opts.watcherPrefix = opts.watcherPrefix || this.nc.options.inboxPrefix;
     this.opts = defaultJsOptions(opts);
     this._parseOpts();
     this.prefix = this.opts.apiPrefix!;
@@ -85,6 +88,9 @@ export class BaseApiClientImpl {
       prefix = prefix.substr(0, prefix.length - 1);
     }
     this.opts.apiPrefix = prefix;
+
+    // verify that watcherPrefix is valid
+    createInbox(this.opts.watcherPrefix);
   }
 
   async _request(
