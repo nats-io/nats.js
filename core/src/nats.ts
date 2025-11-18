@@ -46,6 +46,8 @@ import type {
 import { createInbox } from "./core.ts";
 import { errors, InvalidArgumentError, TimeoutError } from "./errors.ts";
 
+const whitespaceRegex = /[ \n\r\t]/;
+
 export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
   protocol!: ProtocolHandler;
@@ -90,7 +92,7 @@ export class NatsConnectionImpl implements NatsConnection {
       throw new errors.DrainingConnectionError();
     }
     subject = subject || "";
-    if (subject.length === 0) {
+    if (subject.length === 0 || whitespaceRegex.test(subject)) {
       throw new errors.InvalidSubjectError(subject);
     }
   }
