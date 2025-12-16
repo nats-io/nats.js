@@ -341,7 +341,7 @@ Deno.test("headers - code/description", () => {
       headers(0, "some message");
     },
     Error,
-    "'description' is required",
+    "'code' is required",
   );
 });
 

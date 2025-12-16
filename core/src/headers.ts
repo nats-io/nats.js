@@ -65,7 +65,9 @@ export function canonicalMIMEHeaderKey(k: string): string {
 }
 
 export function headers(code = 0, description = ""): MsgHdrs {
-  if ((code === 0 && description !== "") || (code > 0 && description === "")) {
+  if (code === 0 && description !== "") {
+    throw InvalidArgumentError.format("code", "is required");
+  } else if (code > 0 && description === "") {
     throw InvalidArgumentError.format("description", "is required");
   }
   return new MsgHdrsImpl(code, description);
