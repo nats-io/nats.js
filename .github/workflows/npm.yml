@@ -51,45 +51,33 @@ jobs:
           cd core
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM jetstream
         run: |
           cd jetstream
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM kv
         run: |
           cd kv
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM obj
         run: |
           cd obj
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM services
-        run: | 
+        run: |
           cd services
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish NPM transport-node
         run: |
           cd transport-node
           npm publish --provenance --access public --tag=latest
         continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
