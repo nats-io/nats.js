@@ -12,11 +12,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { parse } from "@std/flags";
-import { ObjectStoreImpl, ServerObjectInfo } from "../os/objectstore.ts";
+import { parseArgs } from "@std/cli";
+import { ObjectStoreImpl, ServerObjectInfo } from "../obj/src/objectstore.ts";
 import { connect, ConnectionOptions, credsAuthenticator } from "nats-deno";
 
-const argv = parse(
+const argv = parseArgs(
   Deno.args,
   {
     alias: {
