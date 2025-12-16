@@ -13,12 +13,12 @@ jobs:
 
     steps:
       - name: Git Checkout Sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Install Deno ${{ matrix.deno-version }}
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{ matrix.deno-version }}
 
@@ -27,10 +27,9 @@ jobs:
         with:
           repo: nats-io/nats-server
           name: nats-server
-          cache: true
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
