@@ -18,25 +18,25 @@ jobs:
   test:
     strategy:
       matrix:
-        deno-version: [2.4.x]
-        node-version: [24.x]
+        deno-version: [2.6.x]
+        node-version: [25.x]
 
     name: test node transport with local dependencies
     runs-on: ubuntu-latest
 
     steps:
       - name: Git Checkout Core
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Use Deno Version ${{ matrix.deno-version }}
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{ matrix.deno-version }}
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -45,7 +45,6 @@ jobs:
         with:
           repo: nats-io/nats-server
           name: nats-server
-          cache: true
 
       - name: Build workspace
         run: |

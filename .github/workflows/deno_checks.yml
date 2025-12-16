@@ -8,17 +8,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        deno-version: [2.4.x]
+        deno-version: [2.6.x]
         module: [core, jetstream, kv, obj, services, transport-deno]
 
     steps:
       - name: Git Checkout Sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Install Deno ${{ matrix.deno-version }}
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{ matrix.deno-version }}
 
@@ -27,7 +27,6 @@ jobs:
         with:
           repo: nats-io/nats-server
           name: nats-server
-          cache: true
 
       - name: Test
         env:
