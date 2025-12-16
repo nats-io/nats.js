@@ -105,6 +105,7 @@ export type {
   TlsOptions,
   TokenAuth,
   UserPass,
+  WithRequired,
   WsConnectionOptions,
   WsSocketFactory,
 } from "./internal_mod.ts";
