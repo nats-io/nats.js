@@ -595,7 +595,10 @@ export class Bucket implements KV {
       firstErr = err;
       if (err instanceof JetStreamApiError) {
         const jserr = err as JetStreamApiError;
-        if (jserr.code !== JetStreamApiCodes.StreamWrongLastSequence) {
+        if (
+          jserr.code !== JetStreamApiCodes.StreamWrongLastSequence &&
+          jserr.code !== JetStreamApiCodes.StreamWrongLastSequenceUnknown
+        ) {
           return Promise.reject(err);
         }
       }
