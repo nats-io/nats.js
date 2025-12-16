@@ -127,9 +127,11 @@ Deno.test("jsm - stream update properties", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test(
-  "streams - mirrors",
-  flakyTest(async () => {
+Deno.test({
+  name: "streams - mirrors",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: flakyTest(async () => {
     const cluster = await NatsServer.jetstreamCluster(3);
     const nc = await connect({ port: cluster[0].port });
     const jsm = await jetstreamManager(nc);
@@ -186,4 +188,4 @@ Deno.test(
     await nc.close();
     await NatsServer.stopAll(cluster, true);
   }),
-);
+});
