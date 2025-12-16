@@ -21,7 +21,7 @@ import type {
   RequestOptions,
   ReviverFn,
   WithRequired,
-} from "@nats-io/nats-core/internal";
+} from "@nats-io/nats-core";
 
 import type {
   ConsumerCreateOptions,
