@@ -177,8 +177,7 @@ export class ConsumersImpl implements Consumers {
     name_prefix = name_prefix || `oc_${nuid.next()}`;
     minValidation("name_prefix", name_prefix);
     deliver_prefix = deliver_prefix ||
-      createInbox((this.api as ConsumerAPIImpl).nc.options.inboxPrefix);
-    minValidation("deliver_prefix", name_prefix);
+      createInbox((this.api as ConsumerAPIImpl).getOptions().watcherPrefix);
 
     const cc = Object.assign({}, opts) as ConsumerConfig;
     cc.ack_policy = AckPolicy.None;

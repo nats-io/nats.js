@@ -68,6 +68,12 @@ export type JetStreamOptions = {
    * the default JetStream apiPrefix.
    */
   domain?: string;
+
+  /**
+   * Watcher prefix for inbox subscriptions - these are used for watchers
+   * and push consumers. If not set, it uses ConnectionOptions#inboxPrefix
+   */
+  watcherPrefix?: string;
 };
 
 export type JetStreamManagerOptions = JetStreamOptions & {
