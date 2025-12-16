@@ -305,7 +305,8 @@ export class MsgHdrsImpl implements MsgHdrs {
   static fromRecord(r: Record<string, string[]>): MsgHdrs {
     const h = new MsgHdrsImpl();
     for (const k in r) {
-      h.headers.set(k, r[k]);
+      const v = r[k];
+      h.headers.set(k, Array.isArray(v) ? v : [`${v}`]);
     }
     return h;
   }
