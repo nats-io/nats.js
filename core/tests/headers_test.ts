@@ -493,6 +493,20 @@ Deno.test("headers - record", () => {
   assert(hr.equals(h as MsgHdrsImpl));
 });
 
+Deno.test("headers - fromRecord normalizes non-array values", () => {
+  const hr = MsgHdrsImpl.fromRecord(
+    { a: "x", d: 1 } as unknown as Record<string, string[]>,
+  ) as MsgHdrsImpl;
+  assertEquals(hr.get("a"), "x");
+  assertEquals(hr.get("d"), "1");
+
+  const r = hr.toRecord();
+  assertEquals(r, {
+    a: ["x"],
+    d: ["1"],
+  });
+});
+
 Deno.test("headers - not equals", () => {
   const h = headers() as MsgHdrsImpl;
   h.set("a", "aa");
