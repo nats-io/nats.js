@@ -63,7 +63,7 @@
     "@nats-io/jetstream": "3.2.0",
     "@nats-io/kv": "3.2.0",
     "@nats-io/obj": "3.2.0",
-    "@types/node": "^24.3.1",
+    "@types/node": "^25.0.0",
     "minimist": "^1.2.8",
     "shx": "^0.4.0",
     "typescript": "^5.9.2"
