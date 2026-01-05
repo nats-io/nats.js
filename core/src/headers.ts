@@ -304,11 +304,11 @@ export class MsgHdrsImpl implements MsgHdrs {
     return this._description;
   }
 
-  static fromRecord(r: Record<string, string[]>): MsgHdrs {
+  static fromRecord(r: Record<string, string | string[]>): MsgHdrs {
     const h = new MsgHdrsImpl();
     for (const k in r) {
       const v = r[k];
-      h.headers.set(k, Array.isArray(v) ? v : [`${v}`]);
+      h.headers.set(k, Array.isArray(v) ? v : [v]);
     }
     return h;
   }
