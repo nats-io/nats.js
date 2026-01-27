@@ -1,6 +1,7 @@
 name: Test Modules
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "*"
