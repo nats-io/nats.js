@@ -49,7 +49,7 @@ import {
   StorageType,
 } from "@nats-io/jetstream/internal";
 import { equals } from "@std/bytes";
-import { digestType, ObjectStoreImpl, Objm } from "../src/objectstore.ts";
+import { digestType, type ObjectStoreImpl, Objm } from "../src/objectstore.ts";
 import { Base64UrlPaddedCodec } from "../src/base64.ts";
 import { sha256 } from "js-sha256";
 
