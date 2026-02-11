@@ -49,7 +49,7 @@ import {
   StorageType,
 } from "@nats-io/jetstream/internal";
 import { equals } from "@std/bytes";
-import { digestType, Objm } from "../src/objectstore.ts";
+import { digestType, type ObjectStoreImpl, Objm } from "../src/objectstore.ts";
 import { Base64UrlPaddedCodec } from "../src/base64.ts";
 import { sha256 } from "js-sha256";
 
@@ -1315,6 +1315,43 @@ Deno.test("os - objm creates right number of replicas", async () => {
 
   await nc.close();
   await NatsServer.stopAll(servers, true);
+});
+
+Deno.test("objectstore - get detects corrupt digest", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.6.3")) {
+    return;
+  }
+
+  const objm = new Objm(nc);
+  const os = await objm.create("test", { storage: StorageType.Memory });
+
+  const data = new TextEncoder().encode("hello world");
+  await os.put(
+    { name: "corrupt" },
+    readableStreamFrom(data),
+  );
+
+  // overwrite the metadata entry with a bad digest
+  const osi = os as ObjectStoreImpl;
+  const soi = await osi.rawInfo("corrupt");
+  assertExists(soi);
+  soi!.digest = `${digestType}${"A".repeat(43)}=`;
+  const js = jetstream(nc);
+  await js.publish(
+    `$O.test.M.${Base64UrlPaddedCodec.encode("corrupt")}`,
+    JSON.stringify(soi),
+  );
+
+  await assertRejects(
+    async () => {
+      await os.getBlob("corrupt");
+    },
+    Error,
+    "digests do not match",
+  );
+
+  await cleanup(ns, nc);
 });
 
 Deno.test("objectstore - watcherPrefix", async () => {
