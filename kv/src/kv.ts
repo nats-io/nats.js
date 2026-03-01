@@ -608,7 +608,7 @@ export class Bucket implements KV {
       const e = await this.get(k);
       if (e?.operation === "DEL" || e?.operation === "PURGE") {
         rev = e !== null ? e.revision : 0;
-        return this.update(k, data, rev);
+        return this._put(k, data, { previousSeq: rev }, markerTTL);
       } else {
         return Promise.reject(firstErr);
       }
