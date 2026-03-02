@@ -2672,6 +2672,70 @@ Deno.test("kv - encoder", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("kv - create after delete preserves markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A");
+
+  // Create an entry then delete it to set up a DEL marker
+  await kv.create("a", "first");
+  await kv.delete("a");
+  let e = await kv.get("a");
+  assertEquals(e?.operation, "DEL");
+
+  // Re-create with TTL — triggers the fallback path in create() because
+  // previousSeq:0 fails (the subject has history), then create() finds
+  // the DEL marker and calls _put with previousSeq set to its revision.
+  // Before the fix, markerTTL was not forwarded through this path.
+  await kv.create("a", "second", "2s");
+  e = await kv.get("a");
+  assertExists(e);
+  assertEquals(e?.string(), "second");
+
+  // Wait for the TTL to expire — if markerTTL was not forwarded in the
+  // fallback path, this entry would persist indefinitely.
+  await delay(2500);
+  e = await kv.get("a");
+  assertEquals(e, null);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - create after purge preserves markerTTL", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A");
+
+  // Create an entry then purge it to set up a PURGE marker
+  await kv.create("a", "first");
+  await kv.purge("a");
+  let e = await kv.get("a");
+  assertEquals(e?.operation, "PURGE");
+
+  // Re-create with TTL — triggers the fallback path (PURGE marker exists)
+  await kv.create("a", "second", "2s");
+  e = await kv.get("a");
+  assertExists(e);
+  assertEquals(e?.string(), "second");
+
+  // Wait for the TTL to expire
+  await delay(2500);
+  e = await kv.get("a");
+  assertEquals(e, null);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("kv - watcherPrefix", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
 
