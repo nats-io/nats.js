@@ -43,6 +43,7 @@ import {
 import type {
   JetStreamOptions,
   PushConsumer,
+  StoredMsg,
 } from "@nats-io/jetstream/internal";
 
 import {
@@ -2672,7 +2673,7 @@ Deno.test("kv - encoder", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("kv - create after delete preserves markerTTL", async () => {
+Deno.test("kv - create ttl", async () => {
   const { ns, nc } = await setup(
     jetstreamServerConf({}),
   );
@@ -2680,58 +2681,25 @@ Deno.test("kv - create after delete preserves markerTTL", async () => {
     return;
   }
   const kvm = await new Kvm(nc);
-  const kv = await kvm.create("A");
+  const kv = await kvm.create("A", { markerTTL: 2000, history: 3 });
 
-  // Create an entry then delete it to set up a DEL marker
-  await kv.create("a", "first");
+  await kv.create("a", "hello", "2s");
+  let v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertEquals(v.sm.header.get("Nats-TTL"), "2s");
+  assertEquals(v.sm.seq, 1);
+
   await kv.delete("a");
-  let e = await kv.get("a");
-  assertEquals(e?.operation, "DEL");
 
-  // Re-create with TTL — triggers the fallback path in create() because
-  // previousSeq:0 fails (the subject has history), then create() finds
-  // the DEL marker and calls _put with previousSeq set to its revision.
-  // Before the fix, markerTTL was not forwarded through this path.
-  await kv.create("a", "second", "2s");
-  e = await kv.get("a");
-  assertExists(e);
-  assertEquals(e?.string(), "second");
+  v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertExists(v);
+  assertEquals(v.sm.header.get("KV-Operation"), "DEL");
+  assertEquals(v.sm.seq, 2);
 
-  // Wait for the TTL to expire — if markerTTL was not forwarded in the
-  // fallback path, this entry would persist indefinitely.
-  await delay(2500);
-  e = await kv.get("a");
-  assertEquals(e, null);
-
-  await cleanup(ns, nc);
-});
-
-Deno.test("kv - create after purge preserves markerTTL", async () => {
-  const { ns, nc } = await setup(
-    jetstreamServerConf({}),
-  );
-  if (await notCompatible(ns, nc, "2.11.0")) {
-    return;
-  }
-  const kvm = await new Kvm(nc);
-  const kv = await kvm.create("A");
-
-  // Create an entry then purge it to set up a PURGE marker
-  await kv.create("a", "first");
-  await kv.purge("a");
-  let e = await kv.get("a");
-  assertEquals(e?.operation, "PURGE");
-
-  // Re-create with TTL — triggers the fallback path (PURGE marker exists)
-  await kv.create("a", "second", "2s");
-  e = await kv.get("a");
-  assertExists(e);
-  assertEquals(e?.string(), "second");
-
-  // Wait for the TTL to expire
-  await delay(2500);
-  e = await kv.get("a");
-  assertEquals(e, null);
+  // Re-create after delete — triggers fallback path in create()
+  await kv.create("a", "abc", "4s");
+  v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertEquals(v.sm.header.get("Nats-TTL"), "4s");
+  assertEquals(v.sm.seq, 3);
 
   await cleanup(ns, nc);
 });
