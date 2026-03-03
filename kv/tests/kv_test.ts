@@ -43,6 +43,7 @@ import {
 import type {
   JetStreamOptions,
   PushConsumer,
+  StoredMsg,
 } from "@nats-io/jetstream/internal";
 
 import {
@@ -2668,6 +2669,37 @@ Deno.test("kv - encoder", async () => {
       break;
     }
   })().then();
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - create ttl", async () => {
+  const { ns, nc } = await setup(
+    jetstreamServerConf({}),
+  );
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const kvm = await new Kvm(nc);
+  const kv = await kvm.create("A", { markerTTL: 2000, history: 3 });
+
+  await kv.create("a", "hello", "2s");
+  let v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertEquals(v.sm.header.get("Nats-TTL"), "2s");
+  assertEquals(v.sm.seq, 1);
+
+  await kv.delete("a");
+
+  v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertExists(v);
+  assertEquals(v.sm.header.get("KV-Operation"), "DEL");
+  assertEquals(v.sm.seq, 2);
+
+  // Re-create after delete — triggers fallback path in create()
+  await kv.create("a", "abc", "4s");
+  v = await kv.get("a") as unknown as { sm: StoredMsg };
+  assertEquals(v.sm.header.get("Nats-TTL"), "4s");
+  assertEquals(v.sm.seq, 3);
 
   await cleanup(ns, nc);
 });
