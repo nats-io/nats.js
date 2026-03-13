@@ -668,7 +668,8 @@ export class Parser {
   }
 
   protoParseInt(a: Uint8Array): number {
-    if (a.length === 0) {
+    // max 99_999_999
+    if (a.length === 0 || a.length > 8) {
       return -1;
     }
     let n = 0;
