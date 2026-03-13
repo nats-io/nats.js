@@ -546,7 +546,7 @@ Deno.test("parser - protoParseInt", () => {
   assertEquals(p.protoParseInt(te.encode("0")), 0);
   assertEquals(p.protoParseInt(te.encode("1")), 1);
   assertEquals(p.protoParseInt(te.encode("12345678")), 12345678);
-  assertEquals(p.protoParseInt(te.encode("99999999")), 99999999);
+  assertEquals(p.protoParseInt(te.encode("999999999999999")), 999999999999999);
 
   // empty
   assertEquals(p.protoParseInt(te.encode("")), -1);
@@ -557,17 +557,23 @@ Deno.test("parser - protoParseInt", () => {
   assertEquals(p.protoParseInt(te.encode("12a")), -1);
   assertEquals(p.protoParseInt(te.encode("-1")), -1);
 
-  // overflow: > 8 digits rejected
-  assertEquals(p.protoParseInt(te.encode("123456789")), -1);
+  // overflow: > 15 digits rejected
+  assertEquals(p.protoParseInt(te.encode("1234567890123456")), -1);
   assertEquals(p.protoParseInt(te.encode("9999999999999999")), -1);
+
+  // max parameter
+  assertEquals(p.protoParseInt(te.encode("100"), 100), 100);
+  assertEquals(p.protoParseInt(te.encode("101"), 100), -1);
+  assertEquals(p.protoParseInt(te.encode("1024"), 1024), 1024);
+  assertEquals(p.protoParseInt(te.encode("1025"), 1024), -1);
 });
 
 Deno.test("parser - oversized msg size rejects", () => {
   const d = new TestDispatcher();
   const p = new Parser(d);
-  // 9-digit size triggers protoParseInt to return -1, which fails the < 0 check
+  // 16-digit size triggers protoParseInt to return -1, which fails the < 0 check
   assertThrows(() => {
-    p.parse(te.encode("MSG foo 1 123456789\r\n"));
+    p.parse(te.encode("MSG foo 1 1234567890123456\r\n"));
   });
 });
 

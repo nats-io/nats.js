@@ -81,6 +81,7 @@ function newMsgArg(): MsgArg {
 
 const ASCII_0 = 48;
 const ASCII_9 = 57;
+const MAX_64MB = 64 * 1024 * 1024;
 
 // This is an almost verbatim port of the Go NATS parser
 // https://github.com/nats-io/nats.go/blob/master/parser.go
@@ -579,13 +580,13 @@ export class Parser {
         this.ma.subject = args[0];
         this.ma.sid = this.protoParseInt(args[1]);
         this.ma.reply = undefined;
-        this.ma.size = this.protoParseInt(args[2]);
+        this.ma.size = this.protoParseInt(args[2], MAX_64MB);
         break;
       case 4:
         this.ma.subject = args[0];
         this.ma.sid = this.protoParseInt(args[1]);
         this.ma.reply = args[2];
-        this.ma.size = this.protoParseInt(args[3]);
+        this.ma.size = this.protoParseInt(args[3], MAX_64MB);
         break;
       default:
         throw this.fail(arg, "processMsgArgs Parse Error");
@@ -639,15 +640,15 @@ export class Parser {
         this.ma.subject = args[0];
         this.ma.sid = this.protoParseInt(args[1]);
         this.ma.reply = undefined;
-        this.ma.hdr = this.protoParseInt(args[2]);
-        this.ma.size = this.protoParseInt(args[3]);
+        this.ma.hdr = this.protoParseInt(args[2], MAX_64MB);
+        this.ma.size = this.protoParseInt(args[3], MAX_64MB);
         break;
       case 5:
         this.ma.subject = args[0];
         this.ma.sid = this.protoParseInt(args[1]);
         this.ma.reply = args[2];
-        this.ma.hdr = this.protoParseInt(args[3]);
-        this.ma.size = this.protoParseInt(args[4]);
+        this.ma.hdr = this.protoParseInt(args[3], MAX_64MB);
+        this.ma.size = this.protoParseInt(args[4], MAX_64MB);
         break;
       default:
         throw this.fail(arg, "processHeaderMsgArgs Parse Error");
@@ -667,9 +668,9 @@ export class Parser {
     }
   }
 
-  protoParseInt(a: Uint8Array): number {
-    // max 99_999_999
-    if (a.length === 0 || a.length > 8) {
+  protoParseInt(a: Uint8Array, max?: number): number {
+    // max 999_999_999_999_999 - one digit below MAX_SAFE_INTEGER
+    if (a.length === 0 || a.length > 15) {
       return -1;
     }
     let n = 0;
@@ -679,7 +680,7 @@ export class Parser {
       }
       n = n * 10 + (a[i] - ASCII_0);
     }
-    return n;
+    return max !== undefined && n > max ? -1 : n;
   }
 }
 
