@@ -1315,7 +1315,8 @@ export const JsHeaders = {
    */
   LastStreamSeqHdr: "Nats-Last-Stream",
   /**
-   * Set for heartbeat messages if the consumer is stalled
+   * Set for heartbeat messages if the consumer is stalled, reply subject
+   * will unstall the client when the client responds
    */
   ConsumerStalledHdr: "Nats-Consumer-Stalled",
   /**
