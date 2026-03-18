@@ -1001,14 +1001,14 @@ export type JetStreamUsageAccountLimits = JetStreamUsage & {
 export type JetStreamAccountStats = JetStreamUsageAccountLimits & {
   api: JetStreamApiStats;
   domain?: string;
-  tiers?: Record<`R${number}`, JetStreamUsageAccountLimits>;
+  tiers?: Partial<Record<`R${number}`, JetStreamUsageAccountLimits>>;
 };
 
 export type JetStreamApiStats = {
   /**
    * The active JetStream API level for this server
    */
-  level: number;
+  level?: number;
   /**
    * Total number of API requests received for this account
    */
