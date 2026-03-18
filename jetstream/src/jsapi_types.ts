@@ -964,7 +964,7 @@ export type AccountLimits = {
   /**
    * Indicates if Streams created in this account requires the max_bytes property set
    */
-  "max_bytes_required": number;
+  "max_bytes_required": boolean;
 };
 
 export type JetStreamUsage = {
@@ -976,6 +976,14 @@ export type JetStreamUsage = {
    * File Storage being used for Stream Message storage
    */
   storage: number;
+  /**
+   * Reserved Memory storage
+   */
+  reserved_memory: number;
+  /**
+   * Reserved File storage
+   */
+  reserved_storage: number;
   /**
    * Number of active Streams
    */
@@ -993,21 +1001,26 @@ export type JetStreamUsageAccountLimits = JetStreamUsage & {
 export type JetStreamAccountStats = JetStreamUsageAccountLimits & {
   api: JetStreamApiStats;
   domain?: string;
-  tiers?: {
-    R1?: JetStreamUsageAccountLimits;
-    R3?: JetStreamUsageAccountLimits;
-  };
+  tiers?: Partial<Record<`R${number}`, JetStreamUsageAccountLimits>>;
 };
 
 export type JetStreamApiStats = {
+  /**
+   * The active JetStream API level for this server
+   */
+  level?: number;
   /**
    * Total number of API requests received for this account
    */
   total: number;
   /**
-   * "API requests that resulted in an error response"
+   * API requests that resulted in an error response
    */
   errors: number;
+  /**
+   * Number of API requests currently being processed
+   */
+  inflight?: number;
 };
 
 export type AccountInfoResponse = ApiResponse & JetStreamAccountStats;
