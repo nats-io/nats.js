@@ -887,6 +887,19 @@ export type FastIngestOptions = {
    * tokens. Defaults to `_INBOX`.
    */
   inboxPrefix: string;
+
+  /**
+   * Maximum in-flight ack windows. Effective publish window =
+   * `ackInterval * maxOutstandingAcks` messages.
+   *
+   * - `1`: async-style, flow-controlled (wait after each window).
+   * - `2` (default): one window being acked, one being filled. Optimal for
+   *   most use cases and high-concurrency publishers.
+   * - `3`: may help on high-RTT links; use consciously, not by default.
+   *
+   * Values outside 1–3 are clamped.
+   */
+  maxOutstandingAcks: number;
 };
 
 /**
@@ -918,8 +931,18 @@ export type FastIngestProgress = {
 export type FastIngest = {
   /**
    * The batch identifier sent to the server in every message reply subject.
+   * Matches the `batch` field on the terminal {@link BatchAck}.
    */
-  readonly id: string;
+  readonly batch: string;
+
+  /**
+   * Async iterable of gaps reported by the server during this batch. Each
+   * yielded entry describes the sequence range that was lost (`[lastSeq, seq)`).
+   * Informational — batch continues in `gapMode: "ok"`; in `gapMode: "fail"`
+   * the server also aborts the batch. The iterable completes when the batch
+   * terminates.
+   */
+  gaps(): AsyncIterable<{ lastSeq: number; seq: number }>;
 
   /**
    * Publishes a message as part of the batch. Resolves when the outstanding-ack
@@ -929,7 +952,11 @@ export type FastIngest = {
    * @param subj - target subject (must route to the batch's stream)
    * @param payload - optional payload
    */
-  add(subj: string, payload?: Payload): Promise<FastIngestProgress>;
+  add(
+    subj: string,
+    payload?: Payload,
+    timeout?: number,
+  ): Promise<FastIngestProgress>;
 
   /**
    * Publishes the final message of the batch, storing it and committing the batch.
@@ -938,21 +965,25 @@ export type FastIngest = {
    * @param subj - target subject (must route to the batch's stream)
    * @param payload - optional payload (will be stored)
    */
-  last(subj: string, payload?: Payload): Promise<BatchAck>;
+  last(
+    subj: string,
+    payload?: Payload,
+    timeout?: number,
+  ): Promise<BatchAck>;
 
   /**
    * Commits the batch without storing an additional message. Sends an empty
    * end-of-batch sentinel. Use this when all payload messages have already
    * been sent via {@link add}.
    */
-  end(): Promise<BatchAck>;
+  end(timeout?: number): Promise<BatchAck>;
 
   /**
    * Sends a keep-alive ping to the server. Refreshes the idle-abandon timer and
    * returns a fresh progress snapshot (unlike {@link add}, which returns the
    * client's cached snapshot). Does not advance the batch sequence.
    */
-  ping(): Promise<FastIngestProgress>;
+  ping(timeout?: number): Promise<FastIngestProgress>;
 
   /**
    * Resolves when the batch terminates (by {@link last}, {@link end}, or error).

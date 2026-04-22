@@ -43,7 +43,7 @@ Deno.test("fast ingest - basics", async () => {
   const ack = await fi.last("q", "5");
 
   assertEquals(ack.stream, "batch");
-  assertEquals(ack.batch, fi.id);
+  assertEquals(ack.batch, fi.batch);
   assertEquals(ack.count, 5);
   assertEquals(ack.seq, 5);
 
@@ -66,8 +66,6 @@ Deno.test("fast ingest - rejects non_supported", async () => {
 
   const js = jsm.jetstream();
 
-  //@ts-ignore: test
-  nc.options.debug = true;
   await assertRejects(() => {
     return js.startFastIngest("q", "1", { ackInterval: 5 });
   });
@@ -97,7 +95,7 @@ Deno.test("fast ingest - end (EOB)", async () => {
   await fi.add("q", "3");
   const ack = await fi.end();
 
-  assertEquals(ack.batch, fi.id);
+  assertEquals(ack.batch, fi.batch);
   assertEquals(ack.count, 3);
 
   const si = await jsm.streams.info("batch");
@@ -218,7 +216,7 @@ Deno.test("fast ingest - invalid inboxPrefix rejected", async () => {
 
   const js = jsm.jetstream();
 
-  for (const bad of ["a.b", "", " ", "has space", "*", ">"]) {
+  for (const bad of ["", " ", "has space", "*", ">", "foo.*", "foo.>"]) {
     await assertRejects(
       () => js.startFastIngest("q", "1", { inboxPrefix: bad }),
       Error,
@@ -226,6 +224,53 @@ Deno.test("fast ingest - invalid inboxPrefix rejected", async () => {
     );
   }
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - multi-token inboxPrefix", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const js = jsm.jetstream();
+  const fi = await js.startFastIngest("q", "1", {
+    inboxPrefix: "_inbox.foo.bar.baz",
+  });
+  await fi.add("q", "2");
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - concurrent pings coalesce", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const js = jsm.jetstream();
+  const fi = await js.startFastIngest("q", "1", { ackInterval: 10 });
+  await fi.add("q", "2");
+
+  const [a, b] = await Promise.all([fi.ping(), fi.ping()]);
+  assertEquals(a.batchSeq, b.batchSeq);
+  assertEquals(a.ackSeq, b.ackSeq);
+
+  await fi.last("q", "3");
   await cleanup(ns, nc);
 });
 
@@ -247,7 +292,7 @@ Deno.test("fast ingest - done() resolves with terminal ack", async () => {
   await fi.last("q", "3");
 
   const terminal = await fi.done();
-  assertEquals(terminal.batch, fi.id);
+  assertEquals(terminal.batch, fi.batch);
   assertEquals(terminal.count, 3);
 
   await cleanup(ns, nc);
