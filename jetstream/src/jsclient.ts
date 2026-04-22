@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import { BaseApiClientImpl, parseJsResponse } from "./jsbaseclient_api.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
 import {
@@ -480,11 +480,6 @@ type BatchFlowAck = {
   msgs: number;
 };
 
-type FastIngestReply =
-  | BatchAck
-  | BatchFlowAck
-  | { error: { description?: string } };
-
 type Pending =
   | {
     seq: number;
@@ -531,6 +526,9 @@ export class FastIngestImpl implements FastIngest {
     this.closed = false;
     this.startDeferred = deferred<void>();
     this.closedDeferred = deferred<BatchAck>();
+    // swallow unhandled rejection if caller never attaches to done()
+    this.closedDeferred.catch(() => {});
+    this.startDeferred.catch(() => {});
 
     const inbox = `${this.inboxPrefix}.${this.id}.>`;
     this.sub = this.nc.subscribe(inbox, {
@@ -555,14 +553,12 @@ export class FastIngestImpl implements FastIngest {
       return;
     }
 
-    let data = {} as FastIngestReply;
-    if (m.data.length) {
-      try {
-        data = m.json<FastIngestReply>();
-      } catch (err) {
-        this.close(err as Error);
-        return;
-      }
+    let data: BatchAck | BatchFlowAck;
+    try {
+      data = parseJsResponse(m) as BatchAck | BatchFlowAck;
+    } catch (err) {
+      this.close(err as Error);
+      return;
     }
 
     // terminal pub ack (has `batch` field — discriminates from BatchFlowAck)
@@ -589,11 +585,6 @@ export class FastIngestImpl implements FastIngest {
       this.closedDeferred.resolve(ack);
       this.closed = true;
       this.sub.unsubscribe();
-      return;
-    }
-
-    if ("error" in data && data.error) {
-      this.close(new Error(data.error.description || "batch error"));
       return;
     }
 

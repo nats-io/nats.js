@@ -53,6 +53,31 @@ Deno.test("fast ingest - basics", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("fast ingest - rejects non_supported", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    subjects: ["q"],
+  });
+
+  const js = jsm.jetstream();
+
+  //@ts-ignore: test
+  nc.options.debug = true;
+  await assertRejects(() => {
+    return js.startFastIngest("q", "1", { ackInterval: 5 });
+  });
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 0);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("fast ingest - end (EOB)", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.14.0")) {
