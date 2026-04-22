@@ -856,6 +856,112 @@ export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
   return v.isPushConsumer();
 }
 
+/**
+ * Options for starting a fast-ingest batch via {@link JetStreamClient.startFastIngest}.
+ * Fast-ingest trades atomicity for throughput: messages may be dropped, and the server
+ * paces the client via flow-control acks. Requires a stream with `allow_batched: true`
+ * and nats-server v2.14.0 or later.
+ */
+export type FastIngestOptions = {
+  /**
+   * Requested interval (in messages) at which the server acknowledges batch progress.
+   * The server may override this value on the fly. Defaults to 10.
+   */
+  ackInterval: number;
+
+  /**
+   * How the server and client handle gaps (dropped messages) in the batch.
+   *
+   * - `ok`: gaps tolerated, batch continues, caller accepts loss (may compare
+   *   the final `count` against the number sent to detect it).
+   * - `fail`: any gap aborts the batch; all pending promises reject.
+   *
+   * Defaults to `ok`.
+   */
+  gapMode: "ok" | "fail";
+
+  /**
+   * Single-token subject prefix for the reply inbox. The full inbox is
+   * `${inboxPrefix}.${id}.>` where `id` is the batch's generated nuid.
+   * Must be a single NATS subject token — no dots, wildcards, or empty
+   * tokens. Defaults to `_INBOX`.
+   */
+  inboxPrefix: string;
+};
+
+/**
+ * Progress snapshot returned by {@link FastIngest.add} and {@link FastIngest.ping}.
+ * Does not guarantee the specific message with `batchSeq` has been stored —
+ * only that the server had acknowledged up to `ackSeq` at the time of the snapshot.
+ */
+export type FastIngestProgress = {
+  /**
+   * The batch sequence assigned to this message (1-based, increments per `add`/`last`/`end`).
+   */
+  batchSeq: number;
+
+  /**
+   * The highest batch sequence the server has acknowledged so far.
+   * From `add()` this is the locally-cached value at publish time; from `ping()`
+   * it is a fresh snapshot direct from the server.
+   */
+  ackSeq: number;
+};
+
+/**
+ * A fast-ingest batch. Publish messages with {@link add}, close the batch with
+ * {@link last} (commit + store last message) or {@link end} (commit, discard
+ * sentinel). Call {@link ping} to refresh flow-control state or keep the batch
+ * alive (server abandons idle batches after 10s). Call {@link done} to await
+ * the final acknowledgement regardless of how the batch ended.
+ */
+export type FastIngest = {
+  /**
+   * The batch identifier sent to the server in every message reply subject.
+   */
+  readonly id: string;
+
+  /**
+   * Publishes a message as part of the batch. Resolves when the outstanding-ack
+   * window allows (either immediately, if the window has room, or after the next
+   * flow-control ack from the server).
+   *
+   * @param subj - target subject (must route to the batch's stream)
+   * @param payload - optional payload
+   */
+  add(subj: string, payload?: Payload): Promise<FastIngestProgress>;
+
+  /**
+   * Publishes the final message of the batch, storing it and committing the batch.
+   * Resolves with the terminal {@link BatchAck}.
+   *
+   * @param subj - target subject (must route to the batch's stream)
+   * @param payload - optional payload (will be stored)
+   */
+  last(subj: string, payload?: Payload): Promise<BatchAck>;
+
+  /**
+   * Commits the batch without storing an additional message. Sends an empty
+   * end-of-batch sentinel. Use this when all payload messages have already
+   * been sent via {@link add}.
+   */
+  end(): Promise<BatchAck>;
+
+  /**
+   * Sends a keep-alive ping to the server. Refreshes the idle-abandon timer and
+   * returns a fresh progress snapshot (unlike {@link add}, which returns the
+   * client's cached snapshot). Does not advance the batch sequence.
+   */
+  ping(): Promise<FastIngestProgress>;
+
+  /**
+   * Resolves when the batch terminates (by {@link last}, {@link end}, or error).
+   * Useful when the batch's lifecycle is driven externally and the caller does
+   * not directly await {@link last} or {@link end}.
+   */
+  done(): Promise<BatchAck>;
+};
+
 export type BatchMessageOptions =
   & Partial<Omit<JetStreamPublishOptions, "msgID" | "expect">>
   & {
@@ -964,6 +1070,27 @@ export type JetStreamClient = {
     payload?: Payload,
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<Batch>;
+
+  /**
+   * Starts a fast-ingest batch on the stream that consumes `subj`. The first
+   * message is published synchronously as part of the handshake; the returned
+   * {@link FastIngest} is ready for additional `add`/`last`/`end` calls once
+   * the server has accepted the batch.
+   *
+   * Fast-ingest is a high-throughput, flow-controlled alternative to atomic
+   * batch publishing. Messages may be dropped (see {@link FastIngestOptions.gapMode}),
+   * and the batch has no size limit. Requires a stream with `allow_batched: true`
+   * and nats-server v2.14.0 or later.
+   *
+   * @param subj - subject for the first message (must route to the batch's stream)
+   * @param payload - first message payload
+   * @param opts - batch options; see {@link FastIngestOptions}
+   */
+  startFastIngest(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<FastIngestOptions>,
+  ): Promise<FastIngest>;
 
   /**
    * Returns the JS API prefix as processed from the JetStream Options

@@ -41,6 +41,9 @@ import type {
   ConsumerAPI,
   Consumers,
   DirectStreamAPI,
+  FastIngest,
+  FastIngestOptions,
+  FastIngestProgress,
   JetStreamClient,
   JetStreamManager,
   JetStreamManagerOptions,
@@ -52,6 +55,7 @@ import type {
 } from "./types.ts";
 
 import type {
+  Deferred,
   Msg,
   NatsConnection,
   Payload,
@@ -206,6 +210,34 @@ export class JetStreamClientImpl extends BaseApiClientImpl
       });
 
     return d;
+  }
+
+  startFastIngest(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<FastIngestOptions>,
+  ): Promise<FastIngest> {
+    const prefix = opts?.inboxPrefix ?? "_INBOX";
+    if (
+      !prefix ||
+      prefix.includes(".") ||
+      /\s/.test(prefix) ||
+      prefix === "*" ||
+      prefix === ">"
+    ) {
+      return Promise.reject(
+        new Error(
+          `inboxPrefix must be a single non-empty subject token, no whitespace (got "${prefix}")`,
+        ),
+      );
+    }
+    const o: FastIngestOptions = {
+      ackInterval: opts?.ackInterval ?? 10,
+      gapMode: opts?.gapMode === "fail" ? "fail" : "ok",
+      inboxPrefix: prefix,
+    };
+    const fi = new FastIngestImpl(this.nc, o, subj);
+    return fi.start(payload).then(() => fi);
   }
 
   async _publish(
@@ -426,5 +458,230 @@ export class BatchPublisherImpl implements Batch {
       throw new Error("batch didn't contain number of published messages");
     }
     return ack;
+  }
+}
+
+const MAX_OUTSTANDING_ACKS = 2;
+const BATCH_CLOSED = "batch closed";
+
+const FastIngestOp = {
+  Start: 0,
+  Append: 1,
+  Final: 2,
+  EOB: 3,
+  Ping: 4,
+} as const;
+
+type FastIngestOpValue = typeof FastIngestOp[keyof typeof FastIngestOp];
+
+type BatchFlowAck = {
+  type: "ack";
+  seq: number;
+  msgs: number;
+};
+
+type FastIngestReply =
+  | BatchAck
+  | BatchFlowAck
+  | { error: { description?: string } };
+
+type Pending =
+  | {
+    seq: number;
+    op: typeof FastIngestOp.Append | typeof FastIngestOp.Ping;
+    deferred: Deferred<FastIngestProgress>;
+  }
+  | {
+    seq: number;
+    op: typeof FastIngestOp.Final | typeof FastIngestOp.EOB;
+    deferred: Deferred<BatchAck>;
+  };
+
+export class FastIngestImpl implements FastIngest {
+  readonly id: string;
+  nc: NatsConnection;
+  batchSubj: string;
+  gapMode: "ok" | "fail";
+  initialFlow: number;
+  seq: number;
+  acked: number;
+  ackInterval: number;
+  inboxPrefix: string;
+  sub: ReturnType<NatsConnection["subscribe"]>;
+  pending: Map<string, Pending>;
+  closed: boolean;
+  startDeferred: ReturnType<typeof deferred<void>>;
+  closedDeferred: ReturnType<typeof deferred<BatchAck>>;
+
+  constructor(
+    nc: NatsConnection,
+    opts: FastIngestOptions,
+    firstSubj: string,
+  ) {
+    this.nc = nc;
+    this.batchSubj = firstSubj;
+    this.gapMode = opts.gapMode;
+    this.initialFlow = opts.ackInterval;
+    this.inboxPrefix = opts.inboxPrefix;
+    this.id = nuid.next();
+    this.seq = 0;
+    this.acked = 0;
+    this.ackInterval = opts.ackInterval;
+    this.pending = new Map();
+    this.closed = false;
+    this.startDeferred = deferred<void>();
+    this.closedDeferred = deferred<BatchAck>();
+
+    const inbox = `${this.inboxPrefix}.${this.id}.>`;
+    this.sub = this.nc.subscribe(inbox, {
+      callback: (err, msg) => this.route(err, msg),
+    });
+  }
+
+  replyFor(op: FastIngestOpValue, seq: number): string {
+    return `${this.inboxPrefix}.${this.id}.${this.initialFlow}.${this.gapMode}.${seq}.${op}.$FI`;
+  }
+
+  start(payload?: Payload): Promise<void> {
+    this.seq = 1;
+    const rs = this.replyFor(FastIngestOp.Start, 1);
+    this.nc.publish(this.batchSubj, payload, { reply: rs });
+    return this.startDeferred;
+  }
+
+  private route(err: Error | null, m: Msg): void {
+    if (err) {
+      this.close(err);
+      return;
+    }
+
+    let data = {} as FastIngestReply;
+    if (m.data.length) {
+      try {
+        data = m.json<FastIngestReply>();
+      } catch (err) {
+        this.close(err as Error);
+        return;
+      }
+    }
+
+    // terminal pub ack (has `batch` field — discriminates from BatchFlowAck)
+    if ("batch" in data && typeof data.batch === "string") {
+      const ack = data;
+      const e = this.pending.get(m.subject);
+      if (e && (e.op === FastIngestOp.Final || e.op === FastIngestOp.EOB)) {
+        e.deferred.resolve(ack);
+        this.pending.delete(m.subject);
+      }
+      // resolve any stragglers (adds/pings awaiting flow ack) — batch is committed
+      for (const [, entry] of this.pending) {
+        if (
+          entry.op === FastIngestOp.Append ||
+          entry.op === FastIngestOp.Ping
+        ) {
+          entry.deferred.resolve({ batchSeq: entry.seq, ackSeq: ack.count });
+        } else {
+          entry.deferred.reject(new Error(BATCH_CLOSED));
+        }
+      }
+      this.pending.clear();
+      this.resolveStart();
+      this.closedDeferred.resolve(ack);
+      this.closed = true;
+      this.sub.unsubscribe();
+      return;
+    }
+
+    if ("error" in data && data.error) {
+      this.close(new Error(data.error.description || "batch error"));
+      return;
+    }
+
+    const fa = data as BatchFlowAck;
+    if (typeof fa.msgs === "number") this.ackInterval = fa.msgs;
+    if (typeof fa.seq === "number") this.acked = fa.seq;
+
+    this.resolveStart();
+
+    // exact-subject resolution: ping's flow ack or a blocked add
+    const exact = this.pending.get(m.subject);
+    if (
+      exact &&
+      (exact.op === FastIngestOp.Append || exact.op === FastIngestOp.Ping)
+    ) {
+      exact.deferred.resolve({ batchSeq: exact.seq, ackSeq: this.acked });
+      this.pending.delete(m.subject);
+    }
+
+    // slide window: any blocked adds now within the allowed window resolve
+    for (const [rs, e] of this.pending) {
+      if (
+        e.op === FastIngestOp.Append &&
+        e.seq - this.acked < this.ackInterval * MAX_OUTSTANDING_ACKS
+      ) {
+        e.deferred.resolve({ batchSeq: e.seq, ackSeq: this.acked });
+        this.pending.delete(rs);
+      }
+    }
+  }
+
+  private resolveStart(): void {
+    this.startDeferred.resolve();
+  }
+
+  private close(err: Error): void {
+    this.closed = true;
+    for (const [, e] of this.pending) e.deferred.reject(err);
+    this.pending.clear();
+    this.startDeferred.reject(err);
+    this.closedDeferred.reject(err);
+    this.sub.unsubscribe();
+  }
+
+  add(subj: string, payload?: Payload): Promise<FastIngestProgress> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.Append, mySeq);
+    this.nc.publish(subj, payload, { reply: rs });
+
+    if (mySeq - this.acked < this.ackInterval * MAX_OUTSTANDING_ACKS) {
+      return Promise.resolve({ batchSeq: mySeq, ackSeq: this.acked });
+    }
+    const d = deferred<FastIngestProgress>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Append, deferred: d });
+    return d;
+  }
+
+  last(subj: string, payload?: Payload): Promise<BatchAck> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.Final, mySeq);
+    const d = deferred<BatchAck>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Final, deferred: d });
+    this.nc.publish(subj, payload, { reply: rs });
+    return d;
+  }
+
+  end(): Promise<BatchAck> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.EOB, mySeq);
+    const d = deferred<BatchAck>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.EOB, deferred: d });
+    this.nc.publish(this.batchSubj, Empty, { reply: rs });
+    return d;
+  }
+
+  ping(): Promise<FastIngestProgress> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const rs = this.replyFor(FastIngestOp.Ping, this.seq);
+    const d = deferred<FastIngestProgress>();
+    this.pending.set(rs, { seq: this.seq, op: FastIngestOp.Ping, deferred: d });
+    this.nc.publish(this.batchSubj, Empty, { reply: rs });
+    return d;
+  }
+
+  done(): Promise<BatchAck> {
+    return this.closedDeferred;
   }
 }
