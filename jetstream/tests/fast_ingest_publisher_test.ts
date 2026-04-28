@@ -274,6 +274,66 @@ Deno.test("fast ingest - concurrent pings coalesce", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("fast ingest - expect.lastSequence on first msg", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const js = jsm.jetstream();
+
+  // first publish to advance the stream tip to 1
+  await js.publish("q", "0");
+
+  // start a batch w/ correct expectation — should succeed
+  const fi = await js.startFastIngest("q", "1", {
+    expect: { lastSequence: 1 },
+  });
+  await fi.add("q", "2");
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  // stream now has 4 msgs (publish + 3 batch)
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 4);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - expect.lastSequence mismatch closes batch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const js = jsm.jetstream();
+
+  // stream is empty (last_seq=0); expecting 5 — server sends type:"err"
+  // which closes the batch
+  const fi = await js.startFastIngest("q", "1", {
+    expect: { lastSequence: 5 },
+  });
+
+  await assertRejects(() => fi.last("q", "2"), Error);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 0);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("fast ingest - done() resolves with terminal ack", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.14.0")) {

@@ -955,7 +955,7 @@ export type FastIngest = {
   add(
     subj: string,
     payload?: Payload,
-    timeout?: number,
+    opts?: Partial<JetStreamPublishOptions>,
   ): Promise<FastIngestProgress>;
 
   /**
@@ -968,7 +968,7 @@ export type FastIngest = {
   last(
     subj: string,
     payload?: Payload,
-    timeout?: number,
+    opts?: Partial<JetStreamPublishOptions>,
   ): Promise<BatchAck>;
 
   /**
@@ -976,7 +976,7 @@ export type FastIngest = {
    * end-of-batch sentinel. Use this when all payload messages have already
    * been sent via {@link add}.
    */
-  end(timeout?: number): Promise<BatchAck>;
+  end(opts?: Partial<JetStreamPublishOptions>): Promise<BatchAck>;
 
   /**
    * Sends a keep-alive ping to the server. Refreshes the idle-abandon timer and
@@ -1120,7 +1120,7 @@ export type JetStreamClient = {
   startFastIngest(
     subj: string,
     payload?: Payload,
-    opts?: Partial<FastIngestOptions>,
+    opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
   ): Promise<FastIngest>;
 
   /**

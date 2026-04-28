@@ -58,6 +58,7 @@ import type {
 import type {
   Deferred,
   Msg,
+  MsgHdrs,
   NatsConnection,
   Payload,
   RequestOptions,
@@ -70,6 +71,63 @@ import type {
 } from "./jsapi_types.ts";
 import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
 import { DirectStreamAPIImpl } from "./jsm_direct.ts";
+
+function buildPublishHeaders(
+  opts: Partial<JetStreamPublishOptions>,
+): MsgHdrs {
+  const expect = opts.expect || {};
+  const mh = opts.headers || headers();
+  if (opts.msgID) {
+    mh.set(PubHeaders.MsgIdHdr, opts.msgID);
+  }
+  if (expect.lastMsgID) {
+    mh.set(PubHeaders.ExpectedLastMsgIdHdr, expect.lastMsgID);
+  }
+  if (expect.streamName) {
+    mh.set(PubHeaders.ExpectedStreamHdr, expect.streamName);
+  }
+  if (typeof expect.lastSequence === "number") {
+    mh.set(PubHeaders.ExpectedLastSeqHdr, `${expect.lastSequence}`);
+  }
+  if (typeof expect.lastSubjectSequence === "number") {
+    mh.set(
+      PubHeaders.ExpectedLastSubjectSequenceHdr,
+      `${expect.lastSubjectSequence}`,
+    );
+  }
+  if (expect.lastSubjectSequenceSubject) {
+    mh.set(
+      PubHeaders.ExpectedLastSubjectSequenceSubjectHdr,
+      expect.lastSubjectSequenceSubject,
+    );
+  }
+  if (opts.ttl) {
+    mh.set(PubHeaders.MessageTTL, `${opts.ttl}`);
+  }
+  if (opts.schedule) {
+    const so = opts.schedule;
+    if (so.specification) {
+      if (typeof so.specification === "string") {
+        mh.set(PubHeaders.Schedule, so.specification);
+      } else if (so.specification instanceof Date) {
+        mh.set(
+          PubHeaders.Schedule,
+          "@at " + so.specification.toISOString(),
+        );
+      }
+    }
+    if (so.target) {
+      mh.set(PubHeaders.ScheduleTarget, so.target);
+    }
+    if (so.source) {
+      mh.set(PubHeaders.ScheduleSource, so.source);
+    }
+    if (so.ttl) {
+      mh.set(PubHeaders.ScheduleTTL, so.ttl);
+    }
+  }
+  return mh;
+}
 
 export function toJetStreamClient(
   nc: NatsConnection | JetStreamClient,
@@ -216,9 +274,16 @@ export class JetStreamClientImpl extends BaseApiClientImpl
   startFastIngest(
     subj: string,
     payload?: Payload,
-    opts?: Partial<FastIngestOptions>,
+    opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
   ): Promise<FastIngest> {
-    const prefix = opts?.inboxPrefix ?? "_INBOX";
+    const {
+      ackInterval,
+      gapMode,
+      inboxPrefix,
+      maxOutstandingAcks,
+      ...publishOpts
+    } = opts ?? {};
+    const prefix = inboxPrefix ?? "_INBOX";
     if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
       return Promise.reject(
         new Error(
@@ -226,18 +291,14 @@ export class JetStreamClientImpl extends BaseApiClientImpl
         ),
       );
     }
-    const maxOutstandingAcks = Math.min(
-      3,
-      Math.max(1, opts?.maxOutstandingAcks ?? 2),
-    );
     const o: FastIngestOptions = {
-      ackInterval: opts?.ackInterval ?? 10,
-      gapMode: opts?.gapMode === "fail" ? "fail" : "ok",
+      ackInterval: ackInterval ?? 10,
+      gapMode: gapMode === "fail" ? "fail" : "ok",
       inboxPrefix: prefix,
-      maxOutstandingAcks,
+      maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
     };
     const fi = new FastIngestImpl(this.nc, o, subj, this.timeout);
-    return fi.start(payload).then(() => fi);
+    return fi.start(payload, publishOpts).then(() => fi);
   }
 
   async _publish(
@@ -247,63 +308,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
   ): Promise<Msg> {
     opts = opts || {};
     opts = { ...opts };
-    opts.expect = opts.expect || {};
-    const mh = opts?.headers || headers();
-    if (opts) {
-      if (opts.msgID) {
-        mh.set(PubHeaders.MsgIdHdr, opts.msgID);
-      }
-      if (opts.expect.lastMsgID) {
-        mh.set(PubHeaders.ExpectedLastMsgIdHdr, opts.expect.lastMsgID);
-      }
-      if (opts.expect.streamName) {
-        mh.set(PubHeaders.ExpectedStreamHdr, opts.expect.streamName);
-      }
-      if (typeof opts.expect.lastSequence === "number") {
-        mh.set(PubHeaders.ExpectedLastSeqHdr, `${opts.expect.lastSequence}`);
-      }
-      if (typeof opts.expect.lastSubjectSequence === "number") {
-        mh.set(
-          PubHeaders.ExpectedLastSubjectSequenceHdr,
-          `${opts.expect.lastSubjectSequence}`,
-        );
-      }
-      if (opts.expect.lastSubjectSequenceSubject) {
-        mh.set(
-          PubHeaders.ExpectedLastSubjectSequenceSubjectHdr,
-          opts.expect.lastSubjectSequenceSubject,
-        );
-      }
-      if (opts.ttl) {
-        mh.set(
-          PubHeaders.MessageTTL,
-          `${opts.ttl}`,
-        );
-      }
-
-      if (opts.schedule) {
-        const so = opts.schedule;
-        if (so.specification) {
-          if (typeof so.specification === "string") {
-            mh.set(PubHeaders.Schedule, so.specification);
-          } else if (so.specification instanceof Date) {
-            mh.set(
-              PubHeaders.Schedule,
-              "@at " + so.specification.toISOString(),
-            );
-          }
-        }
-        if (so.target) {
-          mh.set(PubHeaders.ScheduleTarget, so.target);
-        }
-        if (so.source) {
-          mh.set(PubHeaders.ScheduleSource, so.source);
-        }
-        if (so.ttl) {
-          mh.set(PubHeaders.ScheduleTTL, so.ttl);
-        }
-      }
-    }
+    const mh = buildPublishHeaders(opts);
 
     const to = opts.timeout || this.timeout;
     const ro = {} as RequestOptions;
@@ -513,6 +518,7 @@ export class FastIngestImpl implements FastIngest {
   sub: ReturnType<NatsConnection["subscribe"]>;
   pending: Map<string, Pending>;
   closed: boolean;
+  closeErr?: Error;
   startDeferred: ReturnType<typeof deferred<void>>;
   closedDeferred: ReturnType<typeof deferred<BatchAck>>;
 
@@ -551,11 +557,25 @@ export class FastIngestImpl implements FastIngest {
     return `${this.inboxPrefix}.${this.batch}.${this.initialFlow}.${this.gapMode}.${seq}.${op}.$FI`;
   }
 
-  start(payload?: Payload): Promise<void> {
+  start(
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<void> {
     this.seq = 1;
     const rs = this.replyFor(FastIngestOp.Start, 1);
-    this.nc.publish(this.batchSubj, payload, { reply: rs });
-    return deadline(this.startDeferred, this.defaultTimeout);
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(this.batchSubj, payload, { reply: rs, headers });
+    return this.deadlineOrClose(
+      this.startDeferred,
+      opts?.timeout ?? this.defaultTimeout,
+    );
+  }
+
+  private deadlineOrClose<T>(p: Promise<T>, ms: number): Promise<T> {
+    return deadline(p, ms).catch((err) => {
+      if (!this.closed) this.close(err as Error);
+      throw err;
+    });
   }
 
   private route(err: Error | null, m: Msg): void {
@@ -650,6 +670,7 @@ export class FastIngestImpl implements FastIngest {
 
   private close(err: Error): void {
     this.closed = true;
+    this.closeErr = err;
     for (const [, e] of this.pending) e.deferred.reject(err);
     this.pending.clear();
     this.startDeferred.reject(err);
@@ -661,43 +682,46 @@ export class FastIngestImpl implements FastIngest {
   add(
     subj: string,
     payload?: Payload,
-    timeout: number = this.defaultTimeout,
+    opts?: Partial<JetStreamPublishOptions>,
   ): Promise<FastIngestProgress> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.Append, mySeq);
-    this.nc.publish(subj, payload, { reply: rs });
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(subj, payload, { reply: rs, headers });
 
     if (mySeq - this.acked < this.ackInterval * this.maxOutstandingAcks) {
       return Promise.resolve({ batchSeq: mySeq, ackSeq: this.acked });
     }
     const d = deferred<FastIngestProgress>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Append, deferred: d });
-    return deadline(d, timeout);
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
   }
 
   last(
     subj: string,
     payload?: Payload,
-    timeout: number = this.defaultTimeout,
+    opts?: Partial<JetStreamPublishOptions>,
   ): Promise<BatchAck> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.Final, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Final, deferred: d });
-    this.nc.publish(subj, payload, { reply: rs });
-    return deadline(d, timeout);
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(subj, payload, { reply: rs, headers });
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
   }
 
-  end(timeout: number = this.defaultTimeout): Promise<BatchAck> {
+  end(opts?: Partial<JetStreamPublishOptions>): Promise<BatchAck> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.EOB, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.EOB, deferred: d });
-    this.nc.publish(this.batchSubj, Empty, { reply: rs });
-    return deadline(d, timeout);
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(this.batchSubj, Empty, { reply: rs, headers });
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
   }
 
   ping(timeout: number = this.defaultTimeout): Promise<FastIngestProgress> {
@@ -711,7 +735,7 @@ export class FastIngestImpl implements FastIngest {
     const d = deferred<FastIngestProgress>();
     this.pending.set(rs, { seq: this.seq, op: FastIngestOp.Ping, deferred: d });
     this.nc.publish(this.batchSubj, Empty, { reply: rs });
-    return deadline(d, timeout);
+    return this.deadlineOrClose(d, timeout);
   }
 
   done(): Promise<BatchAck> {
