@@ -881,10 +881,10 @@ export type FastIngestOptions = {
   gapMode: "ok" | "fail";
 
   /**
-   * Single-token subject prefix for the reply inbox. The full inbox is
+   * Subject prefix for the reply inbox. The full inbox is
    * `${inboxPrefix}.${id}.>` where `id` is the batch's generated nuid.
-   * Must be a single NATS subject token — no dots, wildcards, or empty
-   * tokens. Defaults to `_INBOX`.
+   * Must be non-empty and contain no whitespace or wildcards (`*`, `>`).
+   * Multi-token prefixes (with dots) are allowed. Defaults to `_INBOX`.
    */
   inboxPrefix: string;
 
