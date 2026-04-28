@@ -309,7 +309,6 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     return d;
   }
 
-
   async _publish(
     subj: string,
     data: Payload = Empty,
