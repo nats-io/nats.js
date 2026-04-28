@@ -28,6 +28,7 @@ export {
   jetstream,
   JetStreamClientImpl,
   jetstreamManager,
+  startFastIngest,
   toJetStreamClient,
 } from "./jsclient.ts";
 
@@ -40,6 +41,9 @@ export type {
   BatchMessageOptionsWithReply,
   Bind,
   BoundPushConsumerOptions,
+  FastIngest,
+  FastIngestOptions,
+  FastIngestProgress,
   Close,
   Closed,
   ConsumeBytes,

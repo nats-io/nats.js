@@ -19,7 +19,7 @@ import {
   notCompatible,
   setup,
 } from "test_helpers";
-import { jetstreamManager } from "../src/jsclient.ts";
+import { jetstreamManager, startFastIngest } from "../src/jsclient.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 
 Deno.test("fast ingest - basics", async () => {
@@ -36,7 +36,7 @@ Deno.test("fast ingest - basics", async () => {
 
   const js = jsm.jetstream();
 
-  const fi = await js.startFastIngest("q", "1", { ackInterval: 5 });
+  const fi = await startFastIngest(nc, "q", "1", { ackInterval: 5 });
   await fi.add("q", "2");
   await fi.add("q", "3");
   await fi.add("q", "4");
@@ -67,7 +67,7 @@ Deno.test("fast ingest - rejects non_supported", async () => {
   const js = jsm.jetstream();
 
   await assertRejects(() => {
-    return js.startFastIngest("q", "1", { ackInterval: 5 });
+    return startFastIngest(nc, "q", "1", { ackInterval: 5 });
   });
 
   const si = await jsm.streams.info("batch");
@@ -90,7 +90,7 @@ Deno.test("fast ingest - end (EOB)", async () => {
 
   const js = jsm.jetstream();
 
-  const fi = await js.startFastIngest("q", "1", { ackInterval: 5 });
+  const fi = await startFastIngest(nc, "q", "1", { ackInterval: 5 });
   await fi.add("q", "2");
   await fi.add("q", "3");
   const ack = await fi.end();
@@ -118,7 +118,7 @@ Deno.test("fast ingest - ping", async () => {
 
   const js = jsm.jetstream();
 
-  const fi = await js.startFastIngest("q", "1", { ackInterval: 10 });
+  const fi = await startFastIngest(nc, "q", "1", { ackInterval: 10 });
   await fi.add("q", "2");
   const p = await fi.ping();
   assertEquals(p.batchSeq, 2);
@@ -144,7 +144,7 @@ Deno.test("fast ingest - backpressure", async () => {
   const js = jsm.jetstream();
 
   // ackInterval=2, window=2*2=4 — forces blocking
-  const fi = await js.startFastIngest("q", "1", { ackInterval: 2 });
+  const fi = await startFastIngest(nc, "q", "1", { ackInterval: 2 });
   for (let i = 2; i <= 20; i++) {
     await fi.add("q", i.toString());
   }
@@ -170,7 +170,7 @@ Deno.test("fast ingest - add after closed rejects", async () => {
   });
 
   const js = jsm.jetstream();
-  const fi = await js.startFastIngest("q", "1");
+  const fi = await startFastIngest(nc, "q", "1");
   await fi.last("q", "2");
 
   await assertRejects(
@@ -195,7 +195,7 @@ Deno.test("fast ingest - custom inboxPrefix", async () => {
   });
 
   const js = jsm.jetstream();
-  const fi = await js.startFastIngest("q", "1", { inboxPrefix: "FI" });
+  const fi = await startFastIngest(nc, "q", "1", { inboxPrefix: "FI" });
   const ack = await fi.last("q", "2");
   assertEquals(ack.count, 2);
 
@@ -218,7 +218,7 @@ Deno.test("fast ingest - invalid inboxPrefix rejected", async () => {
 
   for (const bad of ["", " ", "has space", "*", ">", "foo.*", "foo.>"]) {
     await assertRejects(
-      () => js.startFastIngest("q", "1", { inboxPrefix: bad }),
+      () => startFastIngest(nc, "q", "1", { inboxPrefix: bad }),
       Error,
       "inboxPrefix",
     );
@@ -240,7 +240,7 @@ Deno.test("fast ingest - multi-token inboxPrefix", async () => {
   });
 
   const js = jsm.jetstream();
-  const fi = await js.startFastIngest("q", "1", {
+  const fi = await startFastIngest(nc, "q", "1", {
     inboxPrefix: "_inbox.foo.bar.baz",
   });
   await fi.add("q", "2");
@@ -263,7 +263,7 @@ Deno.test("fast ingest - concurrent pings coalesce", async () => {
   });
 
   const js = jsm.jetstream();
-  const fi = await js.startFastIngest("q", "1", { ackInterval: 10 });
+  const fi = await startFastIngest(nc, "q", "1", { ackInterval: 10 });
   await fi.add("q", "2");
 
   const [a, b] = await Promise.all([fi.ping(), fi.ping()]);
@@ -292,7 +292,7 @@ Deno.test("fast ingest - expect.lastSequence on first msg", async () => {
   await js.publish("q", "0");
 
   // start a batch w/ correct expectation — should succeed
-  const fi = await js.startFastIngest("q", "1", {
+  const fi = await startFastIngest(nc, "q", "1", {
     expect: { lastSequence: 1 },
   });
   await fi.add("q", "2");
@@ -322,7 +322,7 @@ Deno.test("fast ingest - expect.lastSequence mismatch closes batch", async () =>
 
   // stream is empty (last_seq=0); expecting 5 — server sends type:"err"
   // which closes the batch
-  const fi = await js.startFastIngest("q", "1", {
+  const fi = await startFastIngest(nc, "q", "1", {
     expect: { lastSequence: 5 },
   });
 
@@ -347,7 +347,7 @@ Deno.test("fast ingest - done() resolves with terminal ack", async () => {
   });
 
   const js = jsm.jetstream();
-  const fi = await js.startFastIngest("q", "1");
+  const fi = await startFastIngest(nc, "q", "1");
   await fi.add("q", "2");
   await fi.last("q", "3");
 

@@ -72,6 +72,44 @@ import type {
 import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
 import { DirectStreamAPIImpl } from "./jsm_direct.ts";
 
+/**
+ * Starts a fast-ingest batch on the stream that consumes `subj`. Internal
+ * export — exposed via `@nats-io/jetstream/internal` and intended for
+ * companion packages to wrap. Not part of the public {@link JetStreamClient}
+ * API.
+ */
+export function startFastIngest(
+  nc: NatsConnection,
+  subj: string,
+  payload?: Payload,
+  opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
+  defaultTimeout: number = 5000,
+): Promise<FastIngest> {
+  const {
+    ackInterval,
+    gapMode,
+    inboxPrefix,
+    maxOutstandingAcks,
+    ...publishOpts
+  } = opts ?? {};
+  const prefix = inboxPrefix ?? "_INBOX";
+  if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
+    return Promise.reject(
+      new Error(
+        `inboxPrefix must be non-empty, no wildcards or whitespace (got "${prefix}")`,
+      ),
+    );
+  }
+  const o: FastIngestOptions = {
+    ackInterval: ackInterval ?? 10,
+    gapMode: gapMode === "fail" ? "fail" : "ok",
+    inboxPrefix: prefix,
+    maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
+  };
+  const fi = new FastIngestImpl(nc, o, subj, defaultTimeout);
+  return fi.start(payload, publishOpts).then(() => fi);
+}
+
 function buildPublishHeaders(
   opts: Partial<JetStreamPublishOptions>,
 ): MsgHdrs {
@@ -271,35 +309,6 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     return d;
   }
 
-  startFastIngest(
-    subj: string,
-    payload?: Payload,
-    opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
-  ): Promise<FastIngest> {
-    const {
-      ackInterval,
-      gapMode,
-      inboxPrefix,
-      maxOutstandingAcks,
-      ...publishOpts
-    } = opts ?? {};
-    const prefix = inboxPrefix ?? "_INBOX";
-    if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
-      return Promise.reject(
-        new Error(
-          `inboxPrefix must be non-empty, no wildcards or whitespace (got "${prefix}")`,
-        ),
-      );
-    }
-    const o: FastIngestOptions = {
-      ackInterval: ackInterval ?? 10,
-      gapMode: gapMode === "fail" ? "fail" : "ok",
-      inboxPrefix: prefix,
-      maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
-    };
-    const fi = new FastIngestImpl(this.nc, o, subj, this.timeout);
-    return fi.start(payload, publishOpts).then(() => fi);
-  }
 
   async _publish(
     subj: string,
@@ -502,7 +511,7 @@ type Pending =
     deferred: Deferred<BatchAck>;
   };
 
-export class FastIngestImpl implements FastIngest {
+class FastIngestImpl implements FastIngest {
   readonly batch: string;
   nc: NatsConnection;
   batchSubj: string;

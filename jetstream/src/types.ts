@@ -1103,27 +1103,6 @@ export type JetStreamClient = {
   ): Promise<Batch>;
 
   /**
-   * Starts a fast-ingest batch on the stream that consumes `subj`. The first
-   * message is published synchronously as part of the handshake; the returned
-   * {@link FastIngest} is ready for additional `add`/`last`/`end` calls once
-   * the server has accepted the batch.
-   *
-   * Fast-ingest is a high-throughput, flow-controlled alternative to atomic
-   * batch publishing. Messages may be dropped (see {@link FastIngestOptions.gapMode}),
-   * and the batch has no size limit. Requires a stream with `allow_batched: true`
-   * and nats-server v2.14.0 or later.
-   *
-   * @param subj - subject for the first message (must route to the batch's stream)
-   * @param payload - first message payload
-   * @param opts - batch options; see {@link FastIngestOptions}
-   */
-  startFastIngest(
-    subj: string,
-    payload?: Payload,
-    opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
-  ): Promise<FastIngest>;
-
-  /**
    * Returns the JS API prefix as processed from the JetStream Options
    */
   apiPrefix: string;
