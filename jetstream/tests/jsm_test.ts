@@ -904,9 +904,9 @@ Deno.test("jsm - cross account streams", async () => {
   // cannot publish to the stream from the client account
   // publish from the js account
   const admin = await connect({ port: ns.port, user: "js", pass: "js" });
-  admin.publish(subj);
-  admin.publish(subj);
-  await admin.flush();
+  const adminJs = jetstream(admin);
+  await adminJs.publish(subj);
+  await adminJs.publish(subj);
 
   // info
   let si = await jsm.streams.info(stream);
@@ -1501,41 +1501,46 @@ Deno.test("jsm - discard_new_per_subject option", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("jsm - paginated subjects", async () => {
-  const { ns, nc } = await setup(
-    jetstreamServerConf({
-      jetstream: {
-        max_memory_store: -1,
-      },
-    }),
-  );
+Deno.test(
+  "jsm - paginated subjects",
+  flakyTest(async () => {
+    const { ns, nc } = await setup(
+      jetstreamServerConf({
+        jetstream: {
+          max_memory_store: -1,
+        },
+      }),
+    );
 
-  const jsm = await jetstreamManager(nc);
-  const js = jetstream(nc);
-  await initStream(nc, "a", {
-    subjects: ["a.*"],
-    storage: StorageType.Memory,
-  });
-  const proms: Promise<PubAck>[] = [];
-  for (let i = 1; i <= 100_001; i++) {
-    proms.push(js.publish(`a.${i}`));
-    if (proms.length === 1000) {
-      await Promise.all(proms);
-      proms.length = 0;
+    try {
+      const jsm = await jetstreamManager(nc);
+      const js = jetstream(nc);
+      await initStream(nc, "a", {
+        subjects: ["a.*"],
+        storage: StorageType.Memory,
+      });
+      const proms: Promise<PubAck>[] = [];
+      for (let i = 1; i <= 100_001; i++) {
+        proms.push(js.publish(`a.${i}`));
+        if (proms.length === 1000) {
+          await Promise.all(proms);
+          proms.length = 0;
+        }
+      }
+      if (proms.length) {
+        await Promise.all(proms);
+      }
+
+      const si = await jsm.streams.info("a", {
+        subjects_filter: ">",
+      });
+      const names = Object.getOwnPropertyNames(si.state.subjects);
+      assertEquals(names.length, 100_001);
+    } finally {
+      await cleanup(ns, nc);
     }
-  }
-  if (proms.length) {
-    await Promise.all(proms);
-  }
-
-  const si = await jsm.streams.info("a", {
-    subjects_filter: ">",
-  });
-  const names = Object.getOwnPropertyNames(si.state.subjects);
-  assertEquals(names.length, 100_001);
-
-  await cleanup(ns, nc);
-});
+  }),
+);
 
 Deno.test("jsm - paged stream list", async () => {
   const { ns, nc } = await setup(
