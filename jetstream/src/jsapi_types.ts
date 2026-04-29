@@ -190,6 +190,11 @@ export type StreamConfig = StreamUpdateConfig & {
   "allow_atomic": boolean;
 
   /**
+   * Enables the ability to send batched messages to the stream
+   */
+  "allow_batched": boolean;
+
+  /**
    * Sets the persistence model for the stream - the default is PersistMode.Default.
    * This is a 2.12 feature.
    */

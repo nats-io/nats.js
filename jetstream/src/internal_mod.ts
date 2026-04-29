@@ -28,6 +28,7 @@ export {
   jetstream,
   JetStreamClientImpl,
   jetstreamManager,
+  startFastIngest,
   toJetStreamClient,
 } from "./jsclient.ts";
 
@@ -66,6 +67,9 @@ export type {
   ExceededLimits,
   Expires,
   ExportedConsumer,
+  FastIngest,
+  FastIngestOptions,
+  FastIngestProgress,
   FetchBytes,
   FetchMessages,
   FetchOptions,

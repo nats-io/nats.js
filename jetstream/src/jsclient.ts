@@ -13,12 +13,13 @@
  * limitations under the License.
  */
 
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import { BaseApiClientImpl, parseJsResponse } from "./jsbaseclient_api.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
 import {
   backoff,
   createInbox,
+  deadline,
   deferred,
   delay,
   Empty,
@@ -41,6 +42,9 @@ import type {
   ConsumerAPI,
   Consumers,
   DirectStreamAPI,
+  FastIngest,
+  FastIngestOptions,
+  FastIngestProgress,
   JetStreamClient,
   JetStreamManager,
   JetStreamManagerOptions,
@@ -52,7 +56,9 @@ import type {
 } from "./types.ts";
 
 import type {
+  Deferred,
   Msg,
+  MsgHdrs,
   NatsConnection,
   Payload,
   RequestOptions,
@@ -65,6 +71,104 @@ import type {
 } from "./jsapi_types.ts";
 import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
 import { DirectStreamAPIImpl } from "./jsm_direct.ts";
+
+/**
+ * Starts a fast-ingest batch on the stream that consumes `subj`. Internal
+ * export — exposed via `@nats-io/jetstream/internal` and intended for
+ * companion packages to wrap. Not part of the public {@link JetStreamClient}
+ * API.
+ */
+export function startFastIngest(
+  nc: NatsConnection,
+  subj: string,
+  payload: Payload | undefined,
+  opts:
+    & Pick<FastIngestOptions, "allowGaps">
+    & Partial<Omit<FastIngestOptions, "allowGaps">>
+    & Partial<JetStreamPublishOptions>,
+  defaultTimeout: number = 5000,
+): Promise<FastIngest> {
+  const {
+    ackInterval,
+    allowGaps,
+    inboxPrefix,
+    maxOutstandingAcks,
+    ...publishOpts
+  } = opts;
+  const prefix = inboxPrefix ?? "_INBOX";
+  if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
+    return Promise.reject(
+      new Error(
+        `inboxPrefix must be non-empty, no wildcards or whitespace (got "${prefix}")`,
+      ),
+    );
+  }
+  const o: FastIngestOptions = {
+    ackInterval: ackInterval ?? 10,
+    allowGaps,
+    inboxPrefix: prefix,
+    maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
+  };
+  const fi = new FastIngestImpl(nc, o, subj, defaultTimeout);
+  return fi.start(payload, publishOpts).then(() => fi);
+}
+
+function buildPublishHeaders(
+  opts: Partial<JetStreamPublishOptions>,
+): MsgHdrs {
+  const expect = opts.expect || {};
+  const mh = opts.headers || headers();
+  if (opts.msgID) {
+    mh.set(PubHeaders.MsgIdHdr, opts.msgID);
+  }
+  if (expect.lastMsgID) {
+    mh.set(PubHeaders.ExpectedLastMsgIdHdr, expect.lastMsgID);
+  }
+  if (expect.streamName) {
+    mh.set(PubHeaders.ExpectedStreamHdr, expect.streamName);
+  }
+  if (typeof expect.lastSequence === "number") {
+    mh.set(PubHeaders.ExpectedLastSeqHdr, `${expect.lastSequence}`);
+  }
+  if (typeof expect.lastSubjectSequence === "number") {
+    mh.set(
+      PubHeaders.ExpectedLastSubjectSequenceHdr,
+      `${expect.lastSubjectSequence}`,
+    );
+  }
+  if (expect.lastSubjectSequenceSubject) {
+    mh.set(
+      PubHeaders.ExpectedLastSubjectSequenceSubjectHdr,
+      expect.lastSubjectSequenceSubject,
+    );
+  }
+  if (opts.ttl) {
+    mh.set(PubHeaders.MessageTTL, `${opts.ttl}`);
+  }
+  if (opts.schedule) {
+    const so = opts.schedule;
+    if (so.specification) {
+      if (typeof so.specification === "string") {
+        mh.set(PubHeaders.Schedule, so.specification);
+      } else if (so.specification instanceof Date) {
+        mh.set(
+          PubHeaders.Schedule,
+          "@at " + so.specification.toISOString(),
+        );
+      }
+    }
+    if (so.target) {
+      mh.set(PubHeaders.ScheduleTarget, so.target);
+    }
+    if (so.source) {
+      mh.set(PubHeaders.ScheduleSource, so.source);
+    }
+    if (so.ttl) {
+      mh.set(PubHeaders.ScheduleTTL, so.ttl);
+    }
+  }
+  return mh;
+}
 
 export function toJetStreamClient(
   nc: NatsConnection | JetStreamClient,
@@ -215,63 +319,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
   ): Promise<Msg> {
     opts = opts || {};
     opts = { ...opts };
-    opts.expect = opts.expect || {};
-    const mh = opts?.headers || headers();
-    if (opts) {
-      if (opts.msgID) {
-        mh.set(PubHeaders.MsgIdHdr, opts.msgID);
-      }
-      if (opts.expect.lastMsgID) {
-        mh.set(PubHeaders.ExpectedLastMsgIdHdr, opts.expect.lastMsgID);
-      }
-      if (opts.expect.streamName) {
-        mh.set(PubHeaders.ExpectedStreamHdr, opts.expect.streamName);
-      }
-      if (typeof opts.expect.lastSequence === "number") {
-        mh.set(PubHeaders.ExpectedLastSeqHdr, `${opts.expect.lastSequence}`);
-      }
-      if (typeof opts.expect.lastSubjectSequence === "number") {
-        mh.set(
-          PubHeaders.ExpectedLastSubjectSequenceHdr,
-          `${opts.expect.lastSubjectSequence}`,
-        );
-      }
-      if (opts.expect.lastSubjectSequenceSubject) {
-        mh.set(
-          PubHeaders.ExpectedLastSubjectSequenceSubjectHdr,
-          opts.expect.lastSubjectSequenceSubject,
-        );
-      }
-      if (opts.ttl) {
-        mh.set(
-          PubHeaders.MessageTTL,
-          `${opts.ttl}`,
-        );
-      }
-
-      if (opts.schedule) {
-        const so = opts.schedule;
-        if (so.specification) {
-          if (typeof so.specification === "string") {
-            mh.set(PubHeaders.Schedule, so.specification);
-          } else if (so.specification instanceof Date) {
-            mh.set(
-              PubHeaders.Schedule,
-              "@at " + so.specification.toISOString(),
-            );
-          }
-        }
-        if (so.target) {
-          mh.set(PubHeaders.ScheduleTarget, so.target);
-        }
-        if (so.source) {
-          mh.set(PubHeaders.ScheduleSource, so.source);
-        }
-        if (so.ttl) {
-          mh.set(PubHeaders.ScheduleTTL, so.ttl);
-        }
-      }
-    }
+    const mh = buildPublishHeaders(opts);
 
     const to = opts.timeout || this.timeout;
     const ro = {} as RequestOptions;
@@ -426,5 +474,289 @@ export class BatchPublisherImpl implements Batch {
       throw new Error("batch didn't contain number of published messages");
     }
     return ack;
+  }
+}
+
+const BATCH_CLOSED = "batch closed";
+
+const FastIngestOp = {
+  Start: 0,
+  Append: 1,
+  Final: 2,
+  EOB: 3,
+  Ping: 4,
+} as const;
+
+type FastIngestOpValue = typeof FastIngestOp[keyof typeof FastIngestOp];
+
+type BatchFlowAck = {
+  type: "ack";
+  seq: number;
+  msgs: number;
+};
+
+type BatchFlowGap = {
+  type: "gap";
+  last_seq: number;
+  seq: number;
+};
+
+type Pending =
+  | {
+    seq: number;
+    op: typeof FastIngestOp.Append | typeof FastIngestOp.Ping;
+    deferred: Deferred<FastIngestProgress>;
+  }
+  | {
+    seq: number;
+    op: typeof FastIngestOp.Final | typeof FastIngestOp.EOB;
+    deferred: Deferred<BatchAck>;
+  };
+
+class FastIngestImpl implements FastIngest {
+  readonly batch: string;
+  nc: NatsConnection;
+  batchSubj: string;
+  gapMode: "ok" | "fail";
+  initialFlow: number;
+  seq: number;
+  acked: number;
+  ackInterval: number;
+  inboxPrefix: string;
+  maxOutstandingAcks: number;
+  defaultTimeout: number;
+  gapIter?: QueuedIteratorImpl<{ lastSeq: number; seq: number }>;
+  sub: ReturnType<NatsConnection["subscribe"]>;
+  pending: Map<string, Pending>;
+  closed: boolean;
+  closeErr?: Error;
+  startDeferred: ReturnType<typeof deferred<void>>;
+  closedDeferred: ReturnType<typeof deferred<BatchAck>>;
+
+  constructor(
+    nc: NatsConnection,
+    opts: FastIngestOptions,
+    firstSubj: string,
+    defaultTimeout: number,
+  ) {
+    this.nc = nc;
+    this.batchSubj = firstSubj;
+    this.gapMode = opts.allowGaps ? "ok" : "fail";
+    this.initialFlow = opts.ackInterval;
+    this.inboxPrefix = opts.inboxPrefix;
+    this.maxOutstandingAcks = opts.maxOutstandingAcks;
+    this.defaultTimeout = defaultTimeout;
+    this.batch = nuid.next();
+    this.seq = 0;
+    this.acked = 0;
+    this.ackInterval = opts.ackInterval;
+    this.pending = new Map();
+    this.closed = false;
+    this.startDeferred = deferred<void>();
+    this.closedDeferred = deferred<BatchAck>();
+    // swallow unhandled rejection if caller never attaches to done()
+    this.closedDeferred.catch(() => {});
+    this.startDeferred.catch(() => {});
+
+    const inbox = `${this.inboxPrefix}.${this.batch}.>`;
+    this.sub = this.nc.subscribe(inbox, {
+      callback: (err, msg) => this.route(err, msg),
+    });
+  }
+
+  replyFor(op: FastIngestOpValue, seq: number): string {
+    return `${this.inboxPrefix}.${this.batch}.${this.initialFlow}.${this.gapMode}.${seq}.${op}.$FI`;
+  }
+
+  start(
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<void> {
+    this.seq = 1;
+    const rs = this.replyFor(FastIngestOp.Start, 1);
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(this.batchSubj, payload, { reply: rs, headers });
+    return this.deadlineOrClose(
+      this.startDeferred,
+      opts?.timeout ?? this.defaultTimeout,
+    );
+  }
+
+  private deadlineOrClose<T>(p: Promise<T>, ms: number): Promise<T> {
+    return deadline(p, ms).catch((err) => {
+      if (!this.closed) this.close(err as Error);
+      throw err;
+    });
+  }
+
+  private route(err: Error | null, m: Msg): void {
+    if (err) {
+      this.close(err);
+      return;
+    }
+
+    let data: BatchAck | BatchFlowAck;
+    try {
+      data = parseJsResponse(m) as BatchAck | BatchFlowAck;
+    } catch (err) {
+      this.close(err as Error);
+      return;
+    }
+
+    // terminal pub ack (has `batch` field — discriminates from BatchFlowAck)
+    if ("batch" in data && typeof data.batch === "string") {
+      const ack = data;
+      const e = this.pending.get(m.subject);
+      if (e && (e.op === FastIngestOp.Final || e.op === FastIngestOp.EOB)) {
+        e.deferred.resolve(ack);
+        this.pending.delete(m.subject);
+      }
+      // resolve any stragglers (adds/pings awaiting flow ack) — batch is committed
+      for (const [, entry] of this.pending) {
+        if (
+          entry.op === FastIngestOp.Append ||
+          entry.op === FastIngestOp.Ping
+        ) {
+          entry.deferred.resolve({ batchSeq: entry.seq, ackSeq: this.acked });
+        } else {
+          entry.deferred.reject(new Error(BATCH_CLOSED));
+        }
+      }
+      this.pending.clear();
+      this.resolveStart();
+      this.closedDeferred.resolve(ack);
+      this.closed = true;
+      this.gapIter?.stop();
+      this.sub.unsubscribe();
+      return;
+    }
+
+    const typed = data as { type?: string };
+
+    if (typed.type === "gap") {
+      if (this.gapIter) {
+        const g = data as unknown as BatchFlowGap;
+        this.gapIter.push({ lastSeq: g.last_seq, seq: g.seq });
+      }
+      return;
+    }
+
+    // type:"err" is never reached here — parseJsResponse above throws on the
+    // nested `.error` field, which then closes the batch via the outer catch.
+
+    const fa = data as BatchFlowAck;
+    if (typeof fa.msgs === "number") this.ackInterval = fa.msgs;
+    // cumulative: advance, never regress, so a later ack covers lost earlier ones
+    if (typeof fa.seq === "number" && fa.seq > this.acked) {
+      this.acked = fa.seq;
+    }
+
+    this.resolveStart();
+
+    // exact-subject resolution: ping's flow ack or a blocked add
+    const exact = this.pending.get(m.subject);
+    if (
+      exact &&
+      (exact.op === FastIngestOp.Append || exact.op === FastIngestOp.Ping)
+    ) {
+      exact.deferred.resolve({ batchSeq: exact.seq, ackSeq: this.acked });
+      this.pending.delete(m.subject);
+    }
+
+    // slide window: any blocked adds now within the allowed window resolve
+    for (const [rs, e] of this.pending) {
+      if (
+        e.op === FastIngestOp.Append &&
+        e.seq - this.acked < this.ackInterval * this.maxOutstandingAcks
+      ) {
+        e.deferred.resolve({ batchSeq: e.seq, ackSeq: this.acked });
+        this.pending.delete(rs);
+      }
+    }
+  }
+
+  private resolveStart(): void {
+    this.startDeferred.resolve();
+  }
+
+  private close(err: Error): void {
+    this.closed = true;
+    this.closeErr = err;
+    for (const [, e] of this.pending) e.deferred.reject(err);
+    this.pending.clear();
+    this.startDeferred.reject(err);
+    this.closedDeferred.reject(err);
+    this.gapIter?.stop();
+    this.sub.unsubscribe();
+  }
+
+  add(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<FastIngestProgress> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.Append, mySeq);
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(subj, payload, { reply: rs, headers });
+
+    if (mySeq - this.acked < this.ackInterval * this.maxOutstandingAcks) {
+      return Promise.resolve({ batchSeq: mySeq, ackSeq: this.acked });
+    }
+    const d = deferred<FastIngestProgress>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Append, deferred: d });
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+  }
+
+  last(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<BatchAck> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.Final, mySeq);
+    const d = deferred<BatchAck>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Final, deferred: d });
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(subj, payload, { reply: rs, headers });
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+  }
+
+  end(opts?: Partial<JetStreamPublishOptions>): Promise<BatchAck> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const mySeq = ++this.seq;
+    const rs = this.replyFor(FastIngestOp.EOB, mySeq);
+    const d = deferred<BatchAck>();
+    this.pending.set(rs, { seq: mySeq, op: FastIngestOp.EOB, deferred: d });
+    const headers = opts ? buildPublishHeaders(opts) : undefined;
+    this.nc.publish(this.batchSubj, Empty, { reply: rs, headers });
+    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+  }
+
+  ping(timeout: number = this.defaultTimeout): Promise<FastIngestProgress> {
+    if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    const rs = this.replyFor(FastIngestOp.Ping, this.seq);
+    // coalesce concurrent pings on same seq — same reply subject, one server ack
+    const existing = this.pending.get(rs);
+    if (existing && existing.op === FastIngestOp.Ping) {
+      return deadline(existing.deferred, timeout);
+    }
+    const d = deferred<FastIngestProgress>();
+    this.pending.set(rs, { seq: this.seq, op: FastIngestOp.Ping, deferred: d });
+    this.nc.publish(this.batchSubj, Empty, { reply: rs });
+    return this.deadlineOrClose(d, timeout);
+  }
+
+  done(): Promise<BatchAck> {
+    return this.closedDeferred;
+  }
+
+  gaps(): AsyncIterable<{ lastSeq: number; seq: number }> {
+    if (!this.gapIter) {
+      this.gapIter = new QueuedIteratorImpl();
+    }
+    return this.gapIter;
   }
 }
