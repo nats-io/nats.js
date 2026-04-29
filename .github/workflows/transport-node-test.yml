@@ -18,7 +18,7 @@ jobs:
   test:
     strategy:
       matrix:
-        deno-version: [2.6.x]
+        deno-version: [2.7.x]
         node-version: [25.x]
 
     name: test node transport with local dependencies
