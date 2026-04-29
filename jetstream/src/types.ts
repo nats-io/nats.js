@@ -106,16 +106,49 @@ export type PubAck = {
   duplicate: boolean;
 };
 
+/**
+ * Predefined cron-like schedule aliases.
+ * Requires server v2.14.0+.
+ */
+export type PredefinedSchedule =
+  | "@yearly"
+  | "@annually"
+  | "@monthly"
+  | "@weekly"
+  | "@daily"
+  | "@midnight"
+  | "@hourly";
+
+/**
+ * Typed schedule specification. Converted to the appropriate
+ * `Nats-Schedule` header value at publish time.
+ *
+ * - `at`: single-shot fire at the given instant. Server v2.12.0+.
+ * - `every`: repeat at a fixed interval. Minimum 1s. Server v2.14.0+.
+ * - `cron`: 6-field cron expression (`sec min hr dom mon dow`). Server v2.14.0+.
+ * - `predefined`: named cron alias. Server v2.14.0+.
+ */
+export type ScheduleSpec =
+  | { at: Date | string }
+  | { every: string }
+  | { cron: string }
+  | { predefined: PredefinedSchedule };
+
 export type ScheduleOptions = {
   /**
-   * The schedule specification format.
-   * Currently only supports:
-   * "@at <date in isostring format>" - e.g., `new Date(Date.now() + 60_000).toISOString()`
+   * The schedule specification.
    *
-   * Note: The ADR-51 specification defines additional formats that may be supported in future
-   * server versions.
+   * Accepts:
+   * - {@link ScheduleSpec} - typed builder (preferred).
+   * - `Date` - convenience for single-shot `@at <iso>`.
+   * - `string` - raw header value (e.g. `"@every 1s"`, `"0 0 5 * * *"`,
+   *   `"@at 2026-01-01T00:00:00Z"`).
+   *
+   * Server support per format:
+   * - `@at` - v2.12.0+
+   * - `@every`, cron, predefined, timezone - v2.14.0+
    */
-  specification: string | Date;
+  specification: string | Date | ScheduleSpec;
 
   /**
    * The subject the message will be delivered to
@@ -129,6 +162,16 @@ export type ScheduleOptions = {
    * Sets a message TTL if the stream supports per-message TTL.
    */
   ttl?: string;
+  /**
+   * IANA timezone name (e.g. `"America/Denver"`). Applies to cron and
+   * predefined schedules only. Requires server v2.14.0+.
+   */
+  timezone?: string;
+  /**
+   * Per-subject rollup behavior on the target stream. Only `"sub"` is
+   * defined. Requires server v2.14.0+.
+   */
+  rollup?: "sub";
 };
 
 /**
@@ -234,6 +277,33 @@ export type JetStreamPublishOptions = {
    * Specifies the schedule for the message.
    */
   schedule?: ScheduleOptions;
+
+  /**
+   * Atomically cancels a schedule as part of this publish. The published
+   * message lands on its normal subject; the named schedule is removed
+   * server-side in the same operation.
+   *
+   * The publish subject MUST NOT equal {@link ScheduleCancellation.scheduleSubject}
+   * (the server would purge the cancellation message itself).
+   *
+   * Combine with {@link StreamExpectations.lastSubjectSequence} +
+   * {@link StreamExpectations.lastSubjectSequenceSubject} to make the cancel
+   * conditional on the schedule still existing at a given sequence.
+   *
+   * Requires server v2.14.0+.
+   */
+  cancelSchedule?: ScheduleCancellation;
+};
+
+/**
+ * Atomically cancel a schedule as part of a publish. See
+ * {@link JetStreamPublishOptions.cancelSchedule}.
+ */
+export type ScheduleCancellation = {
+  /**
+   * Subject of the schedule to cancel. Sent as the `Nats-Scheduler` header.
+   */
+  scheduleSubject: string;
 };
 
 /**
