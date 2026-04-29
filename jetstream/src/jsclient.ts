@@ -81,17 +81,20 @@ import { DirectStreamAPIImpl } from "./jsm_direct.ts";
 export function startFastIngest(
   nc: NatsConnection,
   subj: string,
-  payload?: Payload,
-  opts?: Partial<FastIngestOptions> & Partial<JetStreamPublishOptions>,
+  payload: Payload | undefined,
+  opts:
+    & Pick<FastIngestOptions, "allowGaps">
+    & Partial<Omit<FastIngestOptions, "allowGaps">>
+    & Partial<JetStreamPublishOptions>,
   defaultTimeout: number = 5000,
 ): Promise<FastIngest> {
   const {
     ackInterval,
-    gapMode,
+    allowGaps,
     inboxPrefix,
     maxOutstandingAcks,
     ...publishOpts
-  } = opts ?? {};
+  } = opts;
   const prefix = inboxPrefix ?? "_INBOX";
   if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
     return Promise.reject(
@@ -102,7 +105,7 @@ export function startFastIngest(
   }
   const o: FastIngestOptions = {
     ackInterval: ackInterval ?? 10,
-    gapMode: gapMode === "ok" ? "ok" : "fail",
+    allowGaps,
     inboxPrefix: prefix,
     maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
   };
@@ -538,7 +541,7 @@ class FastIngestImpl implements FastIngest {
   ) {
     this.nc = nc;
     this.batchSubj = firstSubj;
-    this.gapMode = opts.gapMode;
+    this.gapMode = opts.allowGaps ? "ok" : "fail";
     this.initialFlow = opts.ackInterval;
     this.inboxPrefix = opts.inboxPrefix;
     this.maxOutstandingAcks = opts.maxOutstandingAcks;

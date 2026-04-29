@@ -870,15 +870,11 @@ export type FastIngestOptions = {
   ackInterval: number;
 
   /**
-   * How the server and client handle gaps (dropped messages) in the batch.
-   *
-   * - `ok`: gaps tolerated, batch continues, caller accepts loss (may compare
-   *   the final `count` against the number sent to detect it).
-   * - `fail`: any gap aborts the batch; all pending promises reject.
-   *
-   * Defaults to `fail` for ordering-preserving semantics.
+   * Whether to tolerate gaps (dropped messages). `true` lets the batch
+   * continue past gaps; `false` aborts the batch on any gap. Required —
+   * the caller must make an explicit choice.
    */
-  gapMode: "ok" | "fail";
+  allowGaps: boolean;
 
   /**
    * Subject prefix for the reply inbox. The full inbox is
