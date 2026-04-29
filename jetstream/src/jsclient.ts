@@ -102,7 +102,7 @@ export function startFastIngest(
   }
   const o: FastIngestOptions = {
     ackInterval: ackInterval ?? 10,
-    gapMode: gapMode === "fail" ? "fail" : "ok",
+    gapMode: gapMode === "ok" ? "ok" : "fail",
     inboxPrefix: prefix,
     maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
   };

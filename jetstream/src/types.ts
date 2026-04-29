@@ -876,7 +876,7 @@ export type FastIngestOptions = {
    *   the final `count` against the number sent to detect it).
    * - `fail`: any gap aborts the batch; all pending promises reject.
    *
-   * Defaults to `ok`.
+   * Defaults to `fail` for ordering-preserving semantics.
    */
   gapMode: "ok" | "fail";
 
