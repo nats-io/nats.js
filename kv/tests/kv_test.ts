@@ -1689,7 +1689,7 @@ Deno.test(
       const m = new Map<string, KvEntry[]>();
 
       // watch notifications on a on "name" - awaits subscription, runs consumer in background
-      async function watch(kv: KV, bucket: string, key: string) {
+      const watch = async (kv: KV, bucket: string, key: string) => {
         const iter = await kv.watch({ key });
         const buf: KvEntry[] = [];
         m.set(bucket, buf);
@@ -1698,7 +1698,7 @@ Deno.test(
             buf.push(e);
           }
         })();
-      }
+      };
 
       await watch(kv, "test", "name");
       await nc.flush();
@@ -1732,21 +1732,21 @@ Deno.test(
       }
       assertEquals(si.state.messages, 3);
 
-      async function checkEntry(
+      const checkEntry = async (
         kv: KV,
         key: string,
         value: string,
         op: string,
-      ) {
+      ) => {
         const e = await kv.get(key);
         assert(e);
         assertEquals(e.operation, op);
         if (value !== "") {
           assertEquals(e.string(), value);
         }
-      }
+      };
 
-      async function t(kv: KV, name: string, old?: string) {
+      const t = async (kv: KV, name: string, old?: string) => {
         const histIter = await kv.history();
         const hist: string[] = [];
         for await (const e of histIter) {
@@ -1777,7 +1777,7 @@ Deno.test(
         }
         assertEquals(keys.length, 2);
         assertArrayIncludes(keys, ["name", "age"]);
-      }
+      };
 
       const mkv = await new Kvm(ljs).create("MIRROR");
 
