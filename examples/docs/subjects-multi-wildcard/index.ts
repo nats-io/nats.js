@@ -2,7 +2,7 @@
 import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS server
-const nc = await connect({ servers: "nats://localhost:4222" });
+const nc = await connect({ servers: "demo.nats.io:4222" });
 
 // NATS-DOC-START
 async function subscribeAndIterate(subject: string) {
@@ -15,8 +15,7 @@ async function subscribeAndIterate(subject: string) {
 
 subscribeAndIterate("sensor.alarm.*").catch(console.error);
 subscribeAndIterate("sensor.*.*.critical").catch(console.error);
-subscribeAndIterate("sensor.*.*.critical");
-subscribeAndIterate("sensor.>");
+subscribeAndIterate("sensor.>").catch(console.error);
 
 // Publish to specific subjects
 nc.publish("sensor.alarm.smoke", "kitchen,14:22");
