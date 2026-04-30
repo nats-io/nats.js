@@ -678,24 +678,24 @@ export class NatsServer implements PortInfo {
     });
     earlyExit.catch(() => {});
 
-    const pi = await Promise.race([
-      check(
-        () => {
-          try {
-            const txt = readFileSync(portsFile, "utf-8");
-            const d = JSON.parse(txt);
-            if (d) {
-              return d;
-            }
-          } catch (_) {
-            // ignore
+    const portsCheck = check(
+      () => {
+        try {
+          const txt = readFileSync(portsFile, "utf-8");
+          const d = JSON.parse(txt);
+          if (d) {
+            return d;
           }
-        },
-        5000,
-        { name: `read ports file ${portsFile} - ${confFile}` },
-      ),
-      earlyExit,
-    ]);
+        } catch (_) {
+          // ignore
+        }
+      },
+      5000,
+      { name: `read ports file ${portsFile} - ${confFile}` },
+    );
+    portsCheck.catch(() => {});
+
+    const pi = await Promise.race([portsCheck, earlyExit]);
 
     if (debug) {
       console.info(`[${srv.pid}] - ports file found`);
