@@ -59,6 +59,7 @@ Deno.test({
       ),
       true,
     );
+    ns.certsDir = tlsConfig.certsDir;
     await delay(2000);
     const nc = await wsconnect();
     assertEquals(

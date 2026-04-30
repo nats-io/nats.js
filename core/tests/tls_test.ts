@@ -52,8 +52,8 @@ Deno.test("tls - custom ca fails without root", async () => {
     errors.ConnectionError,
     "invalid peer certificate: unknownissuer",
   );
-  await ns.stop();
-  await Deno.remove(tlsConfig.certsDir, { recursive: true });
+  ns.certsDir = tlsConfig.certsDir;
+  await ns.stop(true);
 });
 
 Deno.test("tls - custom ca with root connects", async () => {
@@ -72,8 +72,8 @@ Deno.test("tls - custom ca with root connects", async () => {
   });
   await nc.flush();
   await nc.close();
-  await ns.stop();
-  await Deno.remove(tlsConfig.certsDir, { recursive: true });
+  ns.certsDir = tlsConfig.certsDir;
+  await ns.stop(true);
 });
 
 Deno.test("tls - available connects with or without", async () => {
@@ -85,6 +85,7 @@ Deno.test("tls - available connects with or without", async () => {
   };
 
   const ns = await NatsServer.start(config);
+  ns.certsDir = tlsConfig.certsDir;
   // will upgrade to tls but fail in the test because the
   // certificate will not be trusted
   await assertRejects(async () => {
@@ -113,5 +114,4 @@ Deno.test("tls - available connects with or without", async () => {
   assertEquals(conns[1].protocol.transport.isEncrypted(), false);
 
   await cleanup(ns, ...conns);
-  await Deno.remove(tlsConfig.certsDir, { recursive: true });
 });

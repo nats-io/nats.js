@@ -29,6 +29,7 @@ async function runDoubleSubsTest(tls: boolean) {
   }
 
   let srv = await NatsServer.start(opts);
+  if (tls) srv.certsDir = tlsConfig.certsDir;
 
   let connOpts = {
     servers: `localhost:${srv.port}`,
@@ -85,7 +86,7 @@ async function runDoubleSubsTest(tls: boolean) {
   assertEquals(baz.getReceived(), 0);
 
   await nc.close();
-  await srv.stop();
+  await srv.stop(true);
 
   const log = srv.getLog();
 
@@ -99,8 +100,6 @@ async function runDoubleSubsTest(tls: boolean) {
       subs.push(m[1]);
     }
   });
-
-  await Deno.remove(tlsConfig.certsDir, { recursive: true });
 
   assertEquals(count, 3);
   assertArrayIncludes(subs, ["foo", "bar", "baz"]);

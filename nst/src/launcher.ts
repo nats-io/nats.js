@@ -176,6 +176,7 @@ export class NatsServer implements PortInfo {
   debug: boolean;
   config: any;
   configFile: string;
+  certsDir?: string;
   rgb: { r: number; g: number; b: number };
 
   constructor(opts: {
@@ -234,8 +235,14 @@ export class NatsServer implements PortInfo {
   }
 
   async restart(): Promise<NatsServer> {
+    const certsDir = this.certsDir;
     await this.stop();
-    return NatsServer.start(structuredClone(this.config), this.debug);
+    const ns = await NatsServer.start(
+      structuredClone(this.config),
+      this.debug,
+    );
+    if (certsDir) ns.certsDir = certsDir;
+    return ns;
   }
 
   pid(): number {
@@ -274,6 +281,13 @@ export class NatsServer implements PortInfo {
     return Promise.resolve();
   }
 
+  rmCertsDir(): Promise<void> {
+    if (this.certsDir) {
+      return rm(this.certsDir, { recursive: true, force: true });
+    }
+    return Promise.resolve();
+  }
+
   async stop(cleanup = false): Promise<void> {
     if (!this.stopped) {
       await this.updatePorts();
@@ -283,7 +297,9 @@ export class NatsServer implements PortInfo {
     }
     await this.process.exited();
     const cleanups = [this.rmPortsFile(), this.rmConfigFile()];
-    if (cleanup) cleanups.push(this.rmDataDir());
+    if (cleanup) {
+      cleanups.push(this.rmDataDir(), this.rmCertsDir());
+    }
     await Promise.all(cleanups);
   }
 
