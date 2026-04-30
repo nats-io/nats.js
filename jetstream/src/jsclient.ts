@@ -293,26 +293,32 @@ export function scheduleSpecToHeader(
 }
 
 function assertEveryAtLeastOneSecond(d: string): void {
-  const m = d.trim().match(
-    /^(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)$/,
-  );
-  if (!m) {
-    return;
+  const trimmed = d.trim();
+  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+  let totalMs = 0;
+  let pos = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(trimmed)) !== null) {
+    if (m.index !== pos) break;
+    pos += m[0].length;
+    const n = parseFloat(m[1]);
+    const unit = m[2];
+    totalMs += unit === "ns"
+      ? n / 1e6
+      : unit === "us" || unit === "µs"
+      ? n / 1e3
+      : unit === "ms"
+      ? n
+      : unit === "s"
+      ? n * 1e3
+      : unit === "m"
+      ? n * 60_000
+      : n * 3_600_000;
   }
-  const n = parseFloat(m[1]);
-  const unit = m[2];
-  const ms = unit === "ns"
-    ? n / 1e6
-    : unit === "us" || unit === "µs"
-    ? n / 1e3
-    : unit === "ms"
-    ? n
-    : unit === "s"
-    ? n * 1e3
-    : unit === "m"
-    ? n * 60_000
-    : n * 3_600_000;
-  if (ms < 1000) {
+  if (trimmed === "" || pos !== trimmed.length) {
+    throw new Error(`@every: unrecognized duration format: "${d}"`);
+  }
+  if (totalMs < 1000) {
     throw new Error("@every interval must be at least 1s");
   }
 }
