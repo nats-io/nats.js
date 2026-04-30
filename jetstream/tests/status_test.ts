@@ -19,7 +19,7 @@ import { Empty, type Msg, type Payload } from "@nats-io/nats-core/internal";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { MsgHdrsImpl } from "../../core/src/headers.ts";
 import { cleanup, setup } from "test_helpers";
-import { jetstreamServerConf } from "../../test_helpers/mod.ts";
+import { jetstreamServerConf } from "test_helpers";
 import {
   type JetStreamApiError,
   jetstreamManager,

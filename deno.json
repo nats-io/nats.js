@@ -3,7 +3,8 @@
     "strict": true
   },
   "imports": {
-    "test_helpers": "./test_helpers/mod.ts",
+    "test_helpers": "./test_helpers/src/mod.ts",
+    "@nats-io/test-helpers": "./test_helpers/src/mod.ts",
     "@std/cli": "jsr:@std/cli@1.0.27",
     "@std/path": "jsr:@std/path@1.1.4",
     "@aricart/cobra": "jsr:@aricart/cobra@0.1.2",
@@ -97,6 +98,27 @@
     ]
   },
   "scopes": {
+    "./core/tests/": {
+      "test_helpers": "./core/tests/test_helpers.ts"
+    },
+    "./core/unsafe_tests/": {
+      "test_helpers": "./core/tests/test_helpers.ts"
+    },
+    "./jetstream/tests/": {
+      "test_helpers": "./jetstream/tests/test_helpers.ts"
+    },
+    "./kv/tests/": {
+      "test_helpers": "./kv/tests/test_helpers.ts"
+    },
+    "./obj/tests/": {
+      "test_helpers": "./obj/tests/test_helpers.ts"
+    },
+    "./services/tests/": {
+      "test_helpers": "./services/tests/test_helpers.ts"
+    },
+    "./transport-deno/tests/": {
+      "test_helpers": "./transport-deno/tests/test_helpers.ts"
+    },
     "*": {
       "@nats-io/nats-core": "./core/src/mod.ts",
       "@nats-io/nats-core/internal": "./core/src/internal_mod.ts",
@@ -108,7 +130,8 @@
       "@nats-io/obj": "./obj/src/mod.ts",
       "@nats-io/obj/internal": "./obj/src/internal_mod.ts",
       "@nats-io/services": "./services/src/mod.ts",
-      "@nats-io/services/internal": "./services/src/internal_mod.ts"
+      "@nats-io/services/internal": "./services/src/internal_mod.ts",
+      "@nats-io/test-helpers": "./test_helpers/src/mod.ts"
     }
   },
   "workspace": [

@@ -82,7 +82,7 @@ import {
   Kvm,
   validateSearchKey,
 } from "../src/kv.ts";
-import { assertBetween, flakyTest } from "../../test_helpers/mod.ts";
+import { assertBetween, flakyTest } from "test_helpers";
 
 Deno.test("kv - Base64KeyCodec encodes and decodes", () => {
   const codec = Base64KeyCodec();

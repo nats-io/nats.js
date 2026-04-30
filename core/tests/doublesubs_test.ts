@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { NatsServer } from "../../test_helpers/launcher.ts";
+import { NatsServer } from "test_helpers";
 
 import { deferred, Empty, extend, headers } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";

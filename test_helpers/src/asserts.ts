@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The NATS Authors
+ * Copyright 2020-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,10 +13,11 @@
  * limitations under the License.
  */
 
-import { NatsServer } from "test_helpers";
-
-Deno.test("cmdlauncher - test", async () => {
-  const ns = await NatsServer.start({ debug: true, trace: true }, true);
-  console.log(ns.config);
-  await ns.stop();
-});
+export function assertBetween(n: number, low: number, high: number): void {
+  if (n < low) {
+    throw new Error(`assertion failed: ${n} >= ${low}`);
+  }
+  if (n > high) {
+    throw new Error(`assertion failed: ${n} <= ${high}`);
+  }
+}

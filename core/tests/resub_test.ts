@@ -21,7 +21,7 @@ import type {
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
 import { assert, assertEquals, assertExists, fail } from "@std/assert";
-import type { NatsServer } from "../../test_helpers/launcher.ts";
+import type { NatsServer } from "test_helpers";
 
 Deno.test("resub - iter", async () => {
   const { ns, nc } = await setup();

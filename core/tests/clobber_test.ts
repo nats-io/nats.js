@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { NatsServer } from "../../test_helpers/launcher.ts";
+import { NatsServer } from "test_helpers";
 import { createInbox, DataBuffer } from "../src/internal_mod.ts";
 import { connect } from "./connect.ts";
 import { assertEquals } from "@std/assert";

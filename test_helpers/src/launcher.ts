@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2024 The NATS Authors
+ * Copyright 2020-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,30 +13,35 @@
  * limitations under the License.
  */
 // deno-lint-ignore-file no-explicit-any
-import { join, resolve } from "@std/path";
-import { rgb24 } from "@std/fmt/colors";
+import { join, resolve } from "node:path";
+import { connect as netConnect } from "node:net";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import process from "node:process";
 import { check, jsopts } from "./mod.ts";
+import { type SpawnedProc, spawnServer } from "./process_runtime.ts";
 import {
-  ConnectionOptions,
-  Deferred,
-  deferred,
+  type ConnectionOptions,
   delay,
-  extend,
-  NatsConnection,
+  type NatsConnection,
   nuid,
-  timeout,
   wsconnect,
 } from "@nats-io/nats-core/internal";
 import { Certs } from "./certs.ts";
-import { connect } from "./connect.ts";
+import { getConnect } from "./connect.ts";
 
-export const ServerSignals = Object.freeze({
+export const ServerSignals = {
   QUIT: "SIGQUIT",
   STOP: "SIGSTOP",
   REOPEN: "SIGUSR1",
   RELOAD: "SIGHUP",
   LDM: "SIGUSR2",
-});
+  KILL: "SIGKILL",
+} as const;
+
+const WS_ENV = "websocket";
+const MAX_LOG_BYTES = 4 * 1024 * 1024;
 
 export interface PortInfo {
   clusterName?: string;
@@ -125,7 +130,7 @@ function parseHostport(
     return;
   }
   const idx = s.indexOf("://");
-  if (idx) {
+  if (idx !== -1) {
     s = s.slice(idx + 3);
   }
   const [hostname, ps] = s.split(":");
@@ -146,31 +151,15 @@ function parsePorts(ports: Ports): PortInfo {
     p.port = listen.port;
   }
 
-  const cluster = ports.cluster.map((v) => {
-    if (v) {
-      return parseHostport(v)?.port;
-    }
-    return undefined;
-  });
-  p.cluster = cluster[0];
-
-  const monitoring = ports.monitoring.map((v) => {
-    if (v) {
-      return parseHostport(v)?.port;
-    }
-    return undefined;
-  });
-  p.monitoring = monitoring[0];
-
-  const websocket = ports.websocket.map((v) => {
-    if (v) {
-      return parseHostport(v)?.port;
-    }
-    return undefined;
-  });
-  p.websocket = websocket[0];
+  p.cluster = parseHostport(ports.cluster[0])?.port;
+  p.monitoring = parseHostport(ports.monitoring[0])?.port;
+  p.websocket = parseHostport(ports.websocket[0])?.port;
 
   return p;
+}
+
+function rgb24(s: string, c: { r: number; g: number; b: number }): string {
+  return `\x1b[38;2;${c.r};${c.g};${c.b}m${s}\x1b[0m`;
 }
 
 export class NatsServer implements PortInfo {
@@ -180,10 +169,10 @@ export class NatsServer implements PortInfo {
   cluster?: number;
   monitoring?: number;
   websocket?: number;
-  process: Deno.ChildProcess;
+  process: SpawnedProc;
   logBuffer: string[] = [];
+  logBytes = 0;
   stopped = false;
-  done!: Deferred<void>;
   debug: boolean;
   config: any;
   configFile: string;
@@ -191,21 +180,20 @@ export class NatsServer implements PortInfo {
 
   constructor(opts: {
     info: PortInfo;
-    process: Deno.ChildProcess;
+    process: SpawnedProc;
     debug?: boolean;
     config: any;
     configFile: string;
   }) {
-    const { info, process, debug, config, configFile } = opts;
+    const { info, process: proc, debug, config, configFile } = opts;
     this.hostname = info.hostname;
     this.port = info.port;
     this.cluster = info.cluster;
     this.monitoring = info.monitoring;
     this.websocket = info.websocket;
     this.clusterName = info.clusterName;
-    this.process = process;
+    this.process = proc;
     this.debug = debug || false;
-    this.done = deferred<void>();
     this.config = config;
     this.configFile = configFile;
 
@@ -214,34 +202,22 @@ export class NatsServer implements PortInfo {
     const b = Math.floor(Math.random() * 255);
     this.rgb = { r, g, b };
 
-    (async () => {
-      const td = new TextDecoder();
-      const reader = process.stderr.getReader();
-
-      while (true) {
-        try {
-          const results = await reader.read();
-          if (results.done) {
-            break;
-          }
-
-          if (results.value) {
-            const t = td.decode(results.value);
-            this.logBuffer.push(t);
-            if (debug) {
-              console.log(rgb24(t.slice(0, t.length - 1), this!.rgb));
-            }
-          }
-        } catch (_err) {
-          break;
-        }
+    const td = new TextDecoder();
+    proc.onStderr((chunk) => {
+      const t = td.decode(chunk);
+      this.logBuffer.push(t);
+      this.logBytes += t.length;
+      while (this.logBytes > MAX_LOG_BYTES && this.logBuffer.length > 1) {
+        const dropped = this.logBuffer.shift()!;
+        this.logBytes -= dropped.length;
       }
-      this.done.resolve();
-    })();
+      if (debug) {
+        console.log(rgb24(t.slice(0, t.length - 1), this.rgb));
+      }
+    });
   }
 
   updatePorts(): Promise<void> {
-    // if we have -1 ports, lets freeze them
     this.config.port = this.port;
     if (this.cluster) {
       this.config.cluster.listen = `${this.hostname}:${this.cluster}`;
@@ -254,20 +230,16 @@ export class NatsServer implements PortInfo {
       this.config.websocket = this.config.websocket || {};
       this.config.websocket.port = this.websocket;
     }
-    return Deno.writeFile(
-      this.configFile,
-      new TextEncoder().encode(toConf(this.config)),
-    );
+    return writeFile(this.configFile, toConf(this.config), "utf-8");
   }
 
   async restart(): Promise<NatsServer> {
     await this.stop();
-    const conf = JSON.parse(JSON.stringify(this.config));
-    return await NatsServer.start(conf, this.debug);
+    return NatsServer.start(structuredClone(this.config), this.debug);
   }
 
   pid(): number {
-    return this.process.pid;
+    return this.process.pid ?? -1;
   }
 
   getLog(): string {
@@ -283,67 +255,44 @@ export class NatsServer implements PortInfo {
     return Promise.all(buf);
   }
 
-  rmPortsFile() {
-    const tmp = resolve(Deno.env.get("TMPDIR") || ".");
+  rmPortsFile(): Promise<void> {
     const portsFile = resolve(
-      join(tmp, `nats-server_${this.pid()}.ports`),
+      join(tmpdir(), `nats-server_${this.pid()}.ports`),
     );
-    try {
-      Deno.statSync(portsFile);
-      Deno.removeSync(portsFile);
-    } catch (err) {
-      if (!(err instanceof Deno.errors.NotFound)) {
-        console.log((err as Error).message);
-      }
-    }
+    return rm(portsFile, { force: true });
   }
 
-  rmConfigFile() {
-    try {
-      Deno.removeSync(this.configFile);
-    } catch (err) {
-      if (!(err instanceof Deno.errors.NotFound)) {
-        console.log((err as Error).message);
-      }
-    }
+  rmConfigFile(): Promise<void> {
+    return rm(this.configFile, { force: true });
   }
 
-  rmDataDir() {
-    if (typeof this.config?.jetstream?.store_dir === "string") {
-      try {
-        Deno.removeSync(this.config.jetstream.store_dir, { recursive: true });
-      } catch (err) {
-        if (!(err instanceof Deno.errors.NotFound)) {
-          console.log((err as Error).message);
-        }
-      }
+  rmDataDir(): Promise<void> {
+    const dir = this.config?.jetstream?.store_dir;
+    if (typeof dir === "string") {
+      return rm(dir, { recursive: true, force: true });
     }
+    return Promise.resolve();
   }
 
   async stop(cleanup = false): Promise<void> {
     if (!this.stopped) {
       await this.updatePorts();
       this.stopped = true;
-      this.process.stderr?.cancel().catch(() => {});
-      this.process.kill("SIGKILL");
-      await this.process.status;
+      await this.process.closeStderr();
+      this.process.kill(ServerSignals.KILL);
     }
-    await this.done;
-    this.rmPortsFile();
-    this.rmConfigFile();
-    if (cleanup) {
-      this.rmDataDir();
-    }
+    await this.process.exited();
+    const cleanups = [this.rmPortsFile(), this.rmConfigFile()];
+    if (cleanup) cleanups.push(this.rmDataDir());
+    await Promise.all(cleanups);
   }
 
   signal(signal: string): Promise<void> {
-    if (signal === "SIGKILL") {
+    if (signal === ServerSignals.KILL) {
       return this.stop();
-    } else {
-      //@ts-ignore: this is correct
-      this.process.kill(signal);
-      return Promise.resolve();
     }
+    this.process.kill(signal);
+    return Promise.resolve();
   }
 
   async varz(): Promise<VarZ> {
@@ -362,18 +311,27 @@ export class NatsServer implements PortInfo {
     return await resp.json();
   }
 
+  async leafz(): Promise<{ leafs: unknown[]; leafnodes: number }> {
+    if (!this.monitoring) {
+      return Promise.reject(new Error("server is not monitoring"));
+    }
+    const resp = await fetch(`http://127.0.0.1:${this.monitoring}/leafz`);
+    return await resp.json();
+  }
+
   async connz(cid?: number, subs: boolean | "detail" = true): Promise<ConnZ> {
     if (!this.monitoring) {
       return Promise.reject(new Error("server is not monitoring"));
     }
-    const args = [];
+    const args: string[] = [];
     args.push(`subs=${subs}`);
     if (cid) {
       args.push(`cid=${cid}`);
     }
 
-    const qs = args.length ? args.join("&") : "";
-    const resp = await fetch(`http://127.0.0.1:${this.monitoring}/connz?${qs}`);
+    const resp = await fetch(
+      `http://127.0.0.1:${this.monitoring}/connz?${args.join("&")}`,
+    );
     return await resp.json();
   }
 
@@ -397,9 +355,7 @@ export class NatsServer implements PortInfo {
     }
     let servers = await NatsServer.jetstreamCluster(count, {}, debug);
     await NatsServer.stopAll(servers);
-    for (let i = 0; i < servers.length; i++) {
-      servers[i].rmDataDir();
-    }
+    await Promise.all(servers.map((s) => s.rmDataDir()));
     servers[0].config.jetstream = "disabled";
     const proms = servers.map((s) => {
       return s.restart();
@@ -422,19 +378,13 @@ export class NatsServer implements PortInfo {
     if (js) {
       delete serverConf.jetstream;
     }
-    // form a cluster with the specified count
     const servers = await NatsServer.cluster(count, serverConf, debug);
-    servers.forEach((s) => {
-      s.updatePorts();
-    });
 
-    // extract all the configs
     const configs = servers.map((s) => {
       const { port, cluster, monitoring, websocket, config } = s;
       return { port, cluster, monitoring, websocket, config };
     });
 
-    // stop all the servers and wait
     const proms = servers.map((s) => {
       return s.stop();
     });
@@ -446,10 +396,9 @@ export class NatsServer implements PortInfo {
 
     const routes: string[] = [];
     configs.forEach((conf) => {
-      let { cluster, config } = conf;
+      const { cluster, config } = conf;
 
-      // jetstream defaults
-      const { jetstream } = jsopts();
+      const { jetstream } = jsopts() as { jetstream: any };
       if (js) {
         if (js.max_file_store !== undefined) {
           jetstream.max_file_store = js.max_file_store;
@@ -458,27 +407,17 @@ export class NatsServer implements PortInfo {
           jetstream.max_mem_store = js.max_mem_store;
         }
       }
-      // need a server name for a cluster
-      const serverName = nuid.next();
+      Object.assign(config, { jetstream, server_name: nuid.next() });
 
-      config = extend(
-        config,
-        { jetstream },
-        { server_name: serverName },
-      );
-
-      // set the specific ports that we ran on before
       config.cluster.listen = config.cluster.listen.replace("-1", `${cluster}`);
       routes.push(`nats://${config.cluster.listen}`);
     });
 
-    // update the routes to be explicit
     configs.forEach((c) => {
       c.config.cluster.routes = routes.filter((v) => {
         return v.indexOf(c.config.cluster.listen) === -1;
       });
     });
-    // reconfigure the servers
     servers.forEach((s, idx) => {
       s.config = configs[idx].config;
     });
@@ -503,13 +442,11 @@ export class NatsServer implements PortInfo {
       try {
         leaders.length = 0;
         statusProms.length = 0;
-        // await for all the servers to resolve and get /jsz
         servers = await Promise.all(proms);
         servers.forEach((s) => {
           statusProms.push(s.jsz());
         });
 
-        // await for all the jsz to resolve
         const status = await Promise.all(statusProms);
         status.forEach((i) => {
           const leader = i.meta_cluster.leader;
@@ -517,13 +454,10 @@ export class NatsServer implements PortInfo {
             leaders.push(leader);
           }
         });
-        // if we resolved leaders on all
         if (leaders.length === proms.length) {
-          // unique them
           const u = leaders.filter((v, idx, a) => {
             return a.indexOf(v) === idx;
           });
-          // if we have one, we fine
           if (u.length === 1) {
             const leader = servers.filter((s) => {
               return s.config.server_name === u[0];
@@ -582,36 +516,20 @@ export class NatsServer implements PortInfo {
   static localClusterFormed(servers: NatsServer[]): Promise<void[]> {
     const ports = servers.map((s) => s.port);
 
+    const deadline = Date.now() + 5000;
     const fn = async function (s: NatsServer) {
-      const dp = deferred<void>();
-      const to = timeout<void>(5000);
-      let done = false;
-      to.catch((err) => {
-        done = true;
-        dp.reject(
-          new Error(
-            `${s.hostname}:${s.port} failed to resolve peers: ${err.toString}`,
-          ),
-        );
-      });
-
-      while (!done) {
+      while (Date.now() < deadline) {
         const data = await s.varz();
         if (data) {
           const urls = data.connect_urls as string[];
-          const others = urls.map((s) => {
-            return parseHostport(s)?.port;
-          });
-
+          const others = urls.map((u) => parseHostport(u)?.port);
           if (others.every((v) => ports.includes(v!))) {
-            dp.resolve();
-            to.cancel();
-            break;
+            return;
           }
         }
-        await timeout(100);
+        await delay(100);
       }
-      return dp;
+      throw new Error(`${s.hostname}:${s.port} failed to resolve peers`);
     };
     const proms = servers.map((s) => fn(s));
     return Promise.all(proms);
@@ -625,7 +543,7 @@ export class NatsServer implements PortInfo {
     if (ns.cluster === undefined) {
       return Promise.reject(new Error("no cluster port on server"));
     }
-    conf = JSON.parse(JSON.stringify(conf || {}));
+    conf = structuredClone(conf || {});
     conf.port = -1;
     if (conf.websocket) {
       conf.websocket.port = -1;
@@ -645,8 +563,8 @@ export class NatsServer implements PortInfo {
     conf.http = conf.http || "127.0.0.1:-1";
     conf.leafnodes = conf.leafnodes || {};
     conf.leafnodes.listen = conf.leafnodes.listen || "127.0.0.1:-1";
-    conf.server_tags = Array.isArray(conf.server_targs)
-      ? conf.server_tags.push(`id:${nuid.next()}`)
+    conf.server_tags = Array.isArray(conf.server_tags)
+      ? [...conf.server_tags, `id:${nuid.next()}`]
       : [`id:${nuid.next()}`];
 
     conf.websocket = Object.assign(
@@ -669,11 +587,8 @@ export class NatsServer implements PortInfo {
     conf.websocket = this.config.websocket;
     conf.leafnodes = this.config.leafnodes;
     conf = Object.assign(this.config, conf);
-    await Deno.writeFile(
-      this.configFile,
-      new TextEncoder().encode(toConf(conf)),
-    );
-    return this.signal("SIGHUP");
+    await writeFile(this.configFile, toConf(conf), "utf-8");
+    return this.signal(ServerSignals.RELOAD);
   }
 
   static async tlsConfig(): Promise<
@@ -682,7 +597,7 @@ export class NatsServer implements PortInfo {
       certsDir: string;
     }
   > {
-    const certsDir = await Deno.makeTempDir({ prefix: "certs" });
+    const certsDir = await mkdtemp(join(tmpdir(), "certs"));
     const certs = await Certs.import();
     await certs.store(certsDir);
     const tlsconfig = {
@@ -697,43 +612,43 @@ export class NatsServer implements PortInfo {
   }
 
   connect(opts: ConnectionOptions = {}): Promise<NatsConnection> {
-    if (Deno.env.get("websocket")) {
+    if (process.env[WS_ENV]) {
       const proto = this.config.websocket.no_tls ? "ws" : "wss";
       opts.servers = `${proto}://localhost:${this.websocket}`;
       return wsconnect(opts);
     }
     opts.port = this.port;
-    return connect(opts);
+    return getConnect()(opts);
   }
 
   static async start(conf?: any, debug = false): Promise<NatsServer> {
-    // const exe = Deno.env.get("CI") ? "nats-server/nats-server" : "nats-server";
     const exe = "nats-server";
-    const tmp = resolve(Deno.env.get("TMPDIR") || ".");
+    const tmp = resolve(tmpdir());
     conf = NatsServer.confDefaults(conf);
     conf.ports_file_dir = tmp;
 
-    const confFile = Deno.makeTempFileSync({
-      prefix: "nats-server_",
-      suffix: ".conf",
-    });
-    Deno.writeFileSync(confFile, new TextEncoder().encode(toConf(conf)));
+    const tmpDir = await mkdtemp(join(tmp, "nats-server_"));
+    const confFile = join(tmpDir, `${nuid.next()}.conf`);
+    await writeFile(confFile, toConf(conf), "utf-8");
     if (debug) {
       console.info(`${exe} -c ${confFile}`);
     }
-    const cmd = new Deno.Command(exe, {
-      args: ["-c", confFile],
-      stderr: "piped",
-      stdout: "null",
-      stdin: "null",
-    });
 
-    const srv = cmd.spawn();
-    if (srv.pid) {
-      if (debug) {
-        console.info(`config: ${confFile}`);
-        console.info(`[${srv.pid}] - launched`);
+    let srv: SpawnedProc;
+    try {
+      srv = spawnServer(exe, ["-c", confFile]);
+    } catch (err) {
+      if ((err as { code?: string }).code === "ENOENT") {
+        throw new Error(
+          `nats-server not found on PATH (tried "${exe}"). Install: https://github.com/nats-io/nats-server/releases`,
+        );
       }
+      throw err;
+    }
+
+    if (srv.pid && debug) {
+      console.info(`config: ${confFile}`);
+      console.info(`[${srv.pid}] - launched`);
     }
 
     const portsFile = resolve(
@@ -743,8 +658,7 @@ export class NatsServer implements PortInfo {
     const pi = await check(
       () => {
         try {
-          const data = Deno.readFileSync(portsFile);
-          const txt = new TextDecoder().decode(data);
+          const txt = readFileSync(portsFile, "utf-8");
           const d = JSON.parse(txt);
           if (d) {
             return d;
@@ -768,17 +682,21 @@ export class NatsServer implements PortInfo {
 
     try {
       await check(
-        async () => {
-          try {
+        () => {
+          return new Promise<number | undefined>((resolve) => {
             if (debug) {
               console.info(`[${srv.pid}] - attempting to connect`);
             }
-            const conn = await Deno.connect(ports as Deno.ConnectOptions);
-            conn.close();
-            return ports.port;
-          } catch (_) {
-            // ignore
-          }
+            const sock = netConnect(ports.port, ports.hostname);
+            const done = (v: number | undefined) => {
+              sock.removeAllListeners();
+              sock.destroy();
+              resolve(v);
+            };
+            sock.once("connect", () => done(ports.port));
+            sock.once("error", () => done(undefined));
+            sock.setTimeout(500, () => done(undefined));
+          });
         },
         5000,
         { name: "wait for server" },
@@ -795,31 +713,25 @@ export class NatsServer implements PortInfo {
       );
     } catch (err) {
       console.error(`failed to start config: ${confFile}`);
-      try {
-        const { stderr: d } = await cmd.output();
-        console.error(new TextDecoder().decode(d));
-      } catch (err) {
-        console.error("unable to read server output:", err);
-      }
+      await srv.closeStderr();
+      srv.kill(ServerSignals.KILL);
+      await srv.exited();
       throw err;
     }
   }
 }
 
-// @ts-ignore: any is exactly what we need here
 export function toConf(o: any, indent?: string): string {
   const pad = indent !== undefined ? indent + "  " : "";
-  const buf = [];
+  const buf: string[] = [];
   for (const k in o) {
     if (Object.prototype.hasOwnProperty.call(o, k)) {
-      //@ts-ignore: tsc,
       const v = o[k];
       if (Array.isArray(v)) {
         buf.push(`${pad}${k} [`);
         buf.push(toConf(v, pad));
         buf.push(`${pad} ]`);
       } else if (typeof v === "object") {
-        // don't print a key if it is an array and it is an index
         const kn = Array.isArray(o) ? "" : k;
         buf.push(`${pad}${kn} {`);
         buf.push(toConf(v, pad));

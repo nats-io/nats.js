@@ -40,7 +40,7 @@ import type {
   PullConsumerMessagesImpl,
 } from "../src/consumer.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
-import { flakyTest } from "../../test_helpers/mod.ts";
+import { flakyTest } from "test_helpers";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
