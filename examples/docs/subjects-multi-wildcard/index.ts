@@ -13,8 +13,8 @@ async function subscribeAndIterate(subject: string) {
   }
 }
 
-// Subscribe to all weather updates
-subscribeAndIterate("sensor.alarm.*");
+subscribeAndIterate("sensor.alarm.*").catch(console.error);
+subscribeAndIterate("sensor.*.*.critical").catch(console.error);
 subscribeAndIterate("sensor.*.*.critical");
 subscribeAndIterate("sensor.>");
 
