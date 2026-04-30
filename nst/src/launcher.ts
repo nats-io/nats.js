@@ -516,8 +516,8 @@ export class NatsServer implements PortInfo {
   static localClusterFormed(servers: NatsServer[]): Promise<void[]> {
     const ports = servers.map((s) => s.port);
 
-    const deadline = Date.now() + 5000;
     const fn = async function (s: NatsServer) {
+      const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         const data = await s.varz();
         if (data) {
@@ -627,8 +627,7 @@ export class NatsServer implements PortInfo {
     conf = NatsServer.confDefaults(conf);
     conf.ports_file_dir = tmp;
 
-    const tmpDir = await mkdtemp(join(tmp, "nats-server_"));
-    const confFile = join(tmpDir, `${nuid.next()}.conf`);
+    const confFile = join(tmp, `nats-server_${nuid.next()}.conf`);
     await writeFile(confFile, toConf(conf), "utf-8");
     if (debug) {
       console.info(`${exe} -c ${confFile}`);
@@ -638,7 +637,10 @@ export class NatsServer implements PortInfo {
     try {
       srv = spawnServer(exe, ["-c", confFile]);
     } catch (err) {
-      if ((err as { code?: string }).code === "ENOENT") {
+      if (
+        (err as { code?: string }).code === "ENOENT" ||
+        (err as { name?: string }).name === "NotFound"
+      ) {
         throw new Error(
           `nats-server not found on PATH (tried "${exe}"). Install: https://github.com/nats-io/nats-server/releases`,
         );
@@ -655,21 +657,29 @@ export class NatsServer implements PortInfo {
       join(tmp, `nats-server_${srv.pid}.ports`),
     );
 
-    const pi = await check(
-      () => {
-        try {
-          const txt = readFileSync(portsFile, "utf-8");
-          const d = JSON.parse(txt);
-          if (d) {
-            return d;
+    const earlyExit = srv.exited().then(() => {
+      throw new Error(`nats-server exited before ports file appeared`);
+    });
+    earlyExit.catch(() => {});
+
+    const pi = await Promise.race([
+      check(
+        () => {
+          try {
+            const txt = readFileSync(portsFile, "utf-8");
+            const d = JSON.parse(txt);
+            if (d) {
+              return d;
+            }
+          } catch (_) {
+            // ignore
           }
-        } catch (_) {
-          // ignore
-        }
-      },
-      5000,
-      { name: `read ports file ${portsFile} - ${confFile}` },
-    );
+        },
+        5000,
+        { name: `read ports file ${portsFile} - ${confFile}` },
+      ),
+      earlyExit,
+    ]);
 
     if (debug) {
       console.info(`[${srv.pid}] - ports file found`);

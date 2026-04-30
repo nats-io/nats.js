@@ -94,8 +94,10 @@ function spawnNode(exe: string, args: string[]): SpawnedProc {
     stdio: ["ignore", "ignore", "pipe"],
   });
   let exitResolve!: () => void;
-  const exited = new Promise<void>((res) => {
+  let exitReject!: (err: Error) => void;
+  const exited = new Promise<void>((res, rej) => {
     exitResolve = res;
+    exitReject = rej;
   });
   child.once("exit", () => {
     child.stderr?.removeAllListeners();
@@ -104,11 +106,14 @@ function spawnNode(exe: string, args: string[]): SpawnedProc {
   });
   child.once("error", (err) => {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      console.error(
-        `nats-server not found on PATH (tried "${exe}"). Install: https://github.com/nats-io/nats-server/releases`,
+      exitReject(
+        new Error(
+          `nats-server not found on PATH (tried "${exe}"). Install: https://github.com/nats-io/nats-server/releases`,
+        ),
       );
+      return;
     }
-    exitResolve();
+    exitReject(err);
   });
   return {
     pid: child.pid ?? -1,
