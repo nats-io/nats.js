@@ -13,8 +13,8 @@ async function subscribeAndIterate(subject: string) {
   }
 }
 
-// Subscribe with single token wildcards
-subscribeAndIterate("orders.*.shipped");
+subscribeAndIterate("orders.*.shipped").catch(console.error);
+subscribeAndIterate("orders.*.placed").catch(console.error);
 subscribeAndIterate("orders.*.placed");
 subscribeAndIterate("orders.retail.*");
 
