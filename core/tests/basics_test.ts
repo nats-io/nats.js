@@ -1800,3 +1800,17 @@ Deno.test("basics - close status", async () => {
   await d;
   await cleanup(ns, nc);
 });
+
+Deno.test("basics - pub subject verified", async () => {
+  const { ns, nc } = await setup();
+  assertThrows(
+    () => {
+      // subject that encodes a protocol pub...
+      nc.publish("foo 6\r\npwntus\r\nPUB bar");
+    },
+    Error,
+    "illegal subject",
+  );
+
+  await cleanup(ns, nc);
+});

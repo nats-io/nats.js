@@ -18,6 +18,7 @@ import type { JsMsg } from "./jsmsg.ts";
 import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
 import type { ConsumerConfig, ConsumerInfo } from "./jsapi_types.ts";
 import type { ConsumerNotification } from "./types.ts";
+import { JsHeaders } from "./types.ts";
 
 import type {
   ConsumerAPI,
@@ -31,6 +32,7 @@ import {
   backoff,
   createInbox,
   delay,
+  Empty,
   errors,
   IdleHeartbeatMonitor,
   millis,
@@ -46,6 +48,7 @@ import type {
   Subscription,
 } from "@nats-io/nats-core/internal";
 import { JetStreamStatus } from "./jserrors.ts";
+import type { MsgImpl } from "@nats-io/nats-core/internal";
 
 export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   implements ConsumerMessages {
@@ -308,16 +311,22 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
           if (status.isIdleHeartbeat()) {
             const lastConsumerSequence = parseInt(
-              msg.headers?.get("Nats-Last-Consumer") || "0",
+              msg.headers?.get(JsHeaders.LastConsumerSeqHdr) || "0",
             );
             const lastStreamSequence = parseInt(
-              msg.headers?.get("Nats-Last-Stream") ?? "0",
+              msg.headers?.get(JsHeaders.LastStreamSeqHdr) ?? "0",
             );
             this.notify({
               type: "heartbeat",
               lastStreamSequence,
               lastConsumerSequence,
             });
+
+            // FIX for https://github.com/nats-io/nats.js/issues/374
+            const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
+            if (typeof maybeStuck === "string" && maybeStuck !== "") {
+              (msg as MsgImpl).publisher.publish(maybeStuck, Empty);
+            }
             return;
           }
 

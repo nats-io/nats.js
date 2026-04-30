@@ -65,7 +65,9 @@ export function canonicalMIMEHeaderKey(k: string): string {
 }
 
 export function headers(code = 0, description = ""): MsgHdrs {
-  if ((code === 0 && description !== "") || (code > 0 && description === "")) {
+  if (code === 0 && description !== "") {
+    throw InvalidArgumentError.format("code", "is required");
+  } else if (code > 0 && description === "") {
     throw InvalidArgumentError.format("description", "is required");
   }
   return new MsgHdrsImpl(code, description);
@@ -305,7 +307,8 @@ export class MsgHdrsImpl implements MsgHdrs {
   static fromRecord(r: Record<string, string[]>): MsgHdrs {
     const h = new MsgHdrsImpl();
     for (const k in r) {
-      h.headers.set(k, r[k]);
+      const v = r[k];
+      h.headers.set(k, Array.isArray(v) ? v : [`${v}`]);
     }
     return h;
   }
