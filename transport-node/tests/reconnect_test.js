@@ -18,13 +18,13 @@ const {
   connect,
   wsconnect,
 } = require("../index");
-const { NatsServer } = require("./helpers/launcher");
+const { NatsServer } = require("@nats-io/test-helpers");
 const {
   createInbox,
   deferred,
   delay,
 } = require("@nats-io/nats-core/internal");
-const { Lock } = require("./helpers/lock");
+const { Lock } = require("@nats-io/test-helpers");
 
 describe("websocket reconnect", { timeout: 20_000, forceExit: true }, () => {
   it("reconnect websocket - disconnect reconnects", async () => {
