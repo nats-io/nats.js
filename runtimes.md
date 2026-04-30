@@ -254,11 +254,11 @@ cd mynats
 npm init es6 -y
 # Adding all the nats libraries here, but you can certainly reference the ones
 # you need
-npx jsr @nats-io/nats-core
-npx jsr @nats-io/jetstream
-npx jsr @nats-io/kv
-npx jsr @nats-io/obj
-npx jsr @nats-io/services
+npx jsr add @nats-io/nats-core
+npx jsr add @nats-io/jetstream
+npx jsr add @nats-io/kv
+npx jsr add @nats-io/obj
+npx jsr add @nats-io/services
 ```
 
 Now creating a simple file that re-exports all the libraries, "nats.js"

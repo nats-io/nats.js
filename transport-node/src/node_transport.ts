@@ -147,7 +147,7 @@ export class NodeTransport implements Transport {
   peekInfo(): Promise<ServerInfo> {
     const d = deferred<ServerInfo>();
     let peekError: Error;
-    this.socket.on("data", (frame) => {
+    this.socket.on("data", (frame: Uint8Array) => {
       this.yields.push(frame);
       const t = DataBuffer.concat(...this.yields);
       const pm = extractProtocolMessage(t);

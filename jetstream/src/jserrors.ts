@@ -195,6 +195,7 @@ export const JetStreamApiCodes = {
   StreamNotFound: 10059,
   JetStreamNotEnabledForAccount: 10039,
   StreamWrongLastSequence: 10071,
+  StreamWrongLastSequenceUnknown: 10164,
   NoMessageFound: 10037,
 } as const;
 

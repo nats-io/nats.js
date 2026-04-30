@@ -21,7 +21,7 @@ import type {
   RequestOptions,
   ReviverFn,
   WithRequired,
-} from "@nats-io/nats-core/internal";
+} from "@nats-io/nats-core";
 
 import type {
   ConsumerCreateOptions,
@@ -68,6 +68,12 @@ export type JetStreamOptions = {
    * the default JetStream apiPrefix.
    */
   domain?: string;
+
+  /**
+   * Watcher prefix for inbox subscriptions - these are used for watchers
+   * and push consumers. If not set, it uses ConnectionOptions#inboxPrefix
+   */
+  watcherPrefix?: string;
 };
 
 export type JetStreamManagerOptions = JetStreamOptions & {
@@ -850,6 +856,139 @@ export function isPushConsumer(v: PushConsumer | Consumer): v is PushConsumer {
   return v.isPushConsumer();
 }
 
+/**
+ * Options for starting a fast-ingest batch via {@link JetStreamClient.startFastIngest}.
+ * Fast-ingest trades atomicity for throughput: messages may be dropped, and the server
+ * paces the client via flow-control acks. Requires a stream with `allow_batched: true`
+ * and nats-server v2.14.0 or later.
+ */
+export type FastIngestOptions = {
+  /**
+   * Requested interval (in messages) at which the server acknowledges batch progress.
+   * The server may override this value on the fly. Defaults to 10.
+   */
+  ackInterval: number;
+
+  /**
+   * Whether to tolerate gaps (dropped messages). `true` lets the batch
+   * continue past gaps; `false` aborts the batch on any gap. Required —
+   * the caller must make an explicit choice.
+   */
+  allowGaps: boolean;
+
+  /**
+   * Subject prefix for the reply inbox. The full inbox is
+   * `${inboxPrefix}.${id}.>` where `id` is the batch's generated nuid.
+   * Must be non-empty and contain no whitespace or wildcards (`*`, `>`).
+   * Multi-token prefixes (with dots) are allowed. Defaults to `_INBOX`.
+   */
+  inboxPrefix: string;
+
+  /**
+   * Maximum in-flight ack windows. Effective publish window =
+   * `ackInterval * maxOutstandingAcks` messages.
+   *
+   * - `1`: async-style, flow-controlled (wait after each window).
+   * - `2` (default): one window being acked, one being filled. Optimal for
+   *   most use cases and high-concurrency publishers.
+   * - `3`: may help on high-RTT links; use consciously, not by default.
+   *
+   * Values outside 1–3 are clamped.
+   */
+  maxOutstandingAcks: number;
+};
+
+/**
+ * Progress snapshot returned by {@link FastIngest.add} and {@link FastIngest.ping}.
+ * Does not guarantee the specific message with `batchSeq` has been stored —
+ * only that the server had acknowledged up to `ackSeq` at the time of the snapshot.
+ */
+export type FastIngestProgress = {
+  /**
+   * The batch sequence assigned to this message (1-based, increments per `add`/`last`/`end`).
+   */
+  batchSeq: number;
+
+  /**
+   * The highest batch sequence the server has acknowledged so far.
+   * From `add()` this is the locally-cached value at publish time; from `ping()`
+   * it is a fresh snapshot direct from the server.
+   */
+  ackSeq: number;
+};
+
+/**
+ * A fast-ingest batch. Publish messages with {@link add}, close the batch with
+ * {@link last} (commit + store last message) or {@link end} (commit, discard
+ * sentinel). Call {@link ping} to refresh flow-control state or keep the batch
+ * alive (server abandons idle batches after 10s). Call {@link done} to await
+ * the final acknowledgement regardless of how the batch ended.
+ */
+export type FastIngest = {
+  /**
+   * The batch identifier sent to the server in every message reply subject.
+   * Matches the `batch` field on the terminal {@link BatchAck}.
+   */
+  readonly batch: string;
+
+  /**
+   * Async iterable of gaps reported by the server during this batch. Each
+   * yielded entry describes the sequence range that was lost (`[lastSeq, seq)`).
+   * Informational — batch continues in `gapMode: "ok"`; in `gapMode: "fail"`
+   * the server also aborts the batch. The iterable completes when the batch
+   * terminates.
+   */
+  gaps(): AsyncIterable<{ lastSeq: number; seq: number }>;
+
+  /**
+   * Publishes a message as part of the batch. Resolves when the outstanding-ack
+   * window allows (either immediately, if the window has room, or after the next
+   * flow-control ack from the server).
+   *
+   * @param subj - target subject (must route to the batch's stream)
+   * @param payload - optional payload
+   */
+  add(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<FastIngestProgress>;
+
+  /**
+   * Publishes the final message of the batch, storing it and committing the batch.
+   * Resolves with the terminal {@link BatchAck}.
+   *
+   * @param subj - target subject (must route to the batch's stream)
+   * @param payload - optional payload (will be stored)
+   */
+  last(
+    subj: string,
+    payload?: Payload,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Promise<BatchAck>;
+
+  /**
+   * Commits the batch without storing an additional message. Sends an empty
+   * end-of-batch sentinel. Use this when all payload messages have already
+   * been sent via {@link add}.
+   */
+  end(opts?: Partial<JetStreamPublishOptions>): Promise<BatchAck>;
+
+  /**
+   * Sends a keep-alive ping to the server. Refreshes the idle-abandon timer and
+   * returns a fresh progress snapshot (unlike {@link add}, which returns the
+   * client's cached snapshot). Does not advance the batch sequence.
+   */
+  ping(timeout?: number): Promise<FastIngestProgress>;
+
+  /**
+   * Resolves when the batch terminates (by {@link last}, {@link end}, or error).
+   * Useful when the batch's lifecycle is driven externally and the caller does
+   * not directly await {@link last} or {@link end}.
+   */
+  done(): Promise<BatchAck>;
+};
+
 export type BatchMessageOptions =
   & Partial<Omit<JetStreamPublishOptions, "msgID" | "expect">>
   & {
@@ -1309,7 +1448,8 @@ export const JsHeaders = {
    */
   LastStreamSeqHdr: "Nats-Last-Stream",
   /**
-   * Set for heartbeat messages if the consumer is stalled
+   * Set for heartbeat messages if the consumer is stalled, reply subject
+   * will unstall the client when the client responds
    */
   ConsumerStalledHdr: "Nats-Consumer-Stalled",
   /**

@@ -13,10 +13,10 @@
  * limitations under the License.
  */
 
-import { parse } from "@std/flags";
+import { parseArgs } from "@std/cli";
 import { basename, extname, join, resolve } from "@std/path";
 
-const argv = parse(
+const argv = parseArgs(
   Deno.args,
   {},
 );

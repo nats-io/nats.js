@@ -677,11 +677,13 @@ export class ObjectStoreImpl implements ObjectStore {
           controller!.enqueue(jm.data);
         }
         if (jm.info.pending === 0) {
-          const digest = Uint8Array.from(sha.digest());
-          if (!checkSha256(digest, Uint8Array.from(sha.digest()))) {
+          const computedDigest = Uint8Array.from(sha.digest());
+          if (!checkSha256(digest, computedDigest)) {
+            const hex = Array.from(computedDigest)
+              .map((b) => b.toString(16).padStart(2, "0")).join("");
             controller!.error(
               new Error(
-                `received a corrupt object, digests do not match received: ${info.digest} calculated ${digest}`,
+                `received a corrupt object, digests do not match\n  expected: ${info.digest}\n  computed: SHA-256 ${hex}`,
               ),
             );
           } else {
