@@ -265,6 +265,8 @@ export class JetStreamManagerImpl extends BaseApiClientImpl
  * value sent on the `Nats-Schedule` header.
  *
  * Validates `every` interval is at least 1s (server minimum).
+ *
+ * @internal exported for testing only
  */
 export function scheduleSpecToHeader(
   spec: string | Date | ScheduleSpec,

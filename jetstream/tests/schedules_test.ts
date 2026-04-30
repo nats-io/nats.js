@@ -115,6 +115,17 @@ Deno.test("schedules - spec to header", () => {
     Error,
     "@every interval must be at least 1s",
   );
+  assertThrows(
+    () => scheduleSpecToHeader({ every: "1x" }),
+    Error,
+    "@every: unrecognized duration format",
+  );
+  assertThrows(
+    () => scheduleSpecToHeader({ every: "" }),
+    Error,
+    "@every: unrecognized duration format",
+  );
+  assertEquals(scheduleSpecToHeader({ every: "1m30s" }), "@every 1m30s");
 });
 
 Deno.test("schedules - @every", async () => {
