@@ -1,5 +1,5 @@
 import { join, resolve } from "@std/path";
-import { cleanup, NatsServer, wsServerConf } from "test_helpers";
+import { cleanup, NatsServer, wsServerConf } from "nst";
 import { connect } from "../tests/connect.ts";
 import { delay, wsconnect } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";

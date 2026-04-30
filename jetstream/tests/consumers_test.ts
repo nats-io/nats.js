@@ -30,7 +30,7 @@ import {
 import type { Consumer, PullOptions } from "../src/mod.ts";
 import { deferred, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { cleanup, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "nst";
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 import type {
   ConsumerNotification,

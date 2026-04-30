@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { NatsServer } from "test_helpers";
+import { NatsServer } from "nst";
 import { connect } from "./connect.ts";
 
 import { initStream } from "./jstest_util.ts";
@@ -62,10 +62,10 @@ import {
   jetstreamServerConf,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import { PubHeaders } from "../src/jsapi_types.ts";
 import { JetStreamApiError, JetStreamNotEnabled } from "../src/jserrors.ts";
-import { assertBetween } from "test_helpers";
+import { assertBetween } from "nst";
 
 Deno.test("jetstream - default options", () => {
   const opts = defaultJsOptions();

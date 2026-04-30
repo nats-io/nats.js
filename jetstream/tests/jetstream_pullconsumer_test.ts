@@ -20,7 +20,7 @@ import {
   jetstreamServerConf,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import { initStream } from "./jstest_util.ts";
 import {
   AckPolicy,

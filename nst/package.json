@@ -1,5 +1,5 @@
 {
-  "name": "@nats-io/test-helpers",
+  "name": "@nats-io/nst",
   "version": "3.4.0-0",
   "files": [
     "lib/",
@@ -34,12 +34,12 @@
   "author": {
     "name": "The NATS Authors"
   },
-  "description": "Shared test helpers for nats.js modules — server launcher, fixtures, assertions",
+  "description": "Internal test helpers for nats.js — not a supported public API",
   "peerDependencies": {
-    "@nats-io/nats-core": "^3"
+    "@nats-io/nats-core": "3.4.0-0"
   },
   "devDependencies": {
-    "@nats-io/nats-core": "^3",
+    "@nats-io/nats-core": "3.4.0-0",
     "@types/node": "^25.0.0",
     "shx": "^0.4.0",
     "typescript": "^5.9.2"

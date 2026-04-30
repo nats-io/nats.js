@@ -16,7 +16,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 
 import { createInbox, Empty, errors } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl, Subscription } from "../src/internal_mod.ts";
-import { cleanup, Lock, setup } from "test_helpers";
+import { cleanup, Lock, setup } from "nst";
 import { TimeoutError } from "../src/errors.ts";
 
 Deno.test("autounsub - max option", async () => {

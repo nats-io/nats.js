@@ -27,7 +27,7 @@ export function registerConnect(fn: ConnectFn): void {
 export function getConnect(): ConnectFn {
   if (!_connect) {
     throw new Error(
-      "test-helpers: no connect registered. Call registerConnect(connect) once during test bootstrap (e.g. tests/connect.ts).",
+      "nst: no connect registered. Call registerConnect(connect) once during test bootstrap (e.g. tests/connect.ts).",
     );
   }
   return _connect;

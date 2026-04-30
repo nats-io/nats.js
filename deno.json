@@ -3,8 +3,8 @@
     "strict": true
   },
   "imports": {
-    "test_helpers": "./test_helpers/src/mod.ts",
-    "@nats-io/test-helpers": "./test_helpers/src/mod.ts",
+    "nst": "./nst/src/mod.ts",
+    "@nats-io/nst": "./nst/src/mod.ts",
     "@std/cli": "jsr:@std/cli@1.0.27",
     "@std/path": "jsr:@std/path@1.1.4",
     "@aricart/cobra": "jsr:@aricart/cobra@0.1.2",
@@ -27,7 +27,7 @@
   "tasks": {
     "clean": "rm -Rf ./coverage core/lib core/build jetstream/lib jetstream/build services/lib services/build kv/lib kv/build obj/lib obj/build transport-node/lib transport-ws/lib",
     "test": "deno task clean && deno task lint && deno task test-all",
-    "test-all": "deno task test-core && deno task test-jetstream && deno task test-kv && deno task test-obj && deno task test-services && deno task test-unsafe",
+    "test-all": "deno task test-core && deno task test-jetstream && deno task test-kv && deno task test-obj && deno task test-services && deno task test-nst && deno task test-unsafe",
     "test-unsafe": "deno test -A --parallel --reload --quiet --unsafely-ignore-certificate-errors --coverage=coverage/unsafe core/unsafe_tests",
     "test-core": "deno test -A --parallel --reload --quiet --coverage=coverage/core core/tests",
     "test-jetstream": "deno test -A --parallel --reload --quiet --coverage=coverage/jetstream jetstream/tests",
@@ -35,18 +35,19 @@
     "test-obj": "deno test -A --parallel --reload --quiet --coverage=coverage/obj obj/tests",
     "test-services": "deno test -A --parallel --reload --quiet --coverage=coverage/services services/tests",
     "test-transport-deno": "deno test -A --parallel --reload --quiet --coverage=coverage/transport-deno transport-deno/tests",
-    "coverage": "deno coverage ./coverage/core ./coverage/jetstream ./coverage/kv ./coverage/obj ./coverage/services ./coverage/unsafe ./coverage/transport-deno --exclude=test_helpers --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov",
+    "test-nst": "deno test -A --parallel --reload --quiet --coverage=coverage/nst nst/tests",
+    "coverage": "deno coverage ./coverage/core ./coverage/jetstream ./coverage/kv ./coverage/obj ./coverage/services ./coverage/unsafe ./coverage/transport-deno --exclude=nst --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov",
     "cover": "deno task coverage && genhtml --ignore-errors inconsistent,corrupt -o ./coverage/html ./coverage/out.lcov && open ./coverage/html/index.html",
-    "lint": "deno task lint-core && deno task lint-jetstream && deno task lint-kv && deno task lint-obj && deno task lint-services && deno task lint-test_helpers",
+    "lint": "deno task lint-core && deno task lint-jetstream && deno task lint-kv && deno task lint-obj && deno task lint-services && deno task lint-nst",
     "lint-core": "cd core && deno lint",
     "lint-jetstream": "cd jetstream && deno lint",
     "lint-kv": "cd kv && deno lint",
     "lint-obj": "cd obj && deno lint",
     "lint-services": "cd services && deno lint",
-    "lint-test_helpers": "cd test_helpers && deno lint",
+    "lint-nst": "cd nst && deno lint",
     "check-versions": "bin/check-bundle-version.ts && deno fmt",
-    "check-versions-all": "deno task check-versions-core && deno task check-versions-jetstream && deno task check-versions-kv && deno task check-versions-obj && deno task check-versions-services && deno task check-versions-transport-deno && deno task check-versions-transport-node && deno fmt",
-    "fix-versions": "deno task check-versions-core --fix && deno task check-versions-jetstream --fix && deno task check-versions-kv --fix && deno task check-versions-obj --fix && deno task check-versions-services --fix && deno task check-versions-transport-deno --fix && deno task check-versions-transport-node --fix && deno fmt",
+    "check-versions-all": "deno task check-versions-core && deno task check-versions-jetstream && deno task check-versions-kv && deno task check-versions-obj && deno task check-versions-services && deno task check-versions-nst && deno task check-versions-transport-deno && deno task check-versions-transport-node && deno fmt",
+    "fix-versions": "deno task check-versions-core --fix && deno task check-versions-jetstream --fix && deno task check-versions-kv --fix && deno task check-versions-obj --fix && deno task check-versions-services --fix && deno task check-versions-nst --fix && deno task check-versions-transport-deno --fix && deno task check-versions-transport-node --fix && deno fmt",
     "check-versions-core": "bin/check-bundle-version.ts --module core",
     "check-versions-jetstream": "bin/check-bundle-version.ts --module jetstream",
     "check-versions-kv": "bin/check-bundle-version.ts --module kv",
@@ -54,6 +55,7 @@
     "check-versions-services": "bin/check-bundle-version.ts --module services",
     "check-versions-transport-node": "bin/check-bundle-version.ts --module transport-node",
     "check-versions-transport-deno": "bin/check-bundle-version.ts --module transport-deno",
+    "check-versions-nst": "bin/check-bundle-version.ts --module nst",
     "check-dependencies": "bin/check-dep-versions.ts",
     "disable-npm-workspace": "mv package.json _package.json",
     "enable-npm-workspace": "mv _package.json package.json"
@@ -70,7 +72,7 @@
       "services/",
       "*.md",
       "transport-node/",
-      "test_helpers/"
+      "nst/"
     ],
     "exclude": [
       "core/lib",
@@ -99,25 +101,25 @@
   },
   "scopes": {
     "./core/tests/": {
-      "test_helpers": "./core/tests/test_helpers.ts"
+      "nst": "./core/tests/nst.ts"
     },
     "./core/unsafe_tests/": {
-      "test_helpers": "./core/tests/test_helpers.ts"
+      "nst": "./core/tests/nst.ts"
     },
     "./jetstream/tests/": {
-      "test_helpers": "./jetstream/tests/test_helpers.ts"
+      "nst": "./jetstream/tests/nst.ts"
     },
     "./kv/tests/": {
-      "test_helpers": "./kv/tests/test_helpers.ts"
+      "nst": "./kv/tests/nst.ts"
     },
     "./obj/tests/": {
-      "test_helpers": "./obj/tests/test_helpers.ts"
+      "nst": "./obj/tests/nst.ts"
     },
     "./services/tests/": {
-      "test_helpers": "./services/tests/test_helpers.ts"
+      "nst": "./services/tests/nst.ts"
     },
     "./transport-deno/tests/": {
-      "test_helpers": "./transport-deno/tests/test_helpers.ts"
+      "nst": "./transport-deno/tests/nst.ts"
     },
     "*": {
       "@nats-io/nats-core": "./core/src/mod.ts",
@@ -131,7 +133,7 @@
       "@nats-io/obj/internal": "./obj/src/internal_mod.ts",
       "@nats-io/services": "./services/src/mod.ts",
       "@nats-io/services/internal": "./services/src/internal_mod.ts",
-      "@nats-io/test-helpers": "./test_helpers/src/mod.ts"
+      "@nats-io/nst": "./nst/src/mod.ts"
     }
   },
   "workspace": [
@@ -141,7 +143,7 @@
     "./kv",
     "./obj",
     "./services",
-    "./test_helpers"
+    "./nst"
   ],
   "nodeModulesDir": "none"
 }

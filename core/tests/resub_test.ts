@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cleanup, setup } from "test_helpers";
+import { cleanup, setup } from "nst";
 import { createInbox } from "../src/internal_mod.ts";
 import type {
   Msg,
@@ -21,7 +21,7 @@ import type {
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
 import { assert, assertEquals, assertExists, fail } from "@std/assert";
-import type { NatsServer } from "test_helpers";
+import type { NatsServer } from "nst";
 
 Deno.test("resub - iter", async () => {
   const { ns, nc } = await setup();

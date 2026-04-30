@@ -13,12 +13,7 @@
  * limitations under the License.
  */
 
-import {
-  cleanup,
-  jetstreamServerConf,
-  notCompatible,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import {
   AckPolicy,
   jetstream,

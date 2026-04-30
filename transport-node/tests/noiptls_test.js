@@ -21,8 +21,8 @@ const {
 
 const process = require("node:process");
 const { resolve, join } = require("node:path");
-const { Lock } = require("@nats-io/test-helpers");
-const { NatsServer } = require("@nats-io/test-helpers");
+const { Lock } = require("@nats-io/nst");
+const { NatsServer } = require("@nats-io/nst");
 
 const dir = process.cwd();
 const tlsConfig = {

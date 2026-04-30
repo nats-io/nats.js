@@ -35,7 +35,7 @@ import {
   Servers,
 } from "../src/internal_mod.ts";
 
-import { NatsServer } from "test_helpers";
+import { NatsServer } from "nst";
 import { hasWsProtocol } from "../src/options.ts";
 
 Deno.test("properties - VERSION is semver", async () => {

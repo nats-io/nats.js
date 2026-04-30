@@ -14,8 +14,8 @@
  */
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
-import { Lock } from "test_helpers";
-import { cleanup, setup } from "test_helpers";
+import { Lock } from "nst";
+import { cleanup, setup } from "nst";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";
 

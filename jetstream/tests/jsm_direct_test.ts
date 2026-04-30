@@ -37,7 +37,7 @@ import {
   notCompatible,
   notSupported,
   setup,
-} from "test_helpers";
+} from "nst";
 
 import { JetStreamStatusError } from "../src/jserrors.ts";
 

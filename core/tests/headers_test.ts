@@ -28,10 +28,10 @@ import type {
   Publisher,
   RequestOptions,
 } from "../src/internal_mod.ts";
-import { NatsServer } from "test_helpers";
+import { NatsServer } from "nst";
 import { assert, assertEquals, assertFalse, assertThrows } from "@std/assert";
 import { TestDispatcher } from "./parser_test.ts";
-import { cleanup, setup } from "test_helpers";
+import { cleanup, setup } from "nst";
 import { errors } from "../src/errors.ts";
 
 Deno.test("headers - illegal key", () => {

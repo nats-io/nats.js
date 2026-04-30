@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { cleanup, NatsServer, setup } from "test_helpers";
+import { cleanup, NatsServer, setup } from "nst";
 import { connect } from "./connect.ts";
 import {
   assert,

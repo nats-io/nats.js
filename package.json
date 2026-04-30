@@ -5,7 +5,7 @@
     "./kv",
     "./obj",
     "./services",
-    "./test_helpers",
+    "./nst",
     "./transport-node"
   ],
   "dependencies": {

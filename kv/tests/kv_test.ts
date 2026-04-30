@@ -74,7 +74,7 @@ import {
   NatsServer,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import type { QueuedIteratorImpl } from "@nats-io/nats-core/internal";
 import {
   defaultBucketOpts,
@@ -82,7 +82,7 @@ import {
   Kvm,
   validateSearchKey,
 } from "../src/kv.ts";
-import { assertBetween, flakyTest } from "test_helpers";
+import { assertBetween, flakyTest } from "nst";
 
 Deno.test("kv - Base64KeyCodec encodes and decodes", () => {
   const codec = Base64KeyCodec();
