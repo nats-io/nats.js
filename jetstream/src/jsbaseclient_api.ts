@@ -15,6 +15,7 @@
 
 import {
   backoff,
+  createInbox,
   delay,
   Empty,
   errors,
@@ -39,6 +40,26 @@ import {
 
 const defaultPrefix = "$JS.API";
 const defaultTimeout = 5000;
+
+export function parseJsResponse(m: Msg): unknown {
+  const v = JSON.parse(new TextDecoder().decode(m.data));
+  const r = v as ApiResponse;
+  if (r.error) {
+    switch (r.error.err_code) {
+      case JetStreamApiCodes.ConsumerNotFound:
+        throw new ConsumerNotFoundError(r.error);
+      case JetStreamApiCodes.StreamNotFound:
+        throw new StreamNotFoundError(r.error);
+      case JetStreamApiCodes.JetStreamNotEnabledForAccount: {
+        const jserr = new JetStreamApiError(r.error);
+        throw new JetStreamNotEnabled(jserr.message, { cause: jserr });
+      }
+      default:
+        throw new JetStreamApiError(r.error);
+    }
+  }
+  return v;
+}
 
 export function defaultJsOptions(opts?: JetStreamOptions): JetStreamOptions {
   opts = opts || {} as JetStreamOptions;
@@ -65,6 +86,8 @@ export class BaseApiClientImpl {
 
   constructor(nc: NatsConnection, opts?: JetStreamOptions) {
     this.nc = nc as NatsConnectionImpl;
+    opts = opts || {} as JetStreamOptions;
+    opts.watcherPrefix = opts.watcherPrefix || this.nc.options.inboxPrefix;
     this.opts = defaultJsOptions(opts);
     this._parseOpts();
     this.prefix = this.opts.apiPrefix!;
@@ -85,6 +108,9 @@ export class BaseApiClientImpl {
       prefix = prefix.substr(0, prefix.length - 1);
     }
     this.opts.apiPrefix = prefix;
+
+    // verify that watcherPrefix is valid
+    createInbox(this.opts.watcherPrefix);
   }
 
   async _request(
@@ -149,22 +175,6 @@ export class BaseApiClientImpl {
   }
 
   parseJsResponse(m: Msg): unknown {
-    const v = JSON.parse(new TextDecoder().decode(m.data));
-    const r = v as ApiResponse;
-    if (r.error) {
-      switch (r.error.err_code) {
-        case JetStreamApiCodes.ConsumerNotFound:
-          throw new ConsumerNotFoundError(r.error);
-        case JetStreamApiCodes.StreamNotFound:
-          throw new StreamNotFoundError(r.error);
-        case JetStreamApiCodes.JetStreamNotEnabledForAccount: {
-          const jserr = new JetStreamApiError(r.error);
-          throw new JetStreamNotEnabled(jserr.message, { cause: jserr });
-        }
-        default:
-          throw new JetStreamApiError(r.error);
-      }
-    }
-    return v;
+    return parseJsResponse(m);
   }
 }

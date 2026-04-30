@@ -1,6 +1,6 @@
 #!/usr/bin/env deno run --allow-all --unstable
 
-import { parse } from "@std/flags";
+import { parseArgs } from "@std/cli";
 import {
   connect,
   type ConnectionOptions,
@@ -8,7 +8,7 @@ import {
   delay,
 } from "@nats-io/transport-deno";
 
-const argv = parse(
+const argv = parseArgs(
   Deno.args,
   {
     alias: {

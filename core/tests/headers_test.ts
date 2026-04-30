@@ -341,7 +341,7 @@ Deno.test("headers - code/description", () => {
       headers(0, "some message");
     },
     Error,
-    "'description' is required",
+    "'code' is required",
   );
 });
 
@@ -491,6 +491,20 @@ Deno.test("headers - record", () => {
   assertEquals(h.last("b"), "bbb");
 
   assert(hr.equals(h as MsgHdrsImpl));
+});
+
+Deno.test("headers - fromRecord normalizes non-array values", () => {
+  const hr = MsgHdrsImpl.fromRecord(
+    { a: "x", d: 1 } as unknown as Record<string, string[]>,
+  ) as MsgHdrsImpl;
+  assertEquals(hr.get("a"), "x");
+  assertEquals(hr.get("d"), "1");
+
+  const r = hr.toRecord();
+  assertEquals(r, {
+    a: ["x"],
+    d: ["1"],
+  });
 });
 
 Deno.test("headers - not equals", () => {

@@ -1,0 +1,360 @@
+/*
+ * Copyright 2026 The NATS Authors
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {
+  cleanup,
+  jetstreamServerConf,
+  notCompatible,
+  setup,
+} from "test_helpers";
+import { jetstreamManager, startFastIngest } from "../src/jsclient.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+
+Deno.test("fast ingest - basics", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    ackInterval: 5,
+  });
+  await fi.add("q", "2");
+  await fi.add("q", "3");
+  await fi.add("q", "4");
+  const ack = await fi.last("q", "5");
+
+  assertEquals(ack.stream, "batch");
+  assertEquals(ack.batch, fi.batch);
+  assertEquals(ack.count, 5);
+  assertEquals(ack.seq, 5);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 5);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - rejects non_supported", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    subjects: ["q"],
+  });
+
+  await assertRejects(() => {
+    return startFastIngest(nc, "q", "1", { allowGaps: false, ackInterval: 5 });
+  });
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - end (EOB)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    ackInterval: 5,
+  });
+  await fi.add("q", "2");
+  await fi.add("q", "3");
+  const ack = await fi.end();
+
+  assertEquals(ack.batch, fi.batch);
+  assertEquals(ack.count, 3);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - ping", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    ackInterval: 10,
+  });
+  await fi.add("q", "2");
+  const p = await fi.ping();
+  assertEquals(p.batchSeq, 2);
+
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - backpressure", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  // ackInterval=2, window=2*2=4 — forces blocking
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    ackInterval: 2,
+  });
+  for (let i = 2; i <= 20; i++) {
+    await fi.add("q", i.toString());
+  }
+  const ack = await fi.last("q", "21");
+  assertEquals(ack.count, 21);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 21);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - add after closed rejects", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", { allowGaps: false });
+  await fi.last("q", "2");
+
+  await assertRejects(
+    () => fi.add("q", "3"),
+    Error,
+    "batch closed",
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - custom inboxPrefix", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    inboxPrefix: "FI",
+  });
+  const ack = await fi.last("q", "2");
+  assertEquals(ack.count, 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - invalid inboxPrefix rejected", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  for (const bad of ["", " ", "has space", "*", ">", "foo.*", "foo.>"]) {
+    await assertRejects(
+      () =>
+        startFastIngest(nc, "q", "1", { allowGaps: false, inboxPrefix: bad }),
+      Error,
+      "inboxPrefix",
+    );
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - multi-token inboxPrefix", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    inboxPrefix: "_inbox.foo.bar.baz",
+  });
+  await fi.add("q", "2");
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - concurrent pings coalesce", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    ackInterval: 10,
+  });
+  await fi.add("q", "2");
+
+  const [a, b] = await Promise.all([fi.ping(), fi.ping()]);
+  assertEquals(a.batchSeq, b.batchSeq);
+  assertEquals(a.ackSeq, b.ackSeq);
+
+  await fi.last("q", "3");
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - expect.lastSequence on first msg", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  // first publish to advance the stream tip to 1
+  await jsm.jetstream().publish("q", "0");
+
+  // start a batch w/ correct expectation — should succeed
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    expect: { lastSequence: 1 },
+  });
+  await fi.add("q", "2");
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  // stream now has 4 msgs (publish + 3 batch)
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 4);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - expect.lastSequence mismatch closes batch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  // stream is empty (last_seq=0); expecting 5 — server sends type:"err"
+  // which closes the batch
+  const fi = await startFastIngest(nc, "q", "1", {
+    allowGaps: false,
+    expect: { lastSequence: 5 },
+  });
+
+  await assertRejects(() => fi.last("q", "2"), Error);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest - done() resolves with terminal ack", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = await startFastIngest(nc, "q", "1", { allowGaps: false });
+  await fi.add("q", "2");
+  await fi.last("q", "3");
+
+  const terminal = await fi.done();
+  assertEquals(terminal.batch, fi.batch);
+  assertEquals(terminal.count, 3);
+
+  await cleanup(ns, nc);
+});
