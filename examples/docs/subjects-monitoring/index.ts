@@ -6,7 +6,11 @@ const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Create a wire tap for monitoring
-const sub = nc.subscribe(">");
+(async () => {
+  for await (const msg of sub) {
+    console.log(`[MONITOR] ${msg.subject}: ${msg.string()}`);
+  }
+})().catch(console.error);
 (async () => {
   for await (const msg of sub) {
     console.log(`[MONITOR] ${msg.subject}: ${msg.string()}`);
