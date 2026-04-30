@@ -595,7 +595,10 @@ export class Bucket implements KV {
       firstErr = err;
       if (err instanceof JetStreamApiError) {
         const jserr = err as JetStreamApiError;
-        if (jserr.code !== JetStreamApiCodes.StreamWrongLastSequence) {
+        if (
+          jserr.code !== JetStreamApiCodes.StreamWrongLastSequence &&
+          jserr.code !== JetStreamApiCodes.StreamWrongLastSequenceUnknown
+        ) {
           return Promise.reject(err);
         }
       }
@@ -605,7 +608,7 @@ export class Bucket implements KV {
       const e = await this.get(k);
       if (e?.operation === "DEL" || e?.operation === "PURGE") {
         rev = e !== null ? e.revision : 0;
-        return this.update(k, data, rev);
+        return this._put(k, data, { previousSeq: rev }, markerTTL);
       } else {
         return Promise.reject(firstErr);
       }

@@ -29,11 +29,14 @@ import {
   delay,
   Empty,
   InvalidArgumentError,
+  type MsgHdrs,
+  MsgHdrsImpl,
   nanos,
   nuid,
   syncIterator,
 } from "@nats-io/nats-core";
 import type { BoundPushConsumerOptions, PubAck } from "../src/types.ts";
+import { JsHeaders } from "../src/types.ts";
 import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   AckPolicy,
@@ -1003,5 +1006,44 @@ Deno.test("jetstream - push consumer doesn't support priority groups", async () 
     Error,
     "'deliver_subject' cannot be set when using priority groups",
   );
+  await cleanup(ns, nc);
+});
+
+Deno.test("jetstream - push stalled", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["test"] });
+
+  await jsm.consumers.add("A", {
+    durable_name: "dur",
+    ack_policy: AckPolicy.Explicit,
+    deliver_subject: "bar",
+  });
+
+  const pc = await jsm.jetstream().consumers.getPushConsumer("A", "dur");
+  await pc.consume({ callback: () => {} });
+
+  const done = deferred<void>();
+  // cannot test this specificially but we can test that it responds
+  nc.subscribe("here", {
+    callback: (err, msg) => {
+      assertEquals(err, null);
+      assertExists(msg);
+      done.resolve();
+    },
+  });
+
+  await nc.flush();
+
+  const h = new MsgHdrsImpl(100, "idle heartbeat") as MsgHdrs;
+  h.set(JsHeaders.ConsumerStalledHdr, "here");
+  h.set(JsHeaders.LastStreamSeqHdr, "0");
+  h.set(JsHeaders.LastConsumerSeqHdr, "0");
+
+  nc.publish("bar", Empty, { headers: h });
+
+  await done;
+
   await cleanup(ns, nc);
 });

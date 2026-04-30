@@ -11,14 +11,14 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Remove NPM Workspace
         run: |
           rm -f package.json
 
       - name: Set up Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
 
       - name: Run workspaces version bump
         run: |
