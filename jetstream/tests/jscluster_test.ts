@@ -6,7 +6,7 @@ import {
   jetstreamServerConf,
   NatsServer,
   notCompatible,
-} from "test_helpers";
+} from "nst";
 import {
   DiscardPolicy,
   RetentionPolicy,

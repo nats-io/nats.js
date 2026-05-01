@@ -38,7 +38,7 @@ import {
   connect,
   jetstreamServerConf,
   setup,
-} from "test_helpers";
+} from "nst";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { errors } from "../../core/src/mod.ts";
 

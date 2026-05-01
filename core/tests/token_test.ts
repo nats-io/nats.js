@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 import { assertRejects } from "@std/assert";
-import { NatsServer } from "test_helpers";
+import { NatsServer } from "nst";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";
 

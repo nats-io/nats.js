@@ -16,7 +16,7 @@
 import { assertEquals } from "@std/assert";
 import { createInbox, deferred } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
-import { cleanup, setup } from "test_helpers";
+import { cleanup, setup } from "nst";
 
 function macro(input: Uint8Array) {
   return async () => {
