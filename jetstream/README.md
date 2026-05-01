@@ -669,3 +669,96 @@ const b = await js.consumers.get(name, { filterSubjects: [`${name}.a`] });
 Note that uses of the consumer API for reading messages are checked for
 concurrency preventing the ordered consumer from having operations initiated
 with `fetch()` and `consume()` or `next()` while another is active.
+
+### JetStream Message Schedules
+
+JetStream Message Schedules are a feature of JetStream that allows you to
+schedule messages to be delivered at a specific time to the stream. This is
+useful to trigger other behaviours via a message. If you are thinking timers,
+you are on the right track.
+
+To enable scheduled messages, you enable the feature on the stream
+`allow_msg_schedules`, and specify at least 3 subject patterns. One for adding
+schedule configuration, one for canceling an existing schedule, and one for the
+subject where the schedule message will be delivered.
+
+```typescript
+const name = `schedules-${nuid.next()}`;
+await jsm.streams.add({
+  name,
+  allow_msg_schedules: true,
+  // schedule - where the schedule configuration will be stored
+  // target - where messages from schedule go
+  // stop - where a schedule cancellation message is sent
+  subjects: [`${name}.schedule.>`, `${name}.target.>`, `${name}.stop`],
+});
+
+// for simplicity a push consumer - note the consumer
+// is filtering to the target subject as these are the messages
+// injected by the schedule
+await jsm.consumers.add(name, {
+  flow_control: true,
+  idle_heartbeat: nanos(60_000),
+  deliver_subject: "scheduled.message",
+  filter_subject: `${name}.target.>`,
+  ack_policy: "none",
+});
+
+const js = jsm.jetstream();
+
+// very easy to add repeated schedules following some duration
+// `every`: `1s`, `1h`, etc.
+await js.publish(`${name}.schedule.tick`, "", {
+  schedule: {
+    specification: { every: "1s" },
+    target: `${name}.target.tick`,
+  },
+});
+
+// you can also specify a one-shot `@at` schedule - "in 10s"
+// this will only add one message when it triggers and done.
+// this needs 2.12.x or better nats-server
+await js.publish(`${name}.schedule.in10`, "", {
+  schedule: {
+    // or typed: { at: new Date(Date.now() + 10_000) }
+    specification: `@at ${new Date(Date.now() + 10_000).toISOString()}`,
+    target: `${name}.target.in10`,
+  },
+});
+
+// or with nats-server 2.14.0 and better
+// using a cron schedule - here at the 15s intervals in the minute
+await js.publish(`${name}.schedule.tick15`, "", {
+  schedule: {
+    // same as `0,15,30,45` seconds
+    specification: { cron: "*/15 * * * * *" },
+    target: `${name}.target.15`,
+  },
+});
+
+// or with nats-server 2.14.0 and better, a predefined schedule keyword:
+// `@yearly`, `@monthly`, `@weekly`, `@daily`, `@midnight`, `@hourly`
+await js.publish(`${name}.schedule.hourly`, "", {
+  schedule: {
+    specification: { predefined: "@hourly" },
+    target: `${name}.target.hourly`,
+  },
+});
+
+// this shows canceling a schedule - 15s from now
+delay(15_000).then(() => {
+  console.log("stopping every 1s tick schedule");
+  js.publish(`${name}.stop`, "", {
+    cancelSchedule: { scheduleSubject: `${name}.schedule.tick` },
+  }).catch(console.error);
+});
+
+// now we activate the push consumer and print the message subjects
+const sub = nc.subscribe("scheduled.message", {
+  // close the sub after 15s of ticks, + cron + and one shot
+  max: 24,
+  callback: (err, msg) => {
+    console.log(new Date().toISOString(), msg.subject.split(".").pop());
+  },
+});
+```
