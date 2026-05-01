@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 The NATS Authors
+ * Copyright 2024-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,10 +12,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
 
-import { assertGreaterOrEqual, assertLessOrEqual } from "@std/assert";
+export type ConnectFn = (
+  opts?: ConnectionOptions,
+) => Promise<NatsConnection>;
 
-export function assertBetween(n: number, low: number, high: number) {
-  assertGreaterOrEqual(n, low, `${n} >= ${low}`);
-  assertLessOrEqual(n, high, `${n} <= ${high}`);
+let _connect: ConnectFn | undefined;
+
+export function registerConnect(fn: ConnectFn): void {
+  _connect = fn;
+}
+
+export function getConnect(): ConnectFn {
+  if (!_connect) {
+    throw new Error(
+      "nst: no connect registered. Call registerConnect(connect) once during test bootstrap (e.g. tests/connect.ts).",
+    );
+  }
+  return _connect;
 }

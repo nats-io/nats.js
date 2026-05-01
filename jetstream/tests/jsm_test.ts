@@ -64,7 +64,7 @@ import {
   NatsServer,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import { validateName } from "../src/jsutil.ts";
 import { encodeAccount, encodeOperator, encodeUser } from "@nats-io/jwt";
 import { convertStreamSourceDomain } from "../src/jsmstream_api.ts";
@@ -78,7 +78,7 @@ import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import { stripNatsMetadata } from "./util.ts";
 import { jserrors } from "../src/jserrors.ts";
 import type { WithRequired } from "../../core/src/util.ts";
-import { assertBetween } from "../../test_helpers/mod.ts";
+import { assertBetween } from "nst";
 
 const StreamNameRequired = "stream name required";
 const ConsumerNameRequired = "durable name required";
@@ -964,6 +964,7 @@ Deno.test(
       },
       max: 1,
     });
+    await nc.flush();
 
     const jsm = await jetstreamManager(nc, { apiPrefix: "IPA" });
     await sawIPA;

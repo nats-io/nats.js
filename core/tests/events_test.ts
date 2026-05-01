@@ -12,13 +12,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Lock, NatsServer, ServerSignals } from "test_helpers";
+import { Lock, NatsServer, ServerSignals } from "nst";
 import { connect } from "./connect.ts";
 import { assertEquals } from "@std/assert";
 import { deferred, delay } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { setup } from "test_helpers";
-import { cleanup } from "../../test_helpers/mod.ts";
+import { setup } from "nst";
+import { cleanup } from "nst";
 
 Deno.test("events - close on close", async () => {
   const { ns, nc } = await setup();

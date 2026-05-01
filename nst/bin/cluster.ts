@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { NatsServer } from "./launcher.ts";
+import { NatsServer } from "../src/launcher.ts";
 import { parseArgs } from "@std/cli";
 import { rgb24 } from "@std/fmt/colors";
 

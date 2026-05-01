@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cleanup, setup } from "test_helpers";
+import { cleanup, setup } from "nst";
 
 import {
   credsAuthenticator,
@@ -40,7 +40,7 @@ import {
   encodeUser,
   fmtCreds,
 } from "@nats-io/jwt";
-import { assertBetween } from "test_helpers";
+import { assertBetween } from "nst";
 
 function disconnectReconnect(nc: NatsConnection): Promise<void> {
   const done = deferred<void>();

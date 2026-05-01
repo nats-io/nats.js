@@ -15,6 +15,7 @@ jobs:
           kv,
           obj,
           services,
+          nst,
           transport-deno,
           transport-node,
         ]

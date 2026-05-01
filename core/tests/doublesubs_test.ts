@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { NatsServer } from "../../test_helpers/launcher.ts";
+import { NatsServer } from "nst";
 
 import { deferred, Empty, extend, headers } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
@@ -29,6 +29,7 @@ async function runDoubleSubsTest(tls: boolean) {
   }
 
   let srv = await NatsServer.start(opts);
+  if (tls) srv.certsDir = tlsConfig.certsDir;
 
   let connOpts = {
     servers: `localhost:${srv.port}`,
@@ -85,7 +86,7 @@ async function runDoubleSubsTest(tls: boolean) {
   assertEquals(baz.getReceived(), 0);
 
   await nc.close();
-  await srv.stop();
+  await srv.stop(true);
 
   const log = srv.getLog();
 
@@ -99,8 +100,6 @@ async function runDoubleSubsTest(tls: boolean) {
       subs.push(m[1]);
     }
   });
-
-  await Deno.remove(tlsConfig.certsDir, { recursive: true });
 
   assertEquals(count, 3);
   assertArrayIncludes(subs, ["foo", "bar", "baz"]);

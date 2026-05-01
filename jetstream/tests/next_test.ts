@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cleanup, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "nst";
 import { initStream } from "./jstest_util.ts";
 import { AckPolicy, DeliverPolicy } from "../src/jsapi_types.ts";
 import {

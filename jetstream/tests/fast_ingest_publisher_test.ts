@@ -13,12 +13,7 @@
  * limitations under the License.
  */
 
-import {
-  cleanup,
-  jetstreamServerConf,
-  notCompatible,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import { jetstreamManager, startFastIngest } from "../src/jsclient.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 
