@@ -8,6 +8,7 @@ on:
       - "kv/**"
       - "obj/**"
       - "services/**"
+      - "nst/**"
     branches:
       - "*"
   pull_request:

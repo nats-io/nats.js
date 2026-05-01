@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { toConf } from "./launcher.ts";
+import { toConf } from "../src/launcher.ts";
 import { assertEquals } from "@std/assert";
 
 Deno.test("conf - serializing simple", () => {

@@ -28,7 +28,7 @@ import {
   jetstreamServerConf,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import type {
   PushConsumerImpl,
   PushConsumerMessagesImpl,

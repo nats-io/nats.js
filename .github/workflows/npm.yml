@@ -59,6 +59,12 @@ jobs:
           npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
+      - name: Publish NPM nst
+        run: |
+          cd nst
+          npm publish --provenance --access public --tag=${NPM_TAG}
+        continue-on-error: true
+
       - name: Publish NPM jetstream
         run: |
           cd jetstream

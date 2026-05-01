@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { NatsServer } from "../../test_helpers/launcher.ts";
+import { NatsServer } from "nst";
 
 Deno.test("cmdlauncher - test", async () => {
   const ns = await NatsServer.start({ debug: true, trace: true }, true);

@@ -26,9 +26,9 @@ const {
   VERSION,
 } = require("../lib/node_transport");
 
-const { Lock } = require("./helpers/lock");
-const { NatsServer } = require("./helpers/launcher");
-const { jetstreamServerConf } = require("./helpers/jsutil.js");
+const { Lock } = require("@nats-io/nst");
+const { NatsServer } = require("@nats-io/nst");
+const { jetstreamServerConf } = require("@nats-io/nst");
 
 const u = "demo.nats.io:4222";
 

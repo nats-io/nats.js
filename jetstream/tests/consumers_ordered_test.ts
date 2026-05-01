@@ -28,19 +28,14 @@ import {
   jetstreamManager,
 } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
-import {
-  cleanup,
-  jetstreamServerConf,
-  notCompatible,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import { deadline, deferred, delay } from "@nats-io/nats-core";
 import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
 } from "../src/consumer.ts";
 import { delayUntilAssetNotFound } from "./util.ts";
-import { flakyTest } from "../../test_helpers/mod.ts";
+import { flakyTest } from "nst";
 
 Deno.test("ordered consumers - get", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());

@@ -1,0 +1,41 @@
+{
+  "name": "@nats-io/nst",
+  "version": "3.4.0-0",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publish": {
+    "exclude": [
+      "./.npmrc",
+      "./bin/",
+      "./build/",
+      "./node_modules/",
+      "./package-lock.json",
+      "./package.json",
+      "./tests/",
+      "./tsconfig.json"
+    ]
+  },
+  "lint": {
+    "exclude": [
+      "lib/",
+      "build/"
+    ]
+  },
+  "fmt": {
+    "exclude": [
+      "lib/",
+      "build/"
+    ]
+  },
+  "tasks": {
+    "clean": "rm -rf ./lib ./build",
+    "test": "deno test -A --parallel --reload tests/"
+  },
+  "imports": {
+    "@nats-io/nats-core": "jsr:@nats-io/nats-core@3.4.0-0",
+    "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@3.4.0-0/internal",
+    "@std/fmt": "jsr:@std/fmt@^1",
+    "@std/assert": "jsr:@std/assert@^1"
+  }
+}

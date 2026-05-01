@@ -1,4 +1,4 @@
-import { connect } from "test_helpers";
+import { connect } from "./connect.ts";
 import { jetstream } from "../src/mod.ts";
 
 const nc = await connect();

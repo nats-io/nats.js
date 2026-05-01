@@ -28,13 +28,7 @@ import {
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
-import {
-  assertBetween,
-  cleanup,
-  Lock,
-  NatsServer,
-  wsServerConf,
-} from "test_helpers";
+import { assertBetween, cleanup, Lock, NatsServer, wsServerConf } from "nst";
 
 Deno.test("ws - connect", async () => {
   const ns = await NatsServer.start(wsServerConf());

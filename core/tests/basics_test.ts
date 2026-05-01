@@ -46,7 +46,7 @@ import type {
   PublishOptions,
   SubscriptionImpl,
 } from "../src/internal_mod.ts";
-import { cleanup, Lock, NatsServer, setup } from "test_helpers";
+import { cleanup, Lock, NatsServer, setup } from "nst";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";
 

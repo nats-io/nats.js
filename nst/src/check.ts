@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 The NATS Authors
+ * Copyright 2020-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -18,30 +18,26 @@ export function check(
   timeout = 5000,
   opts?: { interval?: number; name?: string },
 ): Promise<unknown> {
-  opts = opts || {};
-  opts = Object.assign(opts, { interval: 50 });
-  let toHandle: number;
-  const to = new Promise((_, reject) => {
+  const interval = opts?.interval ?? 50;
+  const name = opts?.name;
+  let toHandle: ReturnType<typeof setTimeout>;
+  let intervalHandle: ReturnType<typeof setInterval>;
+  return new Promise((resolve, reject) => {
     toHandle = setTimeout(() => {
-      const m = opts?.name ? `${opts.name} timeout` : "timeout";
-      reject(new Error(m));
+      clearInterval(intervalHandle);
+      reject(new Error(name ? `${name} timeout` : "timeout"));
     }, timeout);
-  });
-
-  const task = new Promise((done) => {
-    const i = setInterval(async () => {
+    intervalHandle = setInterval(async () => {
       try {
         const v = await fn();
         if (v) {
           clearTimeout(toHandle);
-          clearInterval(i);
-          done(v);
+          clearInterval(intervalHandle);
+          resolve(v);
         }
       } catch (_) {
         // ignore
       }
-    }, opts?.interval);
+    }, interval);
   });
-
-  return Promise.race([to, task]);
 }
