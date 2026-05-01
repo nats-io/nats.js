@@ -34,7 +34,7 @@ jobs:
           CI: true
         run: |
           deno task test-unsafe
-          deno coverage ./coverage/unsafe --exclude=test_helpers --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov
+          deno coverage ./coverage/unsafe --exclude=nst --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2

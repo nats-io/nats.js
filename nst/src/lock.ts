@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The NATS Authors
+ * Copyright 2020-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -28,7 +28,7 @@ export interface Lock<T> extends Promise<T> {
 export function Lock<T>(count = 1, ms = 5000): Lock<T> {
   let methods;
   const promise = new Promise<void>((resolve, reject) => {
-    let timer: number;
+    let timer: ReturnType<typeof setTimeout>;
 
     const cancel = (): void => {
       if (timer) {

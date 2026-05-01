@@ -267,6 +267,7 @@ const dirs = [
   "jetstream",
   "kv",
   "obj",
+  "nst",
   "transport-deno",
   "transport-node",
 ];
