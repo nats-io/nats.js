@@ -8,13 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        deno-version: [2.6.x]
+        deno-version: [2.7.x]
         module: [
           core,
           jetstream,
           kv,
           obj,
           services,
+          nst,
           transport-deno,
           transport-node,
         ]

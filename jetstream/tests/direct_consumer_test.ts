@@ -15,12 +15,7 @@
 import { assert, assertEquals } from "@std/assert";
 
 import { jetstreamManager, type StoredMsg } from "../src/mod.ts";
-import {
-  cleanup,
-  jetstreamServerConf,
-  notCompatible,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import {
   DirectConsumer,
   type DirectStartOptions,

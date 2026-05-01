@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         node-version: [24.x]
-        deno-version: [2.4.x]
+        deno-version: [2.7.x]
 
     runs-on: ubuntu-latest
     permissions:
@@ -32,12 +32,19 @@ jobs:
         with:
           deno-version: ${{ matrix.deno-version }}
       - name: Set tag
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        run: |
+          VER="${GITHUB_REF#refs/*/}"
+          echo "RELEASE_VERSION=$VER" >> $GITHUB_ENV
+          if [[ "$VER" == *-* ]]; then
+            echo "NPM_TAG=next" >> $GITHUB_ENV
+          else
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+          fi
       - name: Dry run
         run: |
           deno publish --allow-dirty --dry-run
           npm install --workspaces
-          npm publish --provenance --access public --tag=latest --workspaces --dry-run
+          npm publish --provenance --access public --tag=${NPM_TAG} --workspaces --dry-run
           npm run clean --workspaces
 
       - name: Publish JSR
@@ -49,35 +56,41 @@ jobs:
       - name: Publish NPM core
         run: |
           cd core
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
+        continue-on-error: true
+
+      - name: Publish NPM nst
+        run: |
+          cd nst
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
       - name: Publish NPM jetstream
         run: |
           cd jetstream
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
       - name: Publish NPM kv
         run: |
           cd kv
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
       - name: Publish NPM obj
         run: |
           cd obj
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
       - name: Publish NPM services
         run: |
           cd services
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true
 
       - name: Publish NPM transport-node
         run: |
           cd transport-node
-          npm publish --provenance --access public --tag=latest
+          npm publish --provenance --access public --tag=${NPM_TAG}
         continue-on-error: true

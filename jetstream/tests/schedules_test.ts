@@ -14,12 +14,7 @@
  */
 import { jetstreamManager, scheduleSpecToHeader } from "../src/jsclient.ts";
 import { deferred, nanos } from "@nats-io/nats-core";
-import {
-  cleanup,
-  jetstreamServerConf,
-  notCompatible,
-  setup,
-} from "test_helpers";
+import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 
 Deno.test("schedules - basics", async () => {

@@ -1,0 +1,47 @@
+{
+  "name": "@nats-io/nst",
+  "version": "3.4.0-0",
+  "files": [
+    "lib/",
+    "LICENSE",
+    "README.md"
+  ],
+  "types": "./lib/mod.d.ts",
+  "exports": {
+    ".": "./lib/mod.js"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nats-io/nats.js.git"
+  },
+  "private": false,
+  "scripts": {
+    "real-clean": "npm run clean && shx rm -Rf ./node_modules",
+    "clean": "shx rm -Rf ./build ./lib",
+    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src && shx cp ./src/certs.json ./build/src/certs.json",
+    "build-cjs": "npm run pre-process && tsc",
+    "build": "npm run build-cjs",
+    "prepack": "npm run build",
+    "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
+    "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
+  },
+  "keywords": [
+    "nats",
+    "testing",
+    "test-helpers"
+  ],
+  "author": {
+    "name": "The NATS Authors"
+  },
+  "description": "Internal test helpers for nats.js — not a supported public API",
+  "peerDependencies": {
+    "@nats-io/nats-core": "3.4.0-0"
+  },
+  "devDependencies": {
+    "@nats-io/nats-core": "3.4.0-0",
+    "@types/node": "^25.0.0",
+    "shx": "^0.4.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -18,7 +18,7 @@ import {
   assertStringIncludes,
 } from "@std/assert";
 import { createInbox, Empty, errors } from "../src/internal_mod.ts";
-import { cleanup, setup } from "../../test_helpers/mod.ts";
+import { cleanup, setup } from "nst";
 
 Deno.test("timeout - request noMux stack is useful", async () => {
   const { ns, nc } = await setup();

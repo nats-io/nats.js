@@ -21,8 +21,8 @@ const {
 
 const process = require("node:process");
 const { resolve, join } = require("node:path");
-const { Lock } = require("./helpers/lock");
-const { NatsServer } = require("./helpers/launcher");
+const { Lock } = require("@nats-io/nst");
+const { NatsServer } = require("@nats-io/nst");
 
 const dir = process.cwd();
 const tlsConfig = {
@@ -41,7 +41,7 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
       return;
     }
 
-    const servers = await NatsServer.startCluster(3, tlsConfig);
+    const servers = await NatsServer.cluster(3, tlsConfig);
     const nc = await connect(
       {
         port: servers[0].port,

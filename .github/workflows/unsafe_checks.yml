@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        deno-version: [2.6.x]
+        deno-version: [2.7.x]
 
     steps:
       - name: Git Checkout Sources
@@ -34,7 +34,7 @@ jobs:
           CI: true
         run: |
           deno task test-unsafe
-          deno coverage ./coverage/unsafe --exclude=test_helpers --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov
+          deno coverage ./coverage/unsafe --exclude=nst --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov
 
       - name: Upload coverage
         uses: coverallsapp/github-action@v2

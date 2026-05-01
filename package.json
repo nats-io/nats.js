@@ -5,6 +5,7 @@
     "./kv",
     "./obj",
     "./services",
+    "./nst",
     "./transport-node"
   ],
   "dependencies": {

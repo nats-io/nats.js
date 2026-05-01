@@ -8,8 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        deno-version: [2.6.x]
-        module: [core, jetstream, kv, obj, services, transport-deno]
+        deno-version: [2.7.x]
+        module: [core, jetstream, kv, obj, services, nst, transport-deno]
 
     steps:
       - name: Git Checkout Sources
@@ -33,11 +33,14 @@ jobs:
           NGS_CI_USER: ${{ secrets.NGS_CI_USER }}
           TMPDIR: ${{ runner.temp }}
           CI: true
-        run: |
-          deno task test-${{ matrix.module }}
-          deno task coverage
+        run: deno task test-${{ matrix.module }}
+
+      - name: Coverage
+        if: matrix.module != 'nst'
+        run: deno task coverage
 
       - name: Upload coverage
+        if: matrix.module != 'nst'
         uses: coverallsapp/github-action@v2
         continue-on-error: true
         with:

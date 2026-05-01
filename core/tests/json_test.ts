@@ -15,8 +15,8 @@
 import { assertEquals } from "@std/assert";
 import { createInbox } from "../src/internal_mod.ts";
 import type { Msg } from "../src/internal_mod.ts";
-import { Lock } from "test_helpers";
-import { cleanup, setup } from "test_helpers";
+import { Lock } from "nst";
+import { cleanup, setup } from "nst";
 
 function macro(input: unknown) {
   return async () => {
