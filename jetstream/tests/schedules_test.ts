@@ -397,3 +397,56 @@ Deno.test("schedules - rollup header", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("schedules - subject sourcing (ADR-51)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    await cleanup(ns, nc);
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "src",
+    allow_msg_schedules: true,
+    subjects: ["sched.>", "tgt.>", "data.>"],
+    allow_msg_ttl: true,
+  });
+
+  await jsm.consumers.add("src", {
+    flow_control: true,
+    idle_heartbeat: nanos(60_000),
+    deliver_subject: "src.deliver",
+    filter_subject: "tgt.>",
+  });
+
+  const got = deferred<string>();
+  nc.subscribe("src.deliver", {
+    callback: (_, m) => {
+      if (m.subject === "tgt.sourced") {
+        got.resolve(m.string());
+      }
+    },
+  });
+
+  const js = jsm.jetstream();
+
+  // seed the source subject - schedule will pull last msg on it
+  await js.publish("data.last", "sourced-payload");
+
+  // schedule fires every 1s, sources from data.last, publishes to tgt.sourced
+  await js.publish("sched.source", "", {
+    schedule: {
+      specification: { every: "1s" },
+      target: "tgt.sourced",
+      source: "data.last",
+      ttl: "5m",
+    },
+  });
+
+  const payload = await got;
+  assertEquals(payload, "sourced-payload");
+
+  await cleanup(ns, nc);
+});

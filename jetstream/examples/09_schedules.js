@@ -23,7 +23,20 @@ const name = `schedules-${nuid.next()}`;
 await jsm.streams.add({
   name,
   allow_msg_schedules: true,
-  subjects: [`${name}.schedule.>`, `${name}.target.>`, `${name}.stop`],
+  // required to use ttl on schedules - fired messages get Nats-TTL
+  // and auto-purge so the stream doesn't grow unbounded
+  allow_msg_ttl: true,
+  // schedule holds the config portion for a schedule
+  // target the destination message added to the stream by the schedule
+  // stop to cancel scheduling a specific schedule
+  // data the subject to copy value from the last message (optional)
+  subjects: [
+    `${name}.schedule.>`,
+    `${name}.target.>`,
+    `${name}.stop`,
+    `${name}.data.*`,
+  ],
+  max_msgs_per_subject: 10,
 });
 
 await jsm.consumers.add(name, {
@@ -36,28 +49,53 @@ await jsm.consumers.add(name, {
 
 const js = jsm.jetstream();
 
+// update a value every 100ms
+const stocks = ["ABC", "XYZ", "BRB", "ZON"];
+await Promise.all([
+  js.publish(`${name}.data.ABC`, `0`),
+  js.publish(`${name}.data.XYZ`, `0`),
+  js.publish(`${name}.data.BRB`, `0`),
+  js.publish(`${name}.data.ZON`, `0`),
+]);
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+const timer = setInterval(() => {
+  const symbol = pick(stocks);
+  const price = `${Math.floor(Math.random() * 101)}`;
+  js.publish(`${name}.data.${symbol}`, price).catch(console.error);
+}, 100);
+
 // every allows you to specify a duration like 1s, 1h, etc.
-await js.publish(`${name}.schedule.tick`, "", {
+// ttl puts a Nats-TTL on each fired message so they auto-purge
+await js.publish(`${name}.schedule.ABC`, "", {
   schedule: {
     specification: { every: "1s" },
-    target: `${name}.target.tick`,
+    target: `${name}.target.ABC`,
+    // payload will be the last message in `${name}.data`
+    source: `${name}.data.ABC`,
+    ttl: "5s",
   },
 });
 
 // you can also specify a one-shot schedule - "in 10s"
-await js.publish(`${name}.schedule.in10`, "", {
+await js.publish(`${name}.schedule.XYZ`, "", {
   schedule: {
     specification: `@at ${new Date(Date.now() + 10_000).toISOString()}`,
-    target: `${name}.target.in10`,
+    target: `${name}.target.XYZ`,
+    source: `${name}.data.XYZ`,
+    ttl: "5s",
   },
 });
 
 // or using a cron schedule - here at the 15s intervals in the minute
-await js.publish(`${name}.schedule.tick15`, "", {
+await js.publish(`${name}.schedule.BRB`, "", {
   schedule: {
     // 0, 15, 30, 45 seconds
     specification: { cron: "*/15 * * * * *" },
-    target: `${name}.target.15`,
+    target: `${name}.target.BRB`,
+    source: `${name}.data.BRB`,
+    ttl: "5s",
   },
 });
 
@@ -67,23 +105,30 @@ await js.publish(`${name}.schedule.hourly`, "", {
   schedule: {
     specification: { predefined: "@hourly" },
     target: `${name}.target.hourly`,
+    source: `${name}.data.ZON`,
+    ttl: "5s",
   },
 });
 
 delay(15_000).then(() => {
-  console.log("stopping every 1s tick schedule");
+  console.log("stopping ABC schedule");
   js.publish(`${name}.stop`, "", {
-    cancelSchedule: { scheduleSubject: `${name}.schedule.tick` },
+    cancelSchedule: { scheduleSubject: `${name}.schedule.ABC` },
   }).catch(console.error);
 });
 
 const sub = nc.subscribe("scheduled.message", {
-  // 15s of ticks, + cron + and one shot
-  max: 24,
+  // 18 updates and stop
+  max: 18,
   callback: (_err, msg) => {
-    console.log(new Date().toISOString(), msg.subject.split(".").pop());
+    console.log(
+      new Date().toLocaleTimeString(),
+      msg.subject.split(".").pop(),
+      msg.string(),
+    );
   },
 });
 
 await sub.closed;
 await nc.close();
+clearInterval(timer);
