@@ -20,7 +20,7 @@ import {
   NatsServer,
   notCompatible,
   setup,
-} from "test_helpers";
+} from "nst";
 import {
   assert,
   assertEquals,

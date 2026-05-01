@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2024 The NATS Authors
+ * Copyright 2020-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,26 +15,31 @@
 
 import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
 import { compare, parseSemVer } from "@nats-io/nats-core/internal";
+import { mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { NatsServer } from "./launcher.ts";
-import { red, yellow } from "@std/fmt/colors";
-export { connect } from "./connect.ts";
+import process from "node:process";
 export { check } from "./check.ts";
 export { Lock } from "./lock.ts";
 export { Connection, TestServer } from "./test_server.ts";
 export { assertBetween } from "./asserts.ts";
 export { NatsServer, ServerSignals } from "./launcher.ts";
+export { getConnect, registerConnect } from "./connect.ts";
+export type { ConnectFn } from "./connect.ts";
+
+const RED = "\x1b[31m";
+const YELLOW = "\x1b[33m";
+const RESET = "\x1b[0m";
 
 export function disabled(reason: string): void {
-  const m = new TextEncoder().encode(red(`skipping: ${reason} `));
-  Deno.stdout.writeSync(m);
+  process.stdout.write(`${RED}skipping: ${reason} ${RESET}`);
 }
 
-export function jsopts() {
-  const store_dir = Deno.makeTempDirSync({ prefix: "jetstream" });
+export function jsopts(): Record<string, unknown> {
+  const store_dir = mkdtempSync(join(tmpdir(), "jetstream"));
   return {
-    // debug: true,
-    // trace: true,
     jetstream: {
       max_file_store: 1024 * 1024,
       max_mem_store: 1024 * 1024,
@@ -43,7 +48,7 @@ export function jsopts() {
   };
 }
 
-export function wsopts() {
+export function wsopts(): Record<string, unknown> {
   return {
     websocket: {
       no_tls: true,
@@ -85,9 +90,11 @@ export function jetstreamExportServerConf(
 export function jetstreamServerConf(
   opts: unknown = {},
 ): Record<string, unknown> {
-  const conf = Object.assign(jsopts(), opts);
+  const conf = Object.assign(jsopts(), opts) as {
+    jetstream: { store_dir?: unknown };
+  };
   if (typeof conf.jetstream.store_dir !== "string") {
-    conf.jetstream.store_dir = Deno.makeTempDirSync({ prefix: "jetstream" });
+    conf.jetstream.store_dir = mkdtempSync(join(tmpdir(), "jetstream"));
   }
   return conf as Record<string, unknown>;
 }
@@ -100,8 +107,8 @@ export async function setup(
   serverConf?: Record<string, unknown>,
   clientOpts?: Partial<ConnectionOptions>,
 ): Promise<{ ns: NatsServer; nc: NatsConnection }> {
-  const dt = serverConf as { debug: boolean; trace: boolean };
-  const debug = dt && (dt.debug || dt.trace);
+  const dt = serverConf as { debug?: boolean; trace?: boolean };
+  const debug = !!(dt && (dt.debug || dt.trace));
   const ns = await NatsServer.start(serverConf, debug);
   const nc = await ns.connect(clientOpts);
   return { ns, nc };
@@ -128,10 +135,9 @@ export async function notCompatible(
   const varz = await ns.varz() as unknown as Record<string, string>;
   const sv = parseSemVer(varz.version);
   if (compare(sv, parseSemVer(version)) < 0) {
-    const m = new TextEncoder().encode(yellow(
-      `skipping test as server (${varz.version}) doesn't implement required feature from ${version} `,
-    ));
-    await Deno.stdout.write(m);
+    process.stdout.write(
+      `${YELLOW}skipping test as server (${varz.version}) doesn't implement required feature from ${version} ${RESET}`,
+    );
     await cleanup(ns, nc);
     return true;
   }
@@ -145,10 +151,9 @@ export async function notSupported(
   const varz = await ns.varz() as unknown as Record<string, string>;
   const sv = parseSemVer(varz.version);
   if (compare(sv, parseSemVer(version)) < 0) {
-    const m = new TextEncoder().encode(yellow(
-      `skipping test as server (${varz.version}) doesn't implement required feature from ${version} `,
-    ));
-    await Deno.stdout.write(m);
+    process.stdout.write(
+      `${YELLOW}skipping test as server (${varz.version}) doesn't implement required feature from ${version} ${RESET}`,
+    );
     return true;
   }
   return false;

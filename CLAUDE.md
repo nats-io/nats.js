@@ -22,8 +22,8 @@ development/testing and npm workspace (`package.json`) for Node.js publishing.
 
 ### Other directories
 
-- `test_helpers/` — Shared Deno test utilities (NatsServer launcher, Lock,
-  setup/cleanup helpers)
+- `nst/` — Shared Deno test utilities (NatsServer launcher, Lock, setup/cleanup
+  helpers)
 - `bin/` — Build/release tooling scripts (version checks, CJS import fixer,
   bundler)
 - `docs/` — Generated JSDoc documentation
@@ -138,12 +138,12 @@ the core internals for the Node transport. The Node transport source files omit
 - Assertions from `@std/assert` (`assert`, `assertEquals`, `assertRejects`,
   `assertThrows`, etc.)
 - Tests require a running `nats-server` binary (automatically launched by
-  `test_helpers/launcher.ts`)
+  `nst/launcher.ts`)
 - Test helper pattern:
   `const ns = await NatsServer.start(config); const nc = await connect({port: ns.port}); ... await cleanup(ns, nc);`
-- Or use `setup()` / `cleanup()` helpers from `test_helpers/mod.ts`
+- Or use `setup()` / `cleanup()` helpers from `nst/mod.ts`
 - Each module's tests import `connect` from a local `connect.ts` that re-exports
-  from `test_helpers/connect.ts` (which uses the Deno transport)
+  from `nst/connect.ts` (which uses the Deno transport)
 - JetStream tests use `jetstreamServerConf()` to configure a server with
   JetStream enabled
 

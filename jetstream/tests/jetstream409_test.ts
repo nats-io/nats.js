@@ -18,7 +18,7 @@ import { AckPolicy, jetstream, jetstreamManager } from "../src/mod.ts";
 
 import { assert, assertEquals, assertRejects, fail } from "@std/assert";
 import { initStream } from "./jstest_util.ts";
-import { cleanup, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "nst";
 
 Deno.test("409 - max expires", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));

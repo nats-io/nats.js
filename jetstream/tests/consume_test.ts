@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { cleanup, jetstreamServerConf, setup } from "test_helpers";
+import { cleanup, jetstreamServerConf, setup } from "nst";
 import {
   assert,
   assertEquals,

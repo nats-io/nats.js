@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { cleanup, setup } from "test_helpers";
+import { cleanup, setup } from "nst";
 import type {
   Msg,
   NatsConnectionImpl,
