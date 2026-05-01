@@ -341,6 +341,38 @@ Deno.test("schedules - cancel rejects same subject", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("schedules - schedule and cancelSchedule mutually exclusive", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    await cleanup(ns, nc);
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "mutex",
+    allow_msg_schedules: true,
+    subjects: ["sched.>"],
+  });
+
+  const js = jsm.jetstream();
+  await assertRejects(
+    () =>
+      js.publish("sched.x", "", {
+        schedule: {
+          specification: { every: "1s" },
+          target: "tgt.x",
+        },
+        cancelSchedule: { scheduleSubject: "sched.y" },
+      }),
+    Error,
+    "schedule and cancelSchedule are mutually exclusive",
+  );
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("schedules - rollup header", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
 

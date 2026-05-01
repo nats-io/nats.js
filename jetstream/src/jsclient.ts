@@ -146,6 +146,9 @@ function buildPublishHeaders(
   if (opts.ttl) {
     mh.set(PubHeaders.MessageTTL, `${opts.ttl}`);
   }
+  if (opts.schedule && opts.cancelSchedule) {
+    throw new Error("schedule and cancelSchedule are mutually exclusive");
+  }
   if (opts.schedule) {
     const so = opts.schedule;
     if (so.specification) {
