@@ -80,7 +80,7 @@ delay(15_000).then(() => {
 const sub = nc.subscribe("scheduled.message", {
   // 15s of ticks, + cron + and one shot
   max: 24,
-  callback: (err, msg) => {
+  callback: (_err, msg) => {
     console.log(new Date().toISOString(), msg.subject.split(".").pop());
   },
 });
