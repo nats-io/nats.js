@@ -204,7 +204,12 @@ Framework docs:
 - Vue `<Suspense>` — https://vuejs.org/guide/built-ins/suspense
 - Svelte `{#await}` — https://svelte.dev/docs/svelte/await
 
-See the Next.js and React Native sections below for working examples.
+Working examples (both apply this pattern):
+
+- Next.js —
+  **[aricart/nats-nextjs-example](https://github.com/aricart/nats-nextjs-example)**
+- React Native (Expo) —
+  **[aricart/nats-react-native](https://github.com/aricart/nats-react-native)**
 
 ### CDN
 
@@ -224,8 +229,13 @@ import { Svcm } from "https://esm.run/@nats-io/services";
 
 ### Next.js
 
-Is supported out of the box - if you want to
-[see an example, checkout this repo](https://github.com/aricart/nats-nextjs-example)
+Supported out of the box. The example app demonstrates the singleton + Suspense
+pattern described above and is the recommended starting point:
+
+**[aricart/nats-nextjs-example](https://github.com/aricart/nats-nextjs-example)**
+
+It uses the pages router and loads the NATS client via `next/dynamic` with
+`ssr: false` (the WebSocket only runs in the browser).
 
 ### React Native
 
