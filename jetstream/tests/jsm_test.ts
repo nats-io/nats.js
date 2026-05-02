@@ -52,6 +52,7 @@ import {
   DiscardPolicy,
   jetstream,
   jetstreamManager,
+  JsHeaders,
   StorageType,
 } from "../src/mod.ts";
 import { initStream } from "./jstest_util.ts";
@@ -2852,5 +2853,81 @@ Deno.test("jsm - mirrors can be removed", async () => {
   si = await jsm.streams.update("B", { mirror: undefined });
   assertEquals(si.config.mirror, undefined);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel sets header on stream create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, "4");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel default omits header", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on consumer create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.CONSUMER.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  await jsm.consumers.add("C", {
+    ack_policy: AckPolicy.Explicit,
+    priority_policy: PriorityPolicy.Overflow,
+    priority_groups: ["g1"],
+  });
+
+  assertEquals(await captured, "1");
   await cleanup(ns, nc);
 });

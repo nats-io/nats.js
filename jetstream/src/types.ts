@@ -82,6 +82,14 @@ export type JetStreamManagerOptions = JetStreamOptions & {
    * {@link JetStreamManager.getAccountInfo()}.
    */
   checkAPI?: boolean;
+  /**
+   * @ignore
+   * Send the `Nats-Required-Api-Level` header on stream/consumer create/update
+   * requests when the supplied config uses fields that require a minimum
+   * server API level (per ADR-44). Server rejects with `api level not supported`
+   * if its level is lower, instead of silently dropping unknown fields.
+   */
+  sendRequiredApiLevel?: boolean;
 };
 
 /**
@@ -1542,6 +1550,10 @@ export const JsHeaders = {
    * was not honored
    */
   PendingBytesHdr: "Nats-Pending-Bytes",
+  /**
+   * Asserts a minimum JetStream API level on a JS API request (ADR-44).
+   */
+  RequiredApiLevel: "Nats-Required-Api-Level",
 } as const;
 export type JsHeaders = typeof JsHeaders[keyof typeof JsHeaders];
 

@@ -20,6 +20,7 @@ import {
   Empty,
   errors,
   extend,
+  headers,
   RequestError,
 } from "@nats-io/nats-core/internal";
 import type {
@@ -28,8 +29,9 @@ import type {
   NatsConnectionImpl,
   RequestOptions,
 } from "@nats-io/nats-core/internal";
-import type { ApiResponse } from "./jsapi_types.ts";
-import type { JetStreamOptions } from "./types.ts";
+import type { ApiResponse, ConsumerApiOptions } from "./jsapi_types.ts";
+import { JsHeaders } from "./types.ts";
+import type { JetStreamManagerOptions, JetStreamOptions } from "./types.ts";
 import {
   ConsumerNotFoundError,
   JetStreamApiCodes,
@@ -78,6 +80,11 @@ export type StreamNameBySubject = {
   subject: string;
 };
 
+export type JetStreamApiRequestOptions = RequestOptions & ConsumerApiOptions & {
+  retries?: number;
+  minApiVersion?: number;
+};
+
 export class BaseApiClientImpl {
   nc: NatsConnectionImpl;
   opts: JetStreamOptions;
@@ -98,6 +105,10 @@ export class BaseApiClientImpl {
     return Object.assign({}, this.opts);
   }
 
+  protected sendRequiredApiLevel(): boolean {
+    return (this.opts as JetStreamManagerOptions).sendRequiredApiLevel === true;
+  }
+
   _parseOpts() {
     let prefix = this.opts.apiPrefix;
     if (!prefix || prefix.length === 0) {
@@ -116,31 +127,29 @@ export class BaseApiClientImpl {
   async _request(
     subj: string,
     data: unknown = null,
-    opts?: Partial<RequestOptions> & { retries?: number },
+    opts?: Partial<JetStreamApiRequestOptions>,
   ): Promise<unknown> {
-    opts = opts || {} as RequestOptions;
-    opts.timeout = this.timeout;
+    const { retries: r, minApiVersion, ...rest } = opts ?? {};
+    const reqOpts = { ...rest, timeout: this.timeout } as RequestOptions;
 
     let a: Uint8Array = Empty;
     if (data) {
       a = new TextEncoder().encode(JSON.stringify(data));
     }
 
-    let { retries } = opts as {
-      retries: number;
-    };
+    if (typeof minApiVersion === "number") {
+      const h = reqOpts.headers ?? headers();
+      h.set(JsHeaders.RequiredApiLevel, minApiVersion.toString());
+      reqOpts.headers = h;
+    }
 
-    retries = retries || 1;
+    let retries = r || 1;
     retries = retries === -1 ? Number.MAX_SAFE_INTEGER : retries;
     const bo = backoff();
 
     for (let i = 0; i < retries; i++) {
       try {
-        const m = await this.nc.request(
-          subj,
-          a,
-          opts as RequestOptions,
-        );
+        const m = await this.nc.request(subj, a, reqOpts);
         return this.parseJsResponse(m);
       } catch (err) {
         const re = err instanceof RequestError ? err as RequestError : null;

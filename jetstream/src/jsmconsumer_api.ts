@@ -12,7 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import {
+  BaseApiClientImpl,
+  type JetStreamApiRequestOptions,
+} from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import {
   minValidation,
@@ -30,7 +33,6 @@ import {
   InvalidArgumentError,
 } from "@nats-io/nats-core/internal";
 import type {
-  ConsumerApiOptions,
   ConsumerConfig,
   ConsumerCreateOptions,
   ConsumerInfo,
@@ -57,7 +59,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   async addUpdate(
     stream: string,
     cfg: ConsumerConfig,
-    opts: ConsumerApiOptions,
+    opts: Partial<JetStreamApiRequestOptions>,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
     opts = opts || {};
@@ -160,8 +162,36 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
         : `${this.prefix}.CONSUMER.CREATE.${stream}`;
     }
 
-    const r = await this._request(subj, cr);
+    const r = await this._request(
+      subj,
+      cr,
+      { ...opts, ...this.requiredApiOpts(cr.config) },
+    );
     return r as ConsumerInfo;
+  }
+
+  // mirrors server/jetstream_versioning.go:setStaticConsumerMetadata
+  private minConsumerApi(c: Partial<ConsumerConfig>): number {
+    if (typeof c.pause_until === "string" && c.pause_until !== "") return 1;
+    if (
+      c.priority_policy !== undefined &&
+      c.priority_policy !== PriorityPolicy.None
+    ) return 1;
+    if (typeof c.priority_timeout === "number" && c.priority_timeout > 0) {
+      return 1;
+    }
+    if (Array.isArray(c.priority_groups) && c.priority_groups.length > 0) {
+      return 1;
+    }
+    return 0;
+  }
+
+  private requiredApiOpts(
+    c: Partial<ConsumerConfig>,
+  ): Partial<JetStreamApiRequestOptions> {
+    if (!this.sendRequiredApiLevel()) return {};
+    const minApiVersion = this.minConsumerApi(c);
+    return minApiVersion > 0 ? { minApiVersion } : {};
   }
 
   add(
