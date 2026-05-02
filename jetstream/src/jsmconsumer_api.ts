@@ -60,6 +60,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     stream: string,
     cfg: ConsumerConfig,
     opts: Partial<JetStreamApiRequestOptions>,
+    delta?: Partial<ConsumerConfig>,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
     opts = opts || {};
@@ -162,10 +163,14 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
         : `${this.prefix}.CONSUMER.CREATE.${stream}`;
     }
 
+    // when called from update(), assert api level only on the partial delta
+    // so unrelated edits to a consumer that already has level-1 fields don't
+    // send a spurious Nats-Required-Api-Level header
+    const assertCfg = delta ?? cr.config;
     const r = await this._request(
       subj,
       cr,
-      { ...opts, ...this.requiredApiOpts(cr.config) },
+      { ...opts, ...this.requiredApiOpts(assertCfg) },
     );
     return r as ConsumerInfo;
   }
@@ -221,6 +226,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
       stream,
       Object.assign(ci.config, changable),
       { action: ConsumerApiAction.Update },
+      changable,
     );
   }
 
