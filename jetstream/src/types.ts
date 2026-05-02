@@ -35,6 +35,7 @@ import type {
 import type {
   ConsumerConfig,
   ConsumerInfo,
+  ConsumerResetResponse,
   ConsumerUpdateConfig,
   DirectBatchOptions,
   DirectMsgRequest,
@@ -491,6 +492,26 @@ export type ConsumerAPI = {
    * @param group
    */
   unpin(stream: string, name: string, group: string): Promise<void>;
+
+  /**
+   * Resets the consumer's delivery state without deleting and recreating
+   * it. If `seq` is provided, the next message delivered will have a
+   * stream sequence >= seq. If omitted, state is reset but the ack floor
+   * stream sequence is preserved.
+   *
+   * Requires server v2.14.0+. Only allowed on consumers configured with
+   * `DeliverPolicy=all`, `by_start_sequence`, or `by_start_time`. See
+   * ADR-60.
+   *
+   * @param stream
+   * @param name
+   * @param seq optional stream sequence to reset to
+   */
+  reset(
+    stream: string,
+    name: string,
+    seq?: number,
+  ): Promise<ConsumerResetResponse>;
 };
 
 /**
@@ -1502,6 +1523,27 @@ export type Stream = {
    * @param erase - default is true
    */
   deleteMessage(seq: number, erase?: boolean): Promise<boolean>;
+
+  /**
+   * Resets the named consumer's delivery state. See {@link ConsumerAPI.reset}
+   * for the underlying behavior, version requirements, and policy
+   * constraints.
+   *
+   * IMPORTANT: this is an admin operation. In-flight `consume()`,
+   * `fetch()`, `next()`, or push subscriptions on the consumer are NOT
+   * coordinated by this call. Buffered messages from the prior delivery
+   * may still be yielded, and re-delivered messages will have a delivery
+   * sequence restarting from 1 — looking like a gap. Ordered consumers
+   * detect the gap and recreate themselves; non-ordered consumers should
+   * be stopped and restarted by the caller after a reset.
+   *
+   * @param name consumer name or durable
+   * @param seq optional stream sequence to reset to
+   */
+  resetConsumer(
+    name: string,
+    seq?: number,
+  ): Promise<ConsumerResetResponse>;
 };
 
 export const JsHeaders = {

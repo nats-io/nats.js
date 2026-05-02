@@ -35,6 +35,7 @@ import type {
   ConsumerCreateOptions,
   ConsumerInfo,
   ConsumerListResponse,
+  ConsumerResetResponse,
   ConsumerUpdateConfig,
   CreateConsumerRequest,
   PriorityGroups,
@@ -255,6 +256,32 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   unpin(stream: string, name: string, group: string): Promise<void> {
     const subj = `${this.prefix}.CONSUMER.UNPIN.${stream}.${name}`;
     return this._request(subj, { group }) as Promise<void>;
+  }
+
+  async reset(
+    stream: string,
+    name: string,
+    seq?: number,
+  ): Promise<ConsumerResetResponse> {
+    validateStreamName(stream);
+    validateDurableName(name);
+    const nci = this.nc as unknown as NatsConnectionImpl;
+    const { min, ok } = nci.features.get(Feature.JS_CONSUMER_RESET);
+    if (!ok) {
+      throw new Error(`consumer reset requires server ${min}`);
+    }
+    // seq === 0 is intentionally allowed: server treats it the same as an
+    // empty body and resets the consumer to ack_floor + 1 (ADR-60).
+    if (typeof seq === "number" && (!Number.isInteger(seq) || seq < 0)) {
+      throw InvalidArgumentError.format(
+        "seq",
+        "must be a non-negative integer",
+      );
+    }
+    const subj = `${this.prefix}.CONSUMER.RESET.${stream}.${name}`;
+    const body = typeof seq === "number" ? { seq } : undefined;
+    const r = await this._request(subj, body);
+    return r as ConsumerResetResponse;
   }
 }
 

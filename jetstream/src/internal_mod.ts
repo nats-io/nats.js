@@ -129,6 +129,7 @@ export type {
   ConsumerConfig,
   ConsumerCreateOptions,
   ConsumerInfo,
+  ConsumerResetResponse,
   ConsumerUpdateConfig,
   DirectBatch,
   DirectBatchLimits,
