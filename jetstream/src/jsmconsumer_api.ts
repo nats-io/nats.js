@@ -265,7 +265,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   ): Promise<ConsumerResetResponse> {
     validateStreamName(stream);
     validateDurableName(name);
-    const nci = this.nc as NatsConnectionImpl;
+    const nci = this.nc as unknown as NatsConnectionImpl;
     const { min, ok } = nci.features.get(Feature.JS_CONSUMER_RESET);
     if (!ok) {
       throw new Error(`consumer reset requires server ${min}`);
