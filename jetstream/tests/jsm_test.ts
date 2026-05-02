@@ -46,7 +46,6 @@ import type {
   StreamConfig,
   StreamInfo,
   StreamSource,
-  StreamUpdateConfig,
 } from "../src/mod.ts";
 import {
   AckPolicy,
@@ -2780,7 +2779,6 @@ Deno.test("jsm - stream message ttls", async () => {
 
   await assertRejects(
     () => {
-      //@ts-expect-error: this is a test
       return jsm.streams.update("A", { allow_msg_ttl: false });
     },
     Error,
@@ -2951,10 +2949,7 @@ Deno.test("jsm - sendRequiredApiLevel header on stream update", async () => {
     max: 1,
   });
 
-  await jsm.streams.update(
-    "FI",
-    { allow_batched: true } as unknown as Partial<StreamUpdateConfig>,
-  );
+  await jsm.streams.update("FI", { allow_batched: true });
 
   assertEquals(await captured, "4");
   await cleanup(ns, nc);
