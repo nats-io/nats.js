@@ -54,6 +54,7 @@ export const Feature = {
   JS_DEFAULT_CONSUMER_LIMITS: "js_default_consumer_limits",
   JS_BATCH_DIRECT_GET: "js_batch_direct_get",
   JS_PRIORITY_GROUPS: "js_priority_groups",
+  JS_CONSUMER_RESET: "js_consumer_reset",
 } as const;
 
 export type Feature = typeof Feature[keyof typeof Feature];
@@ -115,6 +116,7 @@ export class Features {
     this.set(Feature.JS_DEFAULT_CONSUMER_LIMITS, "2.10.0");
     this.set(Feature.JS_BATCH_DIRECT_GET, "2.11.0");
     this.set(Feature.JS_PRIORITY_GROUPS, "2.11.0");
+    this.set(Feature.JS_CONSUMER_RESET, "2.14.0");
 
     this.disabled.forEach((f) => {
       this.features.delete(f);

@@ -916,6 +916,20 @@ export type ConsumerListResponse = ApiResponse & ApiPaged & {
   consumers: ConsumerInfo[];
 };
 
+/**
+ * Response from `$JS.API.CONSUMER.RESET` containing the reset
+ * ConsumerInfo plus the stream sequence the consumer was reset to.
+ *
+ * Requires server v2.14.0+. See ADR-60.
+ */
+export type ConsumerResetResponse = ConsumerInfo & {
+  /**
+   * The stream sequence the consumer was reset to. The next
+   * message delivered will have sequence >= reset_seq.
+   */
+  reset_seq: number;
+};
+
 export type StreamListResponse = ApiResponse & ApiPaged & {
   streams: StreamInfo[];
 };

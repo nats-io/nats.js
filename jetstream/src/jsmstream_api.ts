@@ -61,6 +61,7 @@ import type {
   ApiPagedRequest,
   ConsumerConfig,
   ConsumerInfo,
+  ConsumerResetResponse,
   ExternalStream,
   MsgDeleteRequest,
   MsgRequest,
@@ -397,6 +398,14 @@ export class StreamImpl implements Stream {
 
   deleteMessage(seq: number, erase = true): Promise<boolean> {
     return this.api.deleteMessage(this.name, seq, erase);
+  }
+
+  resetConsumer(
+    name: string,
+    seq?: number,
+  ): Promise<ConsumerResetResponse> {
+    return new ConsumerAPIImpl(this.api.nc, this.api.opts)
+      .reset(this.name, name, seq);
   }
 }
 
