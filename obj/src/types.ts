@@ -199,6 +199,19 @@ export type ObjectStoreOptions = {
    * servers 2.10.x and better.
    */
   compression?: boolean;
+  /**
+   * Opt out of fast-ingest (batched publishes) for this bucket. By default, when
+   * the server supports it (api_lvl >= 4, nats-server 2.14+), the underlying
+   * stream is created with `allow_batched: true` and `put` operations pipeline
+   * chunks through a batch for higher throughput. Set to `true` to keep the
+   * legacy per-chunk synchronous publish path.
+   *
+   * Only honored on bucket create — `Objm.open()` enables fast ingest only when
+   * `check=true` (the default) and the underlying stream has
+   * `allow_batched: true`. When `check=false`, fast ingest is disabled because
+   * capability cannot be inferred without a probe.
+   */
+  disableFastIngest?: boolean;
 };
 /**
  * An object that allows reading the object stored under a specified name.
