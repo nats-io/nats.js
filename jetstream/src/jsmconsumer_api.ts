@@ -270,6 +270,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     if (!ok) {
       throw new Error(`consumer reset requires server ${min}`);
     }
+    // seq === 0 is intentionally allowed: server treats it the same as an
+    // empty body and resets the consumer to ack_floor + 1 (ADR-60).
     if (typeof seq === "number" && (!Number.isInteger(seq) || seq < 0)) {
       throw InvalidArgumentError.format(
         "seq",
