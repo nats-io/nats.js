@@ -40,6 +40,7 @@ import {
 import type {
   ConsumerConfig,
   ConsumerInfo,
+  ConsumerUpdateConfig,
   Lister,
   PubAck,
   StreamConfig,
@@ -52,6 +53,7 @@ import {
   DiscardPolicy,
   jetstream,
   jetstreamManager,
+  JsHeaders,
   StorageType,
 } from "../src/mod.ts";
 import { initStream } from "./jstest_util.ts";
@@ -2777,7 +2779,6 @@ Deno.test("jsm - stream message ttls", async () => {
 
   await assertRejects(
     () => {
-      //@ts-expect-error: this is a test
       return jsm.streams.update("A", { allow_msg_ttl: false });
     },
     Error,
@@ -2852,5 +2853,208 @@ Deno.test("jsm - mirrors can be removed", async () => {
   si = await jsm.streams.update("B", { mirror: undefined });
   assertEquals(si.config.mirror, undefined);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel sets header on stream create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, "4");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel default omits header", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on consumer create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.CONSUMER.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  await jsm.consumers.add("C", {
+    ack_policy: AckPolicy.Explicit,
+    priority_policy: PriorityPolicy.Overflow,
+    priority_groups: ["g1"],
+  });
+
+  assertEquals(await captured, "1");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on stream update", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "FI", subjects: ["fi"] });
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.UPDATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  await jsm.streams.update("FI", { allow_batched: true });
+
+  assertEquals(await captured, "4");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel stream update no header when delta plain", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  // stream already has a level-4 field set
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.UPDATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  // delta touches an unrelated field — header must not be sent
+  await jsm.streams.update("FI", { description: "updated" });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on consumer update", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  await jsm.consumers.add("C", {
+    durable_name: "d",
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const captured = deferred<string | null>();
+  const sub = nc.subscribe("$JS.API.CONSUMER.>");
+  (async () => {
+    for await (const msg of sub) {
+      // ignore INFO lookups issued by update() before the actual CREATE
+      if (msg.subject.includes(".CREATE.")) {
+        captured.resolve(
+          msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null,
+        );
+        sub.unsubscribe();
+        return;
+      }
+    }
+  })();
+
+  await jsm.consumers.update("C", "d", {
+    description: "paused",
+    pause_until: new Date(Date.now() + 60_000).toISOString(),
+  } as unknown as Partial<ConsumerUpdateConfig>);
+
+  assertEquals(await captured, "1");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel consumer update unrelated edit no header", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  // consumer already has a level-1 field set at creation
+  await jsm.consumers.add("C", {
+    durable_name: "d",
+    ack_policy: AckPolicy.Explicit,
+    priority_policy: PriorityPolicy.Overflow,
+    priority_groups: ["g1"],
+  });
+
+  const captured = deferred<string | null>();
+  const sub = nc.subscribe("$JS.API.CONSUMER.>");
+  (async () => {
+    for await (const msg of sub) {
+      // ignore INFO lookups issued by update() before the actual CREATE
+      if (msg.subject.includes(".CREATE.")) {
+        captured.resolve(
+          msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null,
+        );
+        sub.unsubscribe();
+        return;
+      }
+    }
+  })();
+
+  // delta touches an unrelated field — header must not be sent
+  await jsm.consumers.update("C", "d", { description: "edited" });
+
+  assertEquals(await captured, null);
   await cleanup(ns, nc);
 });
