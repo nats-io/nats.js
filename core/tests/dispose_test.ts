@@ -178,7 +178,7 @@ Deno.test("dispose - script use", async () => {
       for await (const _ of sub) {
         console.log("sub", counter, "got message");
       }
-    })().catch();
+    })().catch((_) => {});
 
     sub.closed.then(() => {
       console.log("sub", counter, "closed");
