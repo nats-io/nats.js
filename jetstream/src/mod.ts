@@ -69,6 +69,7 @@ export type {
   ConsumerNotFound,
   ConsumerNotification,
   ConsumerPinned,
+  ConsumerResetResponse,
   Consumers,
   ConsumerUnpinned,
   ConsumerUpdateConfig,
