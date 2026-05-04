@@ -21,3 +21,7 @@ export {
   Base64UrlCodec,
   Base64UrlPaddedCodec,
 } from "./internal_mod.ts";
+
+export type { Sha256Backend } from "./internal_mod.ts";
+
+export { getSha256Backend, setSha256Backend } from "./internal_mod.ts";

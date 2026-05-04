@@ -43,6 +43,7 @@ import type {
   ObjectWatchInfo,
 } from "../src/types.ts";
 import {
+  DiscardPolicy,
   jetstream,
   jetstreamManager,
   type PushConsumer,
@@ -51,6 +52,7 @@ import {
 import { equals } from "@std/bytes";
 import { digestType, type ObjectStoreImpl, Objm } from "../src/objectstore.ts";
 import { Base64UrlPaddedCodec } from "../src/base64.ts";
+import { setSha256Backend } from "../src/sha256.ts";
 import { sha256 } from "js-sha256";
 
 function readableStreamFrom(data: Uint8Array): ReadableStream<Uint8Array> {
@@ -1365,6 +1367,230 @@ Deno.test("objectstore - watcherPrefix", async () => {
   const { config: { deliver_subject } } = await oc.info(true);
 
   assertEquals(deliver_subject?.split(".")[0], "hello");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - fast ingest enabled by default", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const objm = new Objm(nc);
+  const os = await objm.create("FI") as ObjectStoreImpl;
+  assertEquals(os.supportsFastIngest, true);
+
+  const jsm = await jetstreamManager(nc);
+  const si = await jsm.streams.info("OBJ_FI");
+  assertEquals(si.config.allow_batched, true);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - disableFastIngest opts out", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const objm = new Objm(nc);
+  const os = await objm.create("NOFI", {
+    disableFastIngest: true,
+  }) as ObjectStoreImpl;
+  assertEquals(os.supportsFastIngest, false);
+
+  const jsm = await jetstreamManager(nc);
+  const si = await jsm.streams.info("OBJ_NOFI");
+  assertEquals(si.config.allow_batched ?? false, false);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - disableFastIngest honored on existing FI bucket", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const objm = new Objm(nc);
+  // first create the bucket WITH fast ingest
+  const fiBucket = await objm.create("EXISTFI") as ObjectStoreImpl;
+  assertEquals(fiBucket.supportsFastIngest, true);
+
+  // re-open via create() with disableFastIngest — stream config still has
+  // allow_batched=true, but the caller opted out so this instance must
+  // not use fast ingest
+  const optOutBucket = await objm.create("EXISTFI", {
+    disableFastIngest: true,
+  }) as ObjectStoreImpl;
+  assertEquals(optOutBucket.supportsFastIngest, false);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - open(check=false) disables fast ingest", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const objm = new Objm(nc);
+  // bucket exists with allow_batched=true on the underlying stream
+  const created = await objm.create("PROBE") as ObjectStoreImpl;
+  assertEquals(created.supportsFastIngest, true);
+
+  // open with check=true picks up the stream's allow_batched flag
+  const probed = await objm.open("PROBE", true) as ObjectStoreImpl;
+  assertEquals(probed.supportsFastIngest, true);
+
+  // open with check=false skips the probe, so capability is unknown — fall
+  // back to the safe default (legacy publish path always works)
+  const noProbe = await objm.open("PROBE", false) as ObjectStoreImpl;
+  assertEquals(noProbe.supportsFastIngest, false);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - fast ingest multi-chunk roundtrip", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  // size that forces multiple chunks at the default 128 KiB chunk size
+  const blob = makeData(512 * 1024 + 31);
+
+  const objm = new Objm(nc);
+  const os = await objm.create("FIBLOB") as ObjectStoreImpl;
+  assertEquals(os.supportsFastIngest, true);
+
+  const oi = await os.put(
+    { name: "BLOB" },
+    readableStreamFrom(blob),
+  );
+  assert(oi.chunks > 1);
+  assertEquals(oi.size, blob.length);
+  assertEquals(oi.digest, digest(blob));
+
+  const or = await os.get("BLOB");
+  assertExists(or);
+  const read = await fromReadableStream(or!.data);
+  assert(equals(read, blob));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - cross-read: writes with FI readable without FI", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const blob = makeData(300 * 1024);
+  const blobDigest = digest(blob);
+
+  // write with FI enabled (default)
+  const objm = new Objm(nc);
+  const fiBucket = await objm.create("XR_FI") as ObjectStoreImpl;
+  assertEquals(fiBucket.supportsFastIngest, true);
+  const fiOi = await fiBucket.put({ name: "data" }, readableStreamFrom(blob));
+
+  // write with FI disabled — same payload
+  const noFiBucket = await objm.create("XR_NOFI", {
+    disableFastIngest: true,
+  }) as ObjectStoreImpl;
+  assertEquals(noFiBucket.supportsFastIngest, false);
+  const noFiOi = await noFiBucket.put(
+    { name: "data" },
+    readableStreamFrom(blob),
+  );
+
+  // both writes must produce the same digest as the source data
+  assertEquals(fiOi.digest, blobDigest);
+  assertEquals(noFiOi.digest, blobDigest);
+
+  // round-trip both buckets — bytes must match the source byte-for-byte
+  for (const bucket of [fiBucket, noFiBucket]) {
+    const or = await bucket.get("data");
+    assertExists(or);
+    const read = await fromReadableStream(or!.data);
+    assert(equals(read, blob));
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - cross-read: native-sha write readable, js-sha read verifies digest", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const blob = makeData(200 * 1024);
+
+  const objm = new Objm(nc);
+
+  try {
+    // write under native sha
+    setSha256Backend("native");
+    const os = await objm.create("XS") as ObjectStoreImpl;
+    const oi = await os.put({ name: "data" }, readableStreamFrom(blob));
+    assertEquals(oi.digest, digest(blob));
+
+    // read under js sha — digest verification on get() must still pass
+    setSha256Backend("js");
+    const or = await os.get("data");
+    assertExists(or);
+    const read = await fromReadableStream(or!.data);
+    assert(equals(read, blob));
+
+    // and the reverse: write js, read native
+    setSha256Backend("js");
+    const os2 = await objm.create("XS2") as ObjectStoreImpl;
+    const oi2 = await os2.put({ name: "data" }, readableStreamFrom(blob));
+    assertEquals(oi2.digest, digest(blob));
+
+    setSha256Backend("native");
+    const or2 = await os2.get("data");
+    assertExists(or2);
+    const read2 = await fromReadableStream(or2!.data);
+    assert(equals(read2, blob));
+  } finally {
+    setSha256Backend("js");
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("objectstore - existing bucket without allow_batched uses legacy path", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  // pre-create the OBJ stream by hand without allow_batched
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "OBJ_LEGACY",
+    subjects: ["$O.LEGACY.C.>", "$O.LEGACY.M.>"],
+    allow_direct: true,
+    allow_rollup_hdrs: true,
+    discard: DiscardPolicy.New,
+  });
+
+  const objm = new Objm(nc);
+  const os = await objm.open("LEGACY") as ObjectStoreImpl;
+  assertEquals(os.supportsFastIngest, false);
+
+  const blob = makeData(300 * 1024);
+  const oi = await os.put({ name: "X" }, readableStreamFrom(blob));
+  assertEquals(oi.digest, digest(blob));
+
+  const or = await os.get("X");
+  assertExists(or);
+  const read = await fromReadableStream(or!.data);
+  assert(equals(read, blob));
 
   await cleanup(ns, nc);
 });
