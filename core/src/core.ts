@@ -223,6 +223,13 @@ export interface ServerInfo {
    * The nats-server version
    */
   version: string;
+  /**
+   * JetStream API level advertised by the server. Present on servers that
+   * support API level negotiation (nats-server 2.11+). Use to gate features
+   * gated by API level (e.g. fast ingest requires `api_lvl >= 4`, available
+   * in nats-server 2.14+).
+   */
+  "api_lvl"?: number;
 }
 
 export interface Server {

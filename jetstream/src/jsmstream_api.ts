@@ -33,7 +33,10 @@ import {
   nuid,
   TD,
 } from "@nats-io/nats-core/internal";
-import type { StreamNames } from "./jsbaseclient_api.ts";
+import type {
+  JetStreamApiRequestOptions,
+  StreamNames,
+} from "./jsbaseclient_api.ts";
 import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import { minValidation, validateStreamName } from "./jsutil.ts";
@@ -78,7 +81,7 @@ import type {
   StreamUpdateConfig,
   SuccessResponse,
 } from "./jsapi_types.ts";
-import { AckPolicy, DeliverPolicy } from "./jsapi_types.ts";
+import { AckPolicy, DeliverPolicy, PersistMode } from "./jsapi_types.ts";
 import { PullConsumerImpl } from "./consumer.ts";
 import { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 import type { PushConsumerInternalOptions } from "./pushconsumer.ts";
@@ -466,6 +469,31 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     }
   }
 
+  // mirrors server/jetstream_versioning.go:setStaticStreamMetadata
+  private minStreamApi(c: Partial<StreamConfig>): number {
+    if (c.allow_batched === true) return 4;
+    if (
+      c.allow_msg_counter === true ||
+      c.allow_atomic === true ||
+      c.allow_msg_schedules === true ||
+      c.persist_mode === PersistMode.Async
+    ) return 2;
+    if (
+      c.allow_msg_ttl === true ||
+      (typeof c.subject_delete_marker_ttl === "number" &&
+        c.subject_delete_marker_ttl > 0)
+    ) return 1;
+    return 0;
+  }
+
+  private requiredApiOpts(
+    c: Partial<StreamConfig>,
+  ): Partial<JetStreamApiRequestOptions> {
+    if (!this.sendRequiredApiLevel()) return {};
+    const minApiVersion = this.minStreamApi(c);
+    return minApiVersion > 0 ? { minApiVersion } : {};
+  }
+
   async add(
     cfg: WithRequired<Partial<StreamConfig>, "name">,
   ): Promise<StreamInfo> {
@@ -474,9 +502,11 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     cfg.mirror = convertStreamSourceDomain(cfg.mirror);
     //@ts-ignore: the sources are either set or not - so no item should be undefined in the list
     cfg.sources = cfg.sources?.map(convertStreamSourceDomain);
+
     const r = await this._request(
       `${this.prefix}.STREAM.CREATE.${cfg.name}`,
       cfg,
+      this.requiredApiOpts(cfg),
     );
     const si = r as StreamInfo;
     this._fixInfo(si);
@@ -514,6 +544,7 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
     const r = await this._request(
       `${this.prefix}.STREAM.UPDATE.${name}`,
       update,
+      this.requiredApiOpts(cfg),
     );
     const si = r as StreamInfo;
     this._fixInfo(si);

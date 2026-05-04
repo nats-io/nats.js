@@ -169,34 +169,14 @@ export type StreamConfig = StreamUpdateConfig & {
   "first_seq": number;
 
   /**
-   * Enables allows header initiated per-message TTLs. If disabled, then the `NATS-TTL`
-   * header will be ignored.
-   */
-  "allow_msg_ttl": boolean;
-
-  /**
-   * Enables a NATS stream implementation of CRDT operations
+   * Enables a NATS stream implementation of CRDT operations.
+   * Cannot be changed once the stream is created.
    */
   "allow_msg_counter": boolean;
 
   /**
-   * Enables the scheduling of messages in a stream.
-   */
-  "allow_msg_schedules": boolean;
-
-  /**
-   * Enables the ability to send atomic batches to the stream
-   */
-  "allow_atomic": boolean;
-
-  /**
-   * Enables the ability to send batched messages to the stream
-   */
-  "allow_batched": boolean;
-
-  /**
    * Sets the persistence model for the stream - the default is PersistMode.Default.
-   * This is a 2.12 feature.
+   * This is a 2.12 feature. Cannot be changed once the stream is created.
    */
   "persist_mode": PersistMode;
 };
@@ -323,6 +303,27 @@ export type StreamUpdateConfig = {
    * When a mirror is configured subjects and sources must be empty.
    */
   mirror?: StreamSource; // same as a source
+
+  /**
+   * Enables allows header initiated per-message TTLs. If disabled, then the `NATS-TTL`
+   * header will be ignored.
+   */
+  "allow_msg_ttl"?: boolean;
+
+  /**
+   * Enables the scheduling of messages in a stream.
+   */
+  "allow_msg_schedules"?: boolean;
+
+  /**
+   * Enables the ability to send atomic batches to the stream.
+   */
+  "allow_atomic"?: boolean;
+
+  /**
+   * Enables the ability to send batched messages to the stream.
+   */
+  "allow_batched"?: boolean;
 };
 
 export type Republish = {
