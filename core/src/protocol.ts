@@ -260,6 +260,17 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
     return this.drained;
   }
 
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (this.protocol.isClosed() || this.isClosed()) {
+      return;
+    }
+    if (this.drained) {
+      await this.drained;
+      return;
+    }
+    await this.drain();
+  }
+
   isDraining(): boolean {
     return this.draining;
   }

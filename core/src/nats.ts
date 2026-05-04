@@ -487,6 +487,17 @@ export class NatsConnectionImpl implements NatsConnection {
     return this.protocol.drain();
   }
 
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (this.isClosed()) {
+      return;
+    }
+    if (this.isDraining()) {
+      await this.closed();
+      return;
+    }
+    await this.drain();
+  }
+
   isClosed(): boolean {
     return this.protocol.isClosed();
   }

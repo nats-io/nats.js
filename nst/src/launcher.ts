@@ -303,6 +303,10 @@ export class NatsServer implements PortInfo {
     await Promise.all(cleanups);
   }
 
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.stop(true);
+  }
+
   signal(signal: string): Promise<void> {
     if (signal === ServerSignals.KILL) {
       return this.stop();

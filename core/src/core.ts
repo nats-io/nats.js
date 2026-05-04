@@ -447,6 +447,13 @@ export interface NatsConnection {
   drain(): Promise<void>;
 
   /**
+   * Implements the `AsyncDisposable` protocol so the connection can be used
+   * with `await using`. Equivalent to calling {@link drain}; if the connection
+   * is already closed or draining, resolves without error.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
+
+  /**
    * Returns true if the client is closed.
    */
   isClosed(): boolean;
@@ -607,6 +614,13 @@ export interface Subscription extends AsyncIterable<Msg> {
    * when the subscription finished draining.
    */
   drain(): Promise<void>;
+
+  /**
+   * Implements the `AsyncDisposable` protocol so the subscription can be used
+   * with `await using`. Equivalent to calling {@link drain}; if the
+   * subscription is already closed or draining, resolves without error.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
 
   /**
    * Returns true if the subscription is draining.
