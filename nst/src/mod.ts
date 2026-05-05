@@ -103,15 +103,27 @@ export function wsServerConf(opts: unknown = {}): Record<string, unknown> {
   return Object.assign(wsopts(), opts);
 }
 
+export type SetupContext = {
+  ns: NatsServer;
+  nc: NatsConnection;
+  [Symbol.asyncDispose](): Promise<void>;
+};
+
 export async function setup(
   serverConf?: Record<string, unknown>,
   clientOpts?: Partial<ConnectionOptions>,
-): Promise<{ ns: NatsServer; nc: NatsConnection }> {
+): Promise<SetupContext> {
   const dt = serverConf as { debug?: boolean; trace?: boolean };
   const debug = !!(dt && (dt.debug || dt.trace));
   const ns = await NatsServer.start(serverConf, debug);
   const nc = await ns.connect(clientOpts);
-  return { ns, nc };
+  return {
+    ns,
+    nc,
+    [Symbol.asyncDispose]() {
+      return cleanup(ns, nc);
+    },
+  };
 }
 
 export async function cleanup(
