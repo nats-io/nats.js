@@ -125,16 +125,43 @@ export class Objm {
    * @param name
    * @param check - if set to false, it will not check if the ObjectStore exists.
    */
-  async open(name: string, check = true): Promise<ObjectStore> {
+  async open(
+    name: string,
+    check: boolean | { check?: boolean } = true,
+  ): Promise<ObjectStore> {
+    let doInfo = true;
+    let allowBatched = false;
+    if (typeof check === "boolean") {
+      doInfo = check;
+    } else {
+      // internal/undocumented opt-in: callers can pass { allowBatched: true }.
+      // if they also pass check:false, we intentionally skip probing stream config
+      // and let capability mismatches fail later
+      const o = check as Record<string, unknown>;
+      doInfo = o.check === true;
+      allowBatched = o.allowBatched === true;
+    }
+    const apiLvl = this.js.nc.info?.api_lvl ?? 0;
+    if (allowBatched && apiLvl < 4) {
+      return Promise.reject(
+        new Error("server does not support batched publishes"),
+      );
+    }
     const jsm = await this.js.jetstreamManager();
     const os = new ObjectStoreImpl(name, jsm, this.js);
     os.stream = objectStoreStreamName(name);
-    if (check) {
-      const status = await os.status();
-      os.supportsFastIngest = status.streamInfo.config.allow_batched === true;
+    if (doInfo) {
+      const info = await os._si();
+      if (info === null) {
+        return Promise.reject(new Error("object store not found"));
+      }
+      if (allowBatched && info.config.allow_batched !== true) {
+        return Promise.reject(
+          new Error("existing bucket does not support batched publishes"),
+        );
+      }
     }
-    // when check=false we skip the capability probe; supportsFastIngest stays
-    // at its default (false) — safer than assuming the server supports it
+    os.allowBatched = allowBatched;
     return os;
   }
 
@@ -340,7 +367,7 @@ export class ObjectStoreImpl implements ObjectStore {
   js: JetStreamClientImpl;
   stream!: string;
   name: string;
-  supportsFastIngest = false;
+  allowBatched = false;
 
   constructor(name: string, jsm: JetStreamManager, js: JetStreamClientImpl) {
     this.name = name;
@@ -479,7 +506,7 @@ export class ObjectStoreImpl implements ObjectStore {
     let fi: FastIngest | null = null;
 
     const publishChunk = async (payload: Uint8Array): Promise<void> => {
-      if (this.supportsFastIngest) {
+      if (this.allowBatched) {
         if (!fi) {
           fi = await startFastIngest(this.js.nc, chunkSubj, payload, {
             allowGaps: false,
@@ -963,9 +990,10 @@ export class ObjectStoreImpl implements ObjectStore {
     // servers 2.12+ reject unknown properties
     const { replicas } = opts;
     delete opts.replicas;
-    // disableFastIngest is an objectstore concept; do not forward to stream config
-    const disableFastIngest = opts.disableFastIngest === true;
-    delete opts.disableFastIngest;
+
+    const o = opts as Record<string, unknown>;
+    this.allowBatched = o.allowBatched === true;
+    delete o.allowBatched;
 
     // pacify the tsc compiler downstream
     const sc = Object.assign({ max_age }, opts) as unknown as StreamConfig;
@@ -975,9 +1003,14 @@ export class ObjectStoreImpl implements ObjectStore {
     sc.num_replicas = replicas || 1;
     sc.discard = DiscardPolicy.New;
     sc.subjects = [`$O.${this.name}.C.>`, `$O.${this.name}.M.>`];
-    // api_lvl >= 4 ⇒ nats-server 2.14+ supports allow_batched (fast ingest)
+
     const apiLvl = this.js.nc.info?.api_lvl ?? 0;
-    if (apiLvl >= 4 && !disableFastIngest) {
+    if (this.allowBatched) {
+      if (apiLvl < 4) {
+        return Promise.reject(
+          new Error("server does not support batched publishes"),
+        );
+      }
       sc.allow_batched = true;
     }
     if (opts.placement) {
@@ -1002,6 +1035,12 @@ export class ObjectStoreImpl implements ObjectStore {
         throw err;
       }
     }
+    // if the server doesn't return it - not supported
+    if (this.allowBatched && si.config.allow_batched !== true) {
+      return Promise.reject(
+        new Error("existing bucket does not support batched publishes"),
+      );
+    }
     return si;
   }
 
@@ -1012,15 +1051,7 @@ export class ObjectStoreImpl implements ObjectStore {
   ): Promise<ObjectStore> {
     const jsm = await js.jetstreamManager();
     const os = new ObjectStoreImpl(name, jsm, js);
-    // snapshot before init() — init() deletes the flag from opts when it
-    // strips objectstore-only options out of the stream config
-    const disableFastIngest = opts.disableFastIngest === true;
-    const si = await os.init(opts);
-    // honor disableFastIngest at runtime even if an existing bucket already
-    // has allow_batched=true (init() returns the existing config when the
-    // stream is reused across calls)
-    os.supportsFastIngest = !disableFastIngest &&
-      si.config.allow_batched === true;
+    await os.init(opts);
     return os;
   }
 }
