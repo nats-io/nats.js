@@ -36,6 +36,6 @@
   },
   "imports": {
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.0.3",
-    "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.3"
+    "@nats-io/nuid": "jsr:@nats-io/nuid@3.0.0-0"
   }
 }

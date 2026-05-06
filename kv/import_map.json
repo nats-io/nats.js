@@ -6,7 +6,7 @@
     "@nats-io/jetstream/internal": "jsr:@nats-io/jetstream@3.4.0-0/internal",
     "nst": "../nst/src/mod.ts",
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.0.3",
-    "@nats-io/nuid": "jsr:@nats-io/nuid@2.0.3",
+    "@nats-io/nuid": "jsr:@nats-io/nuid@3.0.0-0",
     "@std/io": "jsr:@std/io@0.225.2"
   }
 }

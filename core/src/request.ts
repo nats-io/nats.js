@@ -13,9 +13,8 @@
  * limitations under the License.
  */
 import type { Deferred, Timeout } from "./util.ts";
-import { deferred, timeout } from "./util.ts";
+import { deferred, randomToken, timeout } from "./util.ts";
 import type { MuxSubscription } from "./muxsubscription.ts";
-import { nuid } from "./nuid.ts";
 import type {
   Msg,
   Request,
@@ -39,7 +38,7 @@ export class BaseRequest {
     this.mux = mux;
     this.requestSubject = requestSubject;
     this.received = 0;
-    this.token = nuid.next();
+    this.token = randomToken();
     if (asyncTraces) {
       this.ctx = new RequestError();
     }
