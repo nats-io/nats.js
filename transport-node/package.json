@@ -56,13 +56,13 @@
   "dependencies": {
     "@nats-io/nats-core": "3.4.0-0",
     "@nats-io/nkeys": "2.0.3",
-    "@nats-io/nuid": "2.0.3"
+    "@nats-io/nuid": "3.0.0-0"
   },
   "devDependencies": {
     "@nats-io/jetstream": "3.4.0-0",
     "@nats-io/kv": "3.4.0-0",
-    "@nats-io/obj": "3.4.0-0",
     "@nats-io/nst": "3.4.0-0",
+    "@nats-io/obj": "3.4.0-0",
     "@types/node": "^25.0.0",
     "minimist": "^1.2.8",
     "shx": "^0.4.0",

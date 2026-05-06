@@ -34,7 +34,7 @@
   "description": "nats-core library - this library implements all the base functionality for NATS javascript clients",
   "dependencies": {
     "@nats-io/nkeys": "2.0.3",
-    "@nats-io/nuid": "2.0.3"
+    "@nats-io/nuid": "3.0.0-0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

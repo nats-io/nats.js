@@ -47,6 +47,7 @@ export {
   nuid,
   PermissionViolationError,
   ProtocolError,
+  randomToken,
   RequestError,
   syncIterator,
   TimeoutError,

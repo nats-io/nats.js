@@ -15,6 +15,7 @@
 
 export { NatsConnectionImpl } from "./nats.ts";
 export { Nuid, nuid } from "./nuid.ts";
+export { randomToken } from "./util.ts";
 
 export { MsgImpl } from "./msg.ts";
 export { getResolveFn, setTransportFactory } from "./transport.ts";
