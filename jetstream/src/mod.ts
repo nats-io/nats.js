@@ -154,6 +154,7 @@ export type {
   StreamAPI,
   StreamConfig,
   StreamConsumerLimits,
+  StreamConsumerSource,
   StreamExpectations,
   StreamInfo,
   StreamInfoRequestOptions,

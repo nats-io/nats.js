@@ -387,6 +387,29 @@ export type StreamSource = {
    * This feature only supported on 2.10.x and better.
    */
   subject_transforms?: SubjectTransformConfig[];
+  /**
+   * Configures durable sourcing using a pre-created consumer. When set, the
+   * server uses the named durable consumer instead of an ephemeral ordered
+   * consumer. Required for reliable mirroring/sourcing of WorkQueue or
+   * Interest streams. Available on server 2.14+ (ADR-60).
+   */
+  consumer?: StreamConsumerSource;
+};
+
+/**
+ * Identifies a pre-created durable consumer used for stream
+ * sourcing/mirroring. See ADR-60.
+ */
+export type StreamConsumerSource = {
+  /**
+   * Name of the durable consumer to use.
+   */
+  name: string;
+  /**
+   * Subject the server delivers messages to. Optional - server will
+   * generate one if not provided.
+   */
+  deliver_subject?: string;
 };
 
 export type Placement = {
@@ -484,6 +507,11 @@ export const AckPolicy = {
    * All sequences must be explicitly acknowledged
    */
   Explicit: "explicit",
+  /**
+   * Functions like AckAll, but acks based on flow control responses. Used
+   * for durable mirror/source consumers (ADR-60). Available on server 2.14+.
+   */
+  FlowControl: "flow_control",
   /**
    * @ignore
    */

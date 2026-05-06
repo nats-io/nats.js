@@ -43,7 +43,7 @@ import type {
   PriorityGroups,
   SuccessResponse,
 } from "./jsapi_types.ts";
-import { ConsumerApiAction, PriorityPolicy } from "./jsapi_types.ts";
+import { AckPolicy, ConsumerApiAction, PriorityPolicy } from "./jsapi_types.ts";
 
 import type {
   ConsumerAPI,
@@ -178,6 +178,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
 
   // mirrors server/jetstream_versioning.go:setStaticConsumerMetadata
   private minConsumerApi(c: Partial<ConsumerConfig>): number {
+    if (c.ack_policy === AckPolicy.FlowControl) return 4;
     if (typeof c.pause_until === "string" && c.pause_until !== "") return 1;
     if (
       c.priority_policy !== undefined &&
