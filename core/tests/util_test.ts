@@ -20,6 +20,7 @@ import {
   deferred,
   millis,
   nanos,
+  randomToken,
   SimpleMutex,
 } from "../src/util.ts";
 import { TimeoutError } from "../src/errors.ts";
@@ -75,4 +76,22 @@ Deno.test("util - debug deferred", async () => {
     d.reject("hello world");
     return d;
   });
+});
+
+Deno.test("util - randomToken shape", () => {
+  // Must be exactly 8 chars, all in [0-9A-Za-z]. No '.' (would break the
+  // `_INBOX.<nuid>.*` mux subscription's single-token wildcard match).
+  const re = /^[0-9A-Za-z]{8}$/;
+  for (let i = 0; i < 1000; i++) {
+    const t = randomToken();
+    assertEquals(t.length, 8);
+    assert(re.test(t), `bad token: ${JSON.stringify(t)}`);
+  }
+});
+
+Deno.test("util - randomToken uniqueness", () => {
+  // 62^8 ≈ 2.18e14 space; 10k draws should produce ~zero collisions.
+  const seen = new Set<string>();
+  for (let i = 0; i < 10000; i++) seen.add(randomToken());
+  assert(seen.size > 9990, `near-unique expected, got ${seen.size}/10000`);
 });
