@@ -3058,3 +3058,141 @@ Deno.test("jsm - sendRequiredApiLevel consumer update unrelated edit no header",
   assertEquals(await captured, null);
   await cleanup(ns, nc);
 });
+
+Deno.test("jsm - mirror/source consumer (ADR-60)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  const js = jetstream(nc);
+
+  await jsm.streams.add({ name: "O", subjects: ["o.>"] });
+
+  // server auto-sets flow_control + 1s heartbeat when ack_policy is flow_control
+  const sourcingCfg = {
+    ack_policy: AckPolicy.FlowControl,
+    idle_heartbeat: nanos(1000),
+  };
+  await Promise.all([
+    jsm.consumers.add("O", {
+      durable_name: "C",
+      deliver_subject: "deliver.mirror",
+      ...sourcingCfg,
+    }),
+    jsm.consumers.add("O", {
+      durable_name: "C2",
+      deliver_subject: "deliver.source",
+      ...sourcingCfg,
+    }),
+  ]);
+
+  const [mi, si] = await Promise.all([
+    jsm.streams.add({
+      name: "M",
+      mirror: {
+        name: "O",
+        consumer: { name: "C", deliver_subject: "deliver.mirror" },
+      },
+    }),
+    jsm.streams.add({
+      name: "S",
+      sources: [{
+        name: "O",
+        consumer: { name: "C2", deliver_subject: "deliver.source" },
+      }],
+    }),
+  ]);
+  assertExists(mi.config.mirror?.consumer);
+  assertEquals(mi.config.mirror?.consumer.name, "C");
+  assertEquals(mi.config.mirror?.consumer.deliver_subject, "deliver.mirror");
+  assertExists(si.config.sources?.[0].consumer);
+  assertEquals(si.config.sources?.[0].consumer?.name, "C2");
+  assertEquals(
+    si.config.sources?.[0].consumer?.deliver_subject,
+    "deliver.source",
+  );
+
+  await Promise.all([
+    js.publish("o.a", "1"),
+    js.publish("o.b", "2"),
+    js.publish("o.c", "3"),
+  ]);
+
+  const wantMsgs = async (stream: string, n: number) => {
+    for (let i = 0; i < 50; i++) {
+      const info = await jsm.streams.info(stream);
+      if (info.state.messages >= n) return;
+      await delay(100);
+    }
+    fail(`${stream} did not reach ${n} messages`);
+  };
+  await Promise.all([wantMsgs("M", 3), wantMsgs("S", 3)]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - mirror/source consumer requires name and deliver_subject (ADR-60)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "O", subjects: ["o.>"] });
+
+  // mirror: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M1",
+        mirror: { name: "O", consumer: { name: "", deliver_subject: "d.x" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // mirror: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M2",
+        mirror: { name: "O", consumer: { name: "C", deliver_subject: "" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // source: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S1",
+        sources: [{
+          name: "O",
+          consumer: { name: "", deliver_subject: "d.x" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
+
+  // source: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S2",
+        sources: [{
+          name: "O",
+          consumer: { name: "C", deliver_subject: "" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
+
+  await cleanup(ns, nc);
+});

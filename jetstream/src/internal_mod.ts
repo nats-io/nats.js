@@ -171,6 +171,7 @@ export type {
   StreamAlternate,
   StreamConfig,
   StreamConsumerLimits,
+  StreamConsumerSource,
   StreamInfo,
   StreamListResponse,
   StreamSource,
