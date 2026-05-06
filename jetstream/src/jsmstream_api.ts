@@ -480,7 +480,11 @@ export class StreamAPIImpl extends BaseApiClientImpl implements StreamAPI {
 
   // mirrors server/jetstream_versioning.go:setStaticStreamMetadata
   private minStreamApi(c: Partial<StreamConfig>): number {
-    if (c.allow_batched === true) return 4;
+    if (
+      c.allow_batched === true ||
+      c.mirror?.consumer ||
+      c.sources?.some((s) => s.consumer)
+    ) return 4;
     if (
       c.allow_msg_counter === true ||
       c.allow_atomic === true ||

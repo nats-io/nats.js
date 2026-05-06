@@ -3133,3 +3133,66 @@ Deno.test("jsm - mirror/source consumer (ADR-60)", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("jsm - mirror/source consumer requires name and deliver_subject (ADR-60)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "O", subjects: ["o.>"] });
+
+  // mirror: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M1",
+        mirror: { name: "O", consumer: { name: "", deliver_subject: "d.x" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // mirror: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M2",
+        mirror: { name: "O", consumer: { name: "C", deliver_subject: "" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // source: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S1",
+        sources: [{
+          name: "O",
+          consumer: { name: "", deliver_subject: "d.x" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
+
+  // source: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S2",
+        sources: [{
+          name: "O",
+          consumer: { name: "C", deliver_subject: "" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
+
+  await cleanup(ns, nc);
+});

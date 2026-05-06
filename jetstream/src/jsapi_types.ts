@@ -398,18 +398,20 @@ export type StreamSource = {
 
 /**
  * Identifies a pre-created durable consumer used for stream
- * sourcing/mirroring. See ADR-60.
+ * sourcing/mirroring. The referenced consumer must exist before the stream
+ * is created and must use `ack_policy: "flow_control"` — any other policy
+ * (`none`, `explicit`, `all`) is rejected by the server. See ADR-60.
  */
 export type StreamConsumerSource = {
   /**
-   * Name of the durable consumer to use.
+   * Name of the pre-created consumer to use.
    */
   name: string;
   /**
-   * Subject the server delivers messages to. Optional - server will
-   * generate one if not provided.
+   * Subject the server delivers messages to. Must match the
+   * `deliver_subject` of the pre-created consumer.
    */
-  deliver_subject?: string;
+  deliver_subject: string;
 };
 
 export type Placement = {
