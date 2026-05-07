@@ -69,6 +69,15 @@ const ERR_RECONNECT_HANDLER_FAILED =
   "client option reconnectToServer handler failed";
 const ERR_RECONNECT_HANDLER_NOT_IN_POOL = "returned server is not in the pool";
 
+function isDelayedServer(
+  x: unknown,
+): x is { server: Server; delay: number } {
+  return (
+    x !== null && typeof x === "object" &&
+    "server" in x && "delay" in x
+  );
+}
+
 export class Connect {
   echo?: boolean;
   no_responders?: boolean;
@@ -681,13 +690,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
               ctl,
             );
             let picked: Server | null;
-            if (
-              r !== null && typeof r === "object" &&
-              "server" in r && "delay" in r
-            ) {
+            if (isDelayedServer(r)) {
               picked = r.server;
-              extraDelay = typeof r.delay === "number" &&
-                  Number.isFinite(r.delay) && r.delay > 0
+              extraDelay = Number.isFinite(r.delay) && r.delay > 0
                 ? Math.floor(r.delay)
                 : 0;
             } else {
