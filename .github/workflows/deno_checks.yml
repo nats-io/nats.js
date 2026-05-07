@@ -23,7 +23,7 @@ jobs:
           deno-version: ${{ matrix.deno-version }}
 
       - name: Install nats-server
-        uses: aricart/install-binary@v1.0.0
+        uses: aricart/install-binary@v2.0.0
         with:
           repo: nats-io/nats-server
           name: nats-server
