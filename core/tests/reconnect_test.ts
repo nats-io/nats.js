@@ -553,29 +553,6 @@ Deno.test("reconnectToServer - throws on reconnect closes connection", async () 
   assertStringIncludes((err as Error).message, "boom-reconnect");
 });
 
-Deno.test("reconnectToServer - ctl.setServers routes initial connect to new pool", async () => {
-  await using target = await NatsServer.start();
-  await using bogus = await NatsServer.start();
-  await bogus.stop();
-  let replaced = false;
-  const nc = await connect({
-    port: bogus.port,
-    waitOnFirstConnect: true,
-    reconnectTimeWait: 100,
-    maxReconnectAttempts: -1,
-    reconnectToServer: (pool, _info, ctl) => {
-      if (!replaced) {
-        replaced = true;
-        const fresh = ctl.setServers([`127.0.0.1:${target.port}`]);
-        return fresh[0];
-      }
-      return pool[0];
-    },
-  });
-  assertEquals(nc.getServer(), `127.0.0.1:${target.port}`);
-  await nc.close();
-});
-
 Deno.test("reconnectToServer - picks chosen server on reconnect", async () => {
   await using ns0 = await NatsServer.start();
   await using ns1 = await NatsServer.start();

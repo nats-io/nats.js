@@ -245,20 +245,11 @@ export interface Server {
 }
 
 /**
- * @hidden
- */
-export interface ServerSelectionContext {
-  setServers(servers: string[]): ReadonlyArray<Server>;
-}
-
-/**
- * @hidden
- *
  * ReconnectToServerHandler is invoked on every connection attempt (initial
  * connect and reconnects). It receives a snapshot of the current server pool,
- * with the server the client would have selected at index 0, the most recent
- * ServerInfo (null on initial connect, before any INFO has been received),
- * and a ServerSelectionContext for optionally replacing the pool.
+ * with the server the client would have selected at index 0, and the most
+ * recent ServerInfo (null on initial connect, before any INFO has been
+ * received).
  *
  * Return one of:
  *   - a `Server` from the (possibly mutated) pool: the client will dial it
@@ -284,7 +275,6 @@ export interface ServerSelectionContext {
 export type ReconnectToServerHandler = (
   pool: ReadonlyArray<Server>,
   info: ServerInfo | null,
-  ctl: ServerSelectionContext,
 ) => Server | { server: Server; delay: number } | null;
 
 /**
@@ -1053,8 +1043,6 @@ export interface ConnectionOptions {
   resolve?: boolean;
 
   /**
-   * @hidden
-   *
    * Optional handler invoked on every connection attempt to choose which
    * server the client should dial next. See {@link ReconnectToServerHandler}.
    */
