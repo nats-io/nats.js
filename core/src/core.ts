@@ -245,13 +245,6 @@ export interface Server {
 }
 
 /**
- * @hidden
- */
-export interface ServerSelectionContext {
-  setServers(servers: string[]): ReadonlyArray<Server>;
-}
-
-/**
  * ReconnectToServerHandler is invoked on every connection attempt (initial
  * connect and reconnects). It receives a snapshot of the current server pool,
  * with the server the client would have selected at index 0, and the most
@@ -282,7 +275,6 @@ export interface ServerSelectionContext {
 export type ReconnectToServerHandler = (
   pool: ReadonlyArray<Server>,
   info: ServerInfo | null,
-  ctl: ServerSelectionContext,
 ) => Server | { server: Server; delay: number } | null;
 
 /**

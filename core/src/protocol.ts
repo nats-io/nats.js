@@ -39,7 +39,6 @@ import type {
   Request,
   Server,
   ServerInfo,
-  ServerSelectionContext,
   Status,
   Subscription,
   SubscriptionOptions,
@@ -676,18 +675,11 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         let target = srv;
         let extraDelay = 0;
         if (this.options.reconnectToServer) {
-          const ctl: ServerSelectionContext = {
-            setServers: (servers: string[]): ReadonlyArray<Server> => {
-              this.servers.setServers(servers);
-              return this.servers.snapshotForHandler();
-            },
-          };
           try {
             const snap = this.servers.snapshotForHandler();
             const r = this.options.reconnectToServer(
               snap,
               this.info ?? null,
-              ctl,
             );
             let picked: Server | null;
             if (isDelayedServer(r)) {
@@ -706,16 +698,6 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
               if (found !== srv) {
                 target = found;
                 this.servers.setCurrent(target);
-                this.server = target;
-              }
-            } else {
-              // picked === null = "use default selection". If the handler
-              // also called ctl.setServers(), srv may not be in the new
-              // pool; fall back to whatever the pool currently considers
-              // the default (the head it advanced to on replacement).
-              const cur = this.servers.getCurrentServer();
-              if (cur !== srv) {
-                target = cur;
                 this.server = target;
               }
             }

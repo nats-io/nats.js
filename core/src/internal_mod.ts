@@ -111,6 +111,7 @@ export type {
   QueuedIterator,
   ReconnectingStatus,
   ReconnectStatus,
+  ReconnectToServerHandler,
   Request,
   RequestManyOptions,
   RequestOptions,
