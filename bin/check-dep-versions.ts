@@ -37,6 +37,27 @@ type Imports = {
   imports: Record<string, string>;
 };
 
+function updateJsrImport(
+  imports: Record<string, string>,
+  module: string,
+  version: SemVer,
+  hasFn: (m: string) => SemVer | null,
+): boolean {
+  let changed = false;
+  const have = hasFn(module);
+  if (have && version.compare(have) !== 0) {
+    imports[module] = `jsr:${module}@${version.string()}`;
+    changed = true;
+  }
+  const internalModule = `${module}/internal`;
+  const haveInternal = hasFn(internalModule);
+  if (haveInternal && version.compare(haveInternal) !== 0) {
+    imports[internalModule] = `jsr:${module}@${version.string()}/internal`;
+    changed = true;
+  }
+  return changed;
+}
+
 class ImportMap {
   data: Imports;
   changed: boolean;
@@ -71,23 +92,13 @@ class ImportMap {
   }
 
   update(module: string, version: SemVer): boolean {
-    let changed = false;
-    if (this.data.imports) {
-      const have = this.has(module);
-      if (have && version.compare(have) !== 0) {
-        this.data.imports[module] = `jsr:${module}@${version.string()}`;
-        changed = true;
-      }
-      const internalModule = `${module}/internal`;
-      const haveInternal = this.has(internalModule);
-      if (haveInternal && version.compare(haveInternal) !== 0) {
-        this.data.imports[internalModule] =
-          `jsr:${module}@${version.string()}/internal`;
-        changed = true;
-      }
-      return changed;
-    }
-    return false;
+    if (!this.data.imports) return false;
+    return updateJsrImport(
+      this.data.imports,
+      module,
+      version,
+      (m) => this.has(m),
+    );
   }
 
   store(dir: string): Promise<void> {
@@ -149,15 +160,15 @@ class DenoModule extends BaseModule {
   }
 
   update(module: string, version: SemVer): boolean {
-    if (this.data.imports) {
-      const have = this.has(module);
-      if (have && version.compare(have) !== 0) {
-        this.data.imports[module] = `jsr:${module}@${version.string()}`;
-        this.changed = true;
-        return true;
-      }
-    }
-    return false;
+    if (!this.data.imports) return false;
+    const changed = updateJsrImport(
+      this.data.imports,
+      module,
+      version,
+      (m) => this.has(m),
+    );
+    if (changed) this.changed = true;
+    return changed;
   }
 
   static parseVersion(v: string): SemVer | null {
