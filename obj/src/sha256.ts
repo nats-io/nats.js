@@ -83,9 +83,9 @@ function jsFactory(): StreamingSha256 {
 async function init(): Promise<void> {
   if (factory) return;
   if (backend === "native") {
-    // indirect specifier — keeps static bundlers from trying to inline this
-    const spec = "node:crypto";
-    const m = await import(spec) as {
+    // `node:` prefix is recognized by browser bundlers as a node builtin and
+    // externalized; literal specifier required for JSR static analysis
+    const m = await import("node:crypto") as {
       createHash?: (alg: string) => NodeHash;
     };
     if (typeof m?.createHash !== "function") {
