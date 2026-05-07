@@ -223,7 +223,14 @@ export class Servers {
       hp = urlParseFn ? urlParseFn(hp) : hp;
       const { listen } = hostPort(hp);
       const surviving = existing.get(listen);
-      merged.push(surviving ?? new ServerImpl(hp));
+      if (surviving) {
+        // user-supplied = not gossiped. otherwise a later cluster update()
+        // could remove an entry the user explicitly asked for.
+        surviving.gossiped = false;
+        merged.push(surviving);
+      } else {
+        merged.push(new ServerImpl(hp));
+      }
     }
     if (this.randomize) shuffle(merged);
 

@@ -708,6 +708,16 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
                 this.servers.setCurrent(target);
                 this.server = target;
               }
+            } else {
+              // picked === null = "use default selection". If the handler
+              // also called ctl.setServers(), srv may not be in the new
+              // pool; fall back to whatever the pool currently considers
+              // the default (the head it advanced to on replacement).
+              const cur = this.servers.getCurrentServer();
+              if (cur !== srv) {
+                target = cur;
+                this.server = target;
+              }
             }
           } catch (cause) {
             const c = cause instanceof Error ? cause : new Error(String(cause));
