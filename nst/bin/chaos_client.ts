@@ -67,6 +67,7 @@ type ClientState = {
   stateEnteredAt: number;
   disconnects: number;
   currentServer: string;
+  heartbeatTimer?: ReturnType<typeof setInterval>;
 };
 
 const clients: ClientState[] = [];
@@ -140,10 +141,10 @@ async function spawnClient(id: number): Promise<ClientState> {
           break;
       }
     }
-  })().then();
+  })().catch(() => {});
   const subj = `_CHAOS.${id}.hb`;
   nc.subscribe(subj, { callback: () => {} });
-  setInterval(() => {
+  c.heartbeatTimer = setInterval(() => {
     try {
       nc.publish(subj);
     } catch {
@@ -161,13 +162,12 @@ function render(): void {
       fmtDuration(Date.now() - startedAt)
     }`,
   );
-  // legend only contains servers currently known to at least one client's
-  // pool, so cluster topology changes prune stale entries. Labels stay
+  // legend only contains servers currently held by at least one client.
+  // Stale entries from old clusters drop on the next render. Labels stay
   // stable across the run (assigned once via registerServer).
   const live = new Set<string>();
   for (const c of clients) {
     if (c.state === "C" && c.currentServer) live.add(c.currentServer);
-    for (const s of c.nc.getServers()) live.add(s.listen);
   }
   if (live.size > 0) {
     const sep = "   ";
@@ -252,6 +252,9 @@ const renderTimer = setInterval(() => {
 
 const shutdown = async () => {
   clearInterval(renderTimer);
+  for (const c of clients) {
+    if (c.heartbeatTimer !== undefined) clearInterval(c.heartbeatTimer);
+  }
   await Promise.all(clients.map((c) => c.nc.close()));
   if (isTty) clearScreen();
   console.log(`shutdown: ${clients.length} clients`);
@@ -265,11 +268,14 @@ const shutdown = async () => {
   Deno.exit(0);
 };
 
-Deno.addSignalListener("SIGINT", () => {
-  shutdown();
-});
-Deno.addSignalListener("SIGTERM", () => {
-  shutdown();
-});
+const onSignal = () => {
+  shutdown().catch((e) => {
+    console.error(e);
+    Deno.exit(1);
+  });
+};
+
+Deno.addSignalListener("SIGINT", onSignal);
+Deno.addSignalListener("SIGTERM", onSignal);
 
 render();
