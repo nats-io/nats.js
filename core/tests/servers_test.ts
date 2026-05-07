@@ -18,10 +18,11 @@ import {
   setTransportFactory,
 } from "../src/internal_mod.ts";
 import type { ServerInfo } from "../src/internal_mod.ts";
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 Deno.test("servers - single", () => {
-  const servers = new Servers(["127.0.0.1:4222"], { randomize: false });
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["127.0.0.1:4222"]);
   assertEquals(servers.length(), 1);
   assertEquals(servers.getServers().length, 1);
   assertEquals(servers.getCurrentServer().listen, "127.0.0.1:4222");
@@ -35,7 +36,8 @@ Deno.test("servers - single", () => {
 });
 
 Deno.test("servers - multiples", () => {
-  const servers = new Servers(["h:1", "h:2"], { randomize: false });
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["h:1", "h:2"]);
   assertEquals(servers.length(), 2);
   assertEquals(servers.getServers().length, 2);
   assertEquals(servers.getCurrentServer().listen, "h:1");
@@ -58,7 +60,8 @@ function servInfo(): ServerInfo {
 }
 
 Deno.test("servers - add/delete", () => {
-  const servers = new Servers(["127.0.0.1:4222"], { randomize: false });
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["127.0.0.1:4222"]);
   assertEquals(servers.length(), 1);
   let ce = servers.update(Object.assign(servInfo(), { connect_urls: ["h:1"] }));
   assertEquals(ce.added.length, 1);
@@ -85,7 +88,8 @@ Deno.test("servers - url parse fn", () => {
     return `x://${s}`;
   };
   setTransportFactory({ urlParseFn: fn });
-  const s = new Servers(["127.0.0.1:4222"], { randomize: false });
+  const s = new Servers({ randomize: false });
+  s.setServers(["127.0.0.1:4222"]);
   s.update(Object.assign(servInfo(), { connect_urls: ["h:1", "j:2/path"] }));
 
   const servers = s.getServers();
@@ -96,7 +100,8 @@ Deno.test("servers - url parse fn", () => {
 });
 
 Deno.test("servers - save tls name", () => {
-  const servers = new Servers(["h:1", "h:2"], { randomize: false });
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["h:1", "h:2"]);
   servers.addServer("127.1.0.0", true);
   servers.addServer("127.1.2.0", true);
   servers.updateTLSName();
@@ -115,7 +120,8 @@ Deno.test("servers - save tls name", () => {
 
 Deno.test("servers - port 80", () => {
   function t(hp: string, port: number) {
-    const servers = new Servers([hp]);
+    const servers = new Servers();
+    servers.setServers([hp]);
     const s = servers.getCurrentServer();
     assertEquals(s.port, port);
   }
@@ -133,4 +139,57 @@ Deno.test("servers - hostname only", () => {
   assertEquals(isIPV4OrHostname("hostname"), true);
   assertEquals(isIPV4OrHostname("hostname:40"), true);
   assertEquals(isIPV4OrHostname("::ffff:35.234.43.228"), false);
+});
+
+Deno.test("servers - randomize shuffles initial pool", () => {
+  const listens = ["a:1", "b:2", "c:3", "d:4", "e:5", "f:6", "g:7", "h:8"];
+  const orders = new Set<string>();
+  for (let i = 0; i < 20; i++) {
+    const s = new Servers({ randomize: true });
+    s.setServers(listens);
+    orders.add(s.getServers().map((x) => x.listen).join(","));
+  }
+  assert(
+    orders.size > 1,
+    `expected shuffle to produce multiple orders, got ${orders.size}`,
+  );
+});
+
+Deno.test("servers - randomize=false preserves order", () => {
+  const listens = ["a:1", "b:2", "c:3", "d:4"];
+  for (let i = 0; i < 5; i++) {
+    const s = new Servers({ randomize: false });
+    s.setServers(listens);
+    assertEquals(
+      s.getServers().map((x) => x.listen),
+      listens,
+    );
+  }
+});
+
+Deno.test("servers - gossip update shuffles new servers", () => {
+  // pool starts with seed; gossip arrives with multiple new servers.
+  // currentServer (seed) must remain at index 0; the rest must be shuffled.
+  const orders = new Set<string>();
+  const seed = "seed:1";
+  const gossipUrls = ["a:2", "b:3", "c:4", "d:5", "e:6", "f:7", "g:8", "h:9"];
+  for (let i = 0; i < 20; i++) {
+    const s = new Servers({ randomize: true });
+    s.setServers([seed]);
+    const info = {
+      max_payload: 1,
+      client_id: 1,
+      proto: 1,
+      version: "1",
+      connect_urls: gossipUrls,
+    } as ServerInfo;
+    s.update(info);
+    const listed = s.getServers().map((x) => x.listen);
+    assertEquals(listed[0], seed, "seed must stay at head");
+    orders.add(listed.slice(1).join(","));
+  }
+  assert(
+    orders.size > 1,
+    `expected gossip-shuffle to produce multiple orders, got ${orders.size}`,
+  );
 });

@@ -39,6 +39,7 @@ import type {
   Request,
   Server,
   ServerInfo,
+  ServerSelectionContext,
   Status,
   Subscription,
   SubscriptionOptions,
@@ -63,6 +64,19 @@ export const INFO = /^INFO\s+([^\r\n]+)\r\n/i;
 
 const PONG_CMD = encode("PONG\r\n");
 const PING_CMD = encode("PING\r\n");
+
+const ERR_RECONNECT_HANDLER_FAILED =
+  "client option reconnectToServer handler failed";
+const ERR_RECONNECT_HANDLER_NOT_IN_POOL = "returned server is not in the pool";
+
+function isDelayedServer(
+  x: unknown,
+): x is { server: Server; delay: number } {
+  return (
+    x !== null && typeof x === "object" &&
+    "server" in x && "delay" in x
+  );
+}
 
 export class Connect {
   echo?: boolean;
@@ -441,9 +455,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       ? [options.servers]
       : options.servers;
 
-    this.servers = new Servers(servers, {
+    this.servers = new Servers({
       randomize: !options.noRandomize,
     });
+    this.servers.setServers(servers as string[]);
     this.closed = deferred<Error | void>();
     this.parser = new Parser(this);
 
@@ -592,7 +607,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     }
   }
 
-  async _doDial(srv: Server): Promise<void> {
+  async _doDial(srv: ServerImpl): Promise<void> {
     const { resolve } = this.options;
     const alts = await srv.resolve({
       fn: getResolveFn(),
@@ -658,9 +673,67 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       }
       const now = Date.now();
       if (srv.lastConnect === 0 || srv.lastConnect + wait <= now) {
-        srv.lastConnect = Date.now();
+        let target = srv;
+        let extraDelay = 0;
+        if (this.options.reconnectToServer) {
+          const ctl: ServerSelectionContext = {
+            setServers: (servers: string[]): ReadonlyArray<Server> => {
+              this.servers.setServers(servers);
+              return this.servers.snapshotForHandler();
+            },
+          };
+          try {
+            const snap = this.servers.snapshotForHandler();
+            const r = this.options.reconnectToServer(
+              snap,
+              this.info ?? null,
+              ctl,
+            );
+            let picked: Server | null;
+            if (isDelayedServer(r)) {
+              picked = r.server;
+              extraDelay = Number.isFinite(r.delay) && r.delay > 0
+                ? Math.floor(r.delay)
+                : 0;
+            } else {
+              picked = r;
+            }
+            if (picked !== null) {
+              const found = this.servers.find(picked);
+              if (!found) {
+                throw new Error(ERR_RECONNECT_HANDLER_NOT_IN_POOL);
+              }
+              if (found !== srv) {
+                target = found;
+                this.servers.setCurrent(target);
+                this.server = target;
+              }
+            } else {
+              // picked === null = "use default selection". If the handler
+              // also called ctl.setServers(), srv may not be in the new
+              // pool; fall back to whatever the pool currently considers
+              // the default (the head it advanced to on replacement).
+              const cur = this.servers.getCurrentServer();
+              if (cur !== srv) {
+                target = cur;
+                this.server = target;
+              }
+            }
+          } catch (cause) {
+            const c = cause instanceof Error ? cause : new Error(String(cause));
+            throw new errors.ConnectionError(
+              `${ERR_RECONNECT_HANDLER_FAILED}: ${c.message}`,
+              { cause: c },
+            );
+          }
+        }
+        if (extraDelay > 0) {
+          this.dialDelay = delay(extraDelay);
+          await this.dialDelay;
+        }
+        target.lastConnect = Date.now();
         try {
-          await this._doDial(srv);
+          await this._doDial(target);
           break;
         } catch (err) {
           lastError = err as Error;
@@ -670,9 +743,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
             }
             this.servers.removeCurrentServer();
           }
-          srv.reconnects++;
+          target.reconnects++;
           const mra = this.options.maxReconnectAttempts || 0;
-          if (mra !== -1 && srv.reconnects >= mra) {
+          if (mra !== -1 && target.reconnects >= mra) {
             this.servers.removeCurrentServer();
           }
         }

@@ -12,7 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assert, assertEquals, assertInstanceOf, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertInstanceOf,
+  assertRejects,
+  assertStringIncludes,
+  fail,
+} from "@std/assert";
 import { connect } from "./connect.ts";
 import { Lock, NatsServer } from "nst";
 import {
@@ -23,6 +30,7 @@ import {
   delay,
   tokenAuthenticator,
 } from "../src/internal_mod.ts";
+import type { Server } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
 
 import { cleanup, setup } from "nst";
@@ -468,4 +476,185 @@ Deno.test("reconnect - authentication timeout reconnects", async () => {
   assert(!nc.isClosed());
 
   await cleanup(ns, nc);
+});
+
+Deno.test("reconnectToServer - handler invoked on initial connect", async () => {
+  let calls = 0;
+  let lastPoolLen = -1;
+  await using ctx = await setup({}, {
+    reconnectToServer: (pool) => {
+      calls++;
+      lastPoolLen = pool.length;
+      return pool[0];
+    },
+  });
+  assertEquals(calls, 1);
+  assertEquals(lastPoolLen, 1);
+  assert(!ctx.nc.isClosed());
+  assertEquals(ctx.nc.getServer(), `127.0.0.1:${ctx.ns.port}`);
+});
+
+Deno.test("reconnectToServer - returning null uses default", async () => {
+  await using ctx = await setup({}, {
+    reconnectToServer: () => null,
+  });
+  assertEquals(ctx.nc.getServer(), `127.0.0.1:${ctx.ns.port}`);
+});
+
+Deno.test("reconnectToServer - handler throws rejects connect()", async () => {
+  await using ns = await NatsServer.start();
+  await assertRejects(
+    () =>
+      ns.connect({
+        reconnectToServer: () => {
+          throw new Error("boom");
+        },
+      }),
+    ConnectionError,
+    "client option reconnectToServer handler failed: boom",
+  );
+});
+
+Deno.test("reconnectToServer - out-of-pool rejects connect()", async () => {
+  await using ns = await NatsServer.start();
+  const fake: Server = {
+    hostname: "9.9.9.9",
+    port: 9999,
+    listen: "9.9.9.9:9999",
+    src: "9.9.9.9:9999",
+    tlsName: "",
+    reconnects: 0,
+    lastConnect: 0,
+    gossiped: false,
+    didConnect: false,
+  };
+  await assertRejects(
+    () => ns.connect({ reconnectToServer: () => fake }),
+    ConnectionError,
+    "client option reconnectToServer handler failed: returned server is not in the pool",
+  );
+});
+
+Deno.test("reconnectToServer - throws on reconnect closes connection", async () => {
+  await using ns = await NatsServer.start();
+  let calls = 0;
+  const nc = await ns.connect({
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+    reconnectToServer: (pool) => {
+      calls++;
+      if (calls === 1) return pool[0];
+      throw new Error("boom-reconnect");
+    },
+  });
+  await ns.stop();
+  const err = await nc.closed();
+  assertInstanceOf(err, ConnectionError);
+  assertStringIncludes((err as Error).message, "boom-reconnect");
+});
+
+Deno.test("reconnectToServer - ctl.setServers routes initial connect to new pool", async () => {
+  await using target = await NatsServer.start();
+  await using bogus = await NatsServer.start();
+  await bogus.stop();
+  let replaced = false;
+  const nc = await connect({
+    port: bogus.port,
+    waitOnFirstConnect: true,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+    reconnectToServer: (pool, _info, ctl) => {
+      if (!replaced) {
+        replaced = true;
+        const fresh = ctl.setServers([`127.0.0.1:${target.port}`]);
+        return fresh[0];
+      }
+      return pool[0];
+    },
+  });
+  assertEquals(nc.getServer(), `127.0.0.1:${target.port}`);
+  await nc.close();
+});
+
+Deno.test("reconnectToServer - picks chosen server on reconnect", async () => {
+  await using ns0 = await NatsServer.start();
+  await using ns1 = await NatsServer.start();
+  let firstAttempt = true;
+  const nc = await connect({
+    servers: [`127.0.0.1:${ns0.port}`, `127.0.0.1:${ns1.port}`],
+    noRandomize: true,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+    reconnectToServer: (pool) => {
+      if (firstAttempt) {
+        firstAttempt = false;
+        return pool[0];
+      }
+      return pool.find((s) => s.port === ns1.port) ?? pool[0];
+    },
+  });
+  assertEquals(nc.getServer(), `127.0.0.1:${ns0.port}`);
+
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  await ns0.stop();
+  await reconnected;
+  assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
+  await nc.close();
+});
+
+Deno.test("reconnectToServer - {server, delay} return waits before dial", async () => {
+  await using ns = await NatsServer.start();
+  const t0 = Date.now();
+  let elapsedAtDial = -1;
+  const nc = await ns.connect({
+    reconnectToServer: (pool) => {
+      elapsedAtDial = Date.now() - t0;
+      return { server: pool[0], delay: 500 };
+    },
+  });
+  const elapsed = Date.now() - t0;
+  assert(elapsed >= 500, `connect elapsed ${elapsed} < 500ms expected delay`);
+  assert(
+    elapsedAtDial < 500,
+    `handler invoked at ${elapsedAtDial}, expected < 500ms`,
+  );
+  assertEquals(nc.getServer(), `127.0.0.1:${ns.port}`);
+  await nc.close();
+});
+
+Deno.test("setServers - replaces pool and reconnect dials new pool", async () => {
+  await using ns0 = await NatsServer.start();
+  await using ns1 = await NatsServer.start();
+  const nc = await connect({
+    port: ns0.port,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+  assertEquals(nc.getServer(), `127.0.0.1:${ns0.port}`);
+
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  nc.setServers([`127.0.0.1:${ns1.port}`]);
+  await nc.reconnect();
+  await reconnected;
+
+  assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
+  await nc.close();
 });

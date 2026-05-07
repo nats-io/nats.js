@@ -37,6 +37,7 @@ import type {
   QueuedIterator,
   RequestManyOptions,
   RequestOptions,
+  Server,
   ServerInfo,
   Stats,
   Status,
@@ -509,6 +510,14 @@ export class NatsConnectionImpl implements NatsConnection {
   getServer(): string {
     const srv = this.protocol.getServer();
     return srv ? srv.listen : "";
+  }
+
+  setServers(servers: string[]): void {
+    this.protocol.servers.setServers(servers);
+  }
+
+  getServers(): ReadonlyArray<Server> {
+    return this.protocol.servers.snapshot();
   }
 
   status(): AsyncIterable<Status> {

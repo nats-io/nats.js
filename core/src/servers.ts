@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { defaultPort, getUrlParseFn } from "./transport.ts";
+import { getUrlParseFn } from "./transport.ts";
 import { shuffle } from "./util.ts";
 import { isIP } from "./ipparser.ts";
 import type {
@@ -21,7 +21,8 @@ import type {
   ServerInfo,
   ServersChanged,
 } from "./core.ts";
-import { DEFAULT_HOST, DEFAULT_PORT } from "./core.ts";
+import { DEFAULT_PORT } from "./core.ts";
+import { InvalidArgumentError } from "./errors.ts";
 
 export function isIPV4OrHostname(hp: string): boolean {
   // in the wild seeing IPv4s as IPv6s
@@ -188,34 +189,59 @@ export class ServerImpl implements Server {
  */
 export class Servers {
   private firstSelect: boolean;
-  private readonly servers: ServerImpl[];
-  private currentServer: ServerImpl;
+  private servers: ServerImpl[];
+  private currentServer!: ServerImpl;
   private tlsName: string;
   private randomize: boolean;
 
-  constructor(
-    listens: string[] = [],
-    opts: Partial<{ randomize: boolean }> = {},
-  ) {
+  constructor(opts: Partial<{ randomize: boolean }> = {}) {
     this.firstSelect = true;
-    this.servers = [] as ServerImpl[];
+    this.servers = [];
     this.tlsName = "";
     this.randomize = opts.randomize || false;
+  }
 
+  /**
+   * Replace the server pool with the provided list of `host:port` entries.
+   *
+   * Throws `InvalidArgumentError` if `listens` is empty or not an array.
+   *
+   * Note: reconnect attempts continue to follow the configured reconnect
+   * policy, but if every entry in the new pool is unreachable the
+   * connection may be left unable to recover.
+   */
+  setServers(listens: string[]): void {
+    if (!Array.isArray(listens) || listens.length === 0) {
+      throw InvalidArgumentError.format("servers", "cannot be empty");
+    }
     const urlParseFn = getUrlParseFn();
-    if (listens) {
-      listens.forEach((hp) => {
-        hp = urlParseFn ? urlParseFn(hp) : hp;
-        this.servers.push(new ServerImpl(hp));
-      });
-      if (this.randomize) {
-        this.servers = shuffle(this.servers);
+    const existing = new Map<string, ServerImpl>();
+    for (const s of this.servers) existing.set(s.listen, s);
+
+    const merged: ServerImpl[] = [];
+    for (let hp of listens) {
+      hp = urlParseFn ? urlParseFn(hp) : hp;
+      const { listen } = hostPort(hp);
+      const surviving = existing.get(listen);
+      if (surviving) {
+        // user-supplied = not gossiped. otherwise a later cluster update()
+        // could remove an entry the user explicitly asked for.
+        surviving.gossiped = false;
+        merged.push(surviving);
+      } else {
+        merged.push(new ServerImpl(hp));
       }
     }
-    if (this.servers.length === 0) {
-      this.addServer(`${DEFAULT_HOST}:${defaultPort()}`, false);
+    if (this.randomize) shuffle(merged);
+
+    this.servers = merged;
+    if (
+      this.currentServer === undefined ||
+      !merged.includes(this.currentServer)
+    ) {
+      this.currentServer = merged[0];
+      this.firstSelect = true;
     }
-    this.currentServer = this.servers[0];
   }
 
   clear(): void {
@@ -273,6 +299,53 @@ export class Servers {
     }
   }
 
+  /**
+   * Returns a frozen snapshot of the server pool in natural order.
+   * Each entry is a defensive copy — callers cannot mutate pool state.
+   */
+  snapshot(): ReadonlyArray<Server> {
+    return Servers.freezeAll(this.servers);
+  }
+
+  /**
+   * Returns a frozen snapshot of the server pool with the current server
+   * (= next dial candidate) at index 0. Used to present the handler with
+   * the server the library would have selected.
+   */
+  snapshotForHandler(): ReadonlyArray<Server> {
+    const cur = this.currentServer;
+    if (!cur) return this.snapshot();
+    const idx = this.servers.indexOf(cur);
+    if (idx <= 0) return this.snapshot();
+    return Servers.freezeAll(
+      [cur, ...this.servers.slice(0, idx), ...this.servers.slice(idx + 1)],
+    );
+  }
+
+  private static freezeAll(arr: ServerImpl[]): ReadonlyArray<Server> {
+    return arr.map((s) =>
+      Object.freeze<Server>({
+        hostname: s.hostname,
+        port: s.port,
+        listen: s.listen,
+        src: s.src,
+        tlsName: s.tlsName,
+        reconnects: s.reconnects,
+        lastConnect: s.lastConnect,
+        gossiped: s.gossiped,
+        didConnect: s.didConnect,
+      })
+    );
+  }
+
+  find(server: Server): ServerImpl | undefined {
+    return this.servers.find((s) => s.listen === server.listen);
+  }
+
+  setCurrent(server: ServerImpl): void {
+    this.currentServer = server;
+  }
+
   length(): number {
     return this.servers.length;
   }
@@ -325,6 +398,16 @@ export class Servers {
       this.servers.push(v);
       added.push(k);
     });
+
+    // shuffle the pool so reconnect picks distribute across the cluster.
+    // currentServer is held at the head — the live connection isn't
+    // disturbed, but rotation order through the rest is randomized.
+    if (this.randomize && added.length > 0) {
+      const cur = this.currentServer;
+      const others = this.servers.filter((s) => s !== cur);
+      shuffle(others);
+      this.servers = cur ? [cur, ...others] : others;
+    }
 
     return { added, deleted };
   }
