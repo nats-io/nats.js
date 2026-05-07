@@ -36,7 +36,7 @@
   },
   "description": "Internal test helpers for nats.js — not a supported public API",
   "peerDependencies": {
-    "@nats-io/nats-core": "3.4.0-0"
+    "@nats-io/nats-core": "3.4.0-1"
   },
   "devDependencies": {
     "@nats-io/nats-core": "3.4.0-1",

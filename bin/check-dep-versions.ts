@@ -27,6 +27,7 @@ type PackageJSON = {
   version: string;
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
 };
 type DenoJSON = {
   name: string;
@@ -211,19 +212,23 @@ class NodeModule extends BaseModule {
   }
 
   has(module: string): SemVer | null {
-    if (this.data.dependencies) {
-      return NodeModule.parseVersion(
-        this.data.dependencies[module],
-      );
-    }
-    return null;
+    return NodeModule.lookup(this.data.dependencies, module);
   }
 
   hasDev(module: string): SemVer | null {
-    if (this.data.devDependencies) {
-      return NodeModule.parseVersion(
-        this.data.devDependencies[module],
-      );
+    return NodeModule.lookup(this.data.devDependencies, module);
+  }
+
+  hasPeer(module: string): SemVer | null {
+    return NodeModule.lookup(this.data.peerDependencies, module);
+  }
+
+  static lookup(
+    deps: Record<string, string> | undefined,
+    module: string,
+  ): SemVer | null {
+    if (deps) {
+      return NodeModule.parseVersion(deps[module]);
     }
     return null;
   }
@@ -238,25 +243,23 @@ class NodeModule extends BaseModule {
   }
 
   update(module: string, version: SemVer): boolean {
-    if (this.data.dependencies) {
-      const have = this.has(module);
+    const sections: (keyof PackageJSON)[] = [
+      "dependencies",
+      "devDependencies",
+      "peerDependencies",
+    ];
+    for (const section of sections) {
+      const deps = this.data[section] as
+        | Record<string, string>
+        | undefined;
+      if (!deps) continue;
+      const have = NodeModule.lookup(deps, module);
       if (have && version.compare(have) !== 0) {
-        let prefix = this.data.dependencies[module].charAt(0);
+        let prefix = deps[module].charAt(0);
         if (prefix !== "^" && prefix !== "~") {
           prefix = "";
         }
-        this.data.dependencies[module] = `${prefix}${version.string()}`;
-        this.changed = true;
-      }
-    }
-    if (this.data.devDependencies) {
-      const have = this.hasDev(module);
-      if (have && version.compare(have) !== 0) {
-        let prefix = this.data.devDependencies[module].charAt(0);
-        if (prefix !== "^" && prefix !== "~") {
-          prefix = "";
-        }
-        this.data.devDependencies[module] = `${prefix}${version.string()}`;
+        deps[module] = `${prefix}${version.string()}`;
         this.changed = true;
       }
     }
@@ -324,15 +327,20 @@ for (const dir of dirs) {
     }
     const nmm = await NodeModule.load(d);
     if (nmm) {
-      if (nmm.has(moduleName) || nmm.hasDev(moduleName)) {
+      if (
+        nmm.has(moduleName) || nmm.hasDev(moduleName) ||
+        nmm.hasPeer(moduleName)
+      ) {
         nmm.update(moduleName, v);
         await nmm.store(d);
       }
-      const onuid = nmm.has("@nats-io/nuid") || nmm.hasDev("@nats-io/nuid");
+      const onuid = nmm.has("@nats-io/nuid") || nmm.hasDev("@nats-io/nuid") ||
+        nmm.hasPeer("@nats-io/nuid");
       if (onuid) {
         nuid = nuid.max(onuid);
       }
-      const onkeys = nmm.has("@nats-io/nkeys") || nmm.hasDev("@nats-io/nkeys");
+      const onkeys = nmm.has("@nats-io/nkeys") ||
+        nmm.hasDev("@nats-io/nkeys") || nmm.hasPeer("@nats-io/nkeys");
       if (onkeys) {
         nkeys = nkeys.max(onkeys);
       }
@@ -362,11 +370,11 @@ for (const d of dirs) {
   }
   const nmm = await NodeModule.load(d);
   if (nmm) {
-    if (nmm.has("@nats-io/nuid")) {
+    if (nmm.has("@nats-io/nuid") || nmm.hasPeer("@nats-io/nuid")) {
       nmm.update("@nats-io/nuid", nuid);
       await nmm.store(d);
     }
-    if (nmm.has("@nats-io/nkeys")) {
+    if (nmm.has("@nats-io/nkeys") || nmm.hasPeer("@nats-io/nkeys")) {
       nmm.update("@nats-io/nkeys", nkeys);
       await nmm.store(d);
     }
