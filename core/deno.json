@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nats-core",
-  "version": "3.4.0-0",
+  "version": "3.4.0-1",
   "exports": {
     ".": "./src/mod.ts",
     "./internal": "./src/internal_mod.ts"
@@ -36,6 +36,6 @@
   },
   "imports": {
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.0.3",
-    "@nats-io/nuid": "jsr:@nats-io/nuid@3.0.0-0"
+    "@nats-io/nuid": "jsr:@nats-io/nuid@3.0.0"
   }
 }
