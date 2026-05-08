@@ -1,17 +1,19 @@
 <!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>@nats-io/kv</title><meta name="description" content="Documentation for @nats-io/kv"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="index.html" class="title">@nats-io/kv</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><h1>@nats-io/kv</h1></div><div class="tsd-panel tsd-typography"><p><a href="./LICENSE"><img src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg" alt="License"></a>
-<img src="https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg" alt="kv">
+<a href="https://github.com/nats-io/nats.js/actions/workflows/test.yml"><img src="https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg" alt="kv"></a>
 <a href="https://nats-io.github.io/nats.js/kv/index.html"><img src="https://img.shields.io/badge/JSDoc-reference-blue" alt="JSDoc"></a></p>
 <p><a href="https://jsr.io/@nats-io/kv"><img src="https://jsr.io/badges/@nats-io/kv" alt="JSR"></a>
 <a href="https://jsr.io/@nats-io/kv"><img src="https://jsr.io/badges/@nats-io/kv/score" alt="JSR"></a></p>
 <p><a href="https://www.npmjs.com/package/@nats-io/kv"><img src="https://img.shields.io/npm/v/%40nats-io%2Fkv" alt="NPM Version"></a>
-<img src="https://img.shields.io/npm/dt/%40nats-io%2Fkv" alt="NPM Downloads">
-<img src="https://img.shields.io/npm/dm/%40nats-io%2Fkv" alt="NPM Downloads"></p>
-<h1 id="kv" class="tsd-anchor-link">kv<a href="#kv" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h1><p>The kv module implements the NATS KV functionality using JetStream for
+<a href="https://www.npmjs.com/package/@nats-io/kv"><img src="https://img.shields.io/npm/dt/%40nats-io%2Fkv" alt="NPM Downloads"></a>
+<a href="https://www.npmjs.com/package/@nats-io/kv"><img src="https://img.shields.io/npm/dm/%40nats-io%2Fkv" alt="NPM Downloads"></a></p>
+<h1 id="kv" class="tsd-anchor-link">kv<a href="#kv" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h1>
+<p>The kv module implements the NATS KV functionality using JetStream for
 JavaScript clients. JetStream clients can use streams to store and access data.
 KV is materialized view that presents a different <em>API</em> to interact with the
 data stored in a stream using the API for a Key-Value store which should be
 familiar to many application developers.</p>
-<h2 id="installation" class="tsd-anchor-link">Installation<a href="#installation" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2><p>For a quick overview of the libraries and how to install them, see
+<h2 id="installation" class="tsd-anchor-link">Installation<a href="#installation" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>For a quick overview of the libraries and how to install them, see
 <a href="media/runtimes.md">runtimes.md</a>.</p>
 <p>Note that this library is distributed in two different registries:</p>
 <ul>
@@ -20,13 +22,15 @@ familiar to many application developers.</p>
 </ul>
 <p>If your application doesn't use <code>require</code>, you can simply depend on the JSR
 version.</p>
-<h3 id="npm" class="tsd-anchor-link">NPM<a href="#npm" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3><p>The NPM registry hosts a node-only compatible version of the library
+<h3 id="npm" class="tsd-anchor-link">NPM<a href="#npm" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The NPM registry hosts a node-only compatible version of the library
 <a href="https://www.npmjs.com/package/@nats-io/kv">@nats-io/kv</a> supporting both CJS and
 ESM:</p>
 <pre><code class="bash"><span class="hl-0">npm</span><span class="hl-1"> </span><span class="hl-2">install</span><span class="hl-1"> </span><span class="hl-2">@nats-io/kv</span>
 </code><button type="button">Copy</button></pre>
 
-<h3 id="jsr" class="tsd-anchor-link">JSR<a href="#jsr" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3><p>The JSR registry hosts the ESM-only <a href="https://jsr.io/@nats-io/kv">@nats-io/kv</a>
+<h3 id="jsr" class="tsd-anchor-link">JSR<a href="#jsr" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p>The JSR registry hosts the ESM-only <a href="https://jsr.io/@nats-io/kv">@nats-io/kv</a>
 version of the library.</p>
 <pre><code class="bash"><span class="hl-0">deno</span><span class="hl-1"> </span><span class="hl-2">jsr:add</span><span class="hl-1"> </span><span class="hl-2">@nats-io/kv</span>
 </code><button type="button">Copy</button></pre>
@@ -40,7 +44,8 @@ version of the library.</p>
 <pre><code class="bash"><span class="hl-0">bunx</span><span class="hl-1"> </span><span class="hl-2">jsr</span><span class="hl-1"> </span><span class="hl-2">add</span><span class="hl-1"> </span><span class="hl-2">@nats-io/kv</span>
 </code><button type="button">Copy</button></pre>
 
-<h2 id="referencing-the-library" class="tsd-anchor-link">Referencing the library<a href="#referencing-the-library" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2><p>Once you import the library, you can reference in your code as:</p>
+<h2 id="referencing-the-library" class="tsd-anchor-link">Referencing the library<a href="#referencing-the-library" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<p>Once you import the library, you can reference in your code as:</p>
 <pre><code class="javascript"><span class="hl-3">import</span><span class="hl-1"> { </span><span class="hl-4">Kvm</span><span class="hl-1"> } </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@nats-io/kv&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-5">// or in node (only when using CJS)</span><br/><span class="hl-6">const</span><span class="hl-1"> { </span><span class="hl-7">Kvm</span><span class="hl-1"> } = </span><span class="hl-0">require</span><span class="hl-1">(</span><span class="hl-2">&quot;@nats-io/kv&quot;</span><span class="hl-1">);</span><br/><br/><span class="hl-5">// using a nats connection:</span><br/><span class="hl-6">const</span><span class="hl-1"> </span><span class="hl-7">kvm</span><span class="hl-1"> = </span><span class="hl-6">new</span><span class="hl-1"> </span><span class="hl-0">Kvm</span><span class="hl-1">(</span><span class="hl-4">nc</span><span class="hl-1">);</span><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-4">kvm</span><span class="hl-1">.</span><span class="hl-0">list</span><span class="hl-1">();</span><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-4">kvm</span><span class="hl-1">.</span><span class="hl-0">create</span><span class="hl-1">(</span><span class="hl-2">&quot;mykv&quot;</span><span class="hl-1">);</span>
 </code><button type="button">Copy</button></pre>
 

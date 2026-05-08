@@ -1,13 +1,13 @@
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
-![obj](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)
+[![obj](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/obj/index.html)
 
 [![JSR](https://jsr.io/badges/@nats-io/obj)](https://jsr.io/@nats-io/obj)
 [![JSR](https://jsr.io/badges/@nats-io/obj/score)](https://jsr.io/@nats-io/obj)
 
 [![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Fobj)](https://www.npmjs.com/package/@nats-io/obj)
-![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fobj)
-![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Fobj)
+[![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Fobj)](https://www.npmjs.com/package/@nats-io/obj)
+[![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Fobj)](https://www.npmjs.com/package/@nats-io/obj)
 
 # Obj
 
