@@ -1,6 +1,6 @@
 {
   "name": "@nats-io/nst",
-  "version": "3.4.0-2",
+  "version": "3.4.0-3",
   "files": [
     "lib/",
     "LICENSE",
@@ -36,10 +36,10 @@
   },
   "description": "Internal test helpers for nats.js — not a supported public API",
   "peerDependencies": {
-    "@nats-io/nats-core": "3.4.0-2"
+    "@nats-io/nats-core": "3.4.0-3"
   },
   "devDependencies": {
-    "@nats-io/nats-core": "3.4.0-2",
+    "@nats-io/nats-core": "3.4.0-3",
     "@types/node": "^25.6.1",
     "shx": "^0.4.0",
     "typescript": "^5.9.2"
