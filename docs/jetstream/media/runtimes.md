@@ -53,6 +53,38 @@ deno init
 deno add jsr:@nats-io/transport-deno
 ```
 
+## TypeScript Compiler Configuration (Node)
+
+If you are writing your code in TypeScript under node using the `tsc` compiler,
+you will need to configure `tsc` properly so it can find its way around the
+module. You will want a configuration file that looks like this:
+
+```json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "outDir": "lib/",
+    "moduleResolution": "nodenext",
+    "sourceMap": true,
+    "declaration": true,
+    "allowJs": true,
+    "removeComments": false,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "lib/**/*"
+  ]
+}
+```
+
+Of key importance are the `target`, `module`, `moduleResolution`. The `nodenext`
+identifies that the packages can contain `exports`, and will enable the compiler
+and IDEs to properly resolve imports in your code.
+
 ## Let's add a simple program that we can run
 
 Added to the `nats-dev/<runtime>/index.ts` you used above.
@@ -149,6 +181,36 @@ Note that only latest versions of the frameworks are known to be compatible, and
 while I know that the samples work, but they may not if you have more complex
 setups (JavaScript ecosystem is an interesting world.).
 
+### Using NATS in Modern Web Frameworks
+
+`wsconnect()` returns a `Promise<NatsConnection>`. Every modern web framework
+has first-class support for rendering UI that depends on async resources — use
+it. Do **not** wrap the connection in component-local `useState` / `useEffect`;
+that re-runs connect on every render and forces consumers to null-guard the
+handle.
+
+The recommended shape is a module-scope singleton promise, consumed via the
+framework's async-resource primitive (React Suspense, Vue `<Suspense>`, Svelte
+`{#await}`, etc.).
+
+Framework docs:
+
+- React `<Suspense>` — https://react.dev/reference/react/Suspense
+- React `use` hook — https://react.dev/reference/react/use
+- Next.js streaming and `loading.tsx` —
+  https://nextjs.org/docs/app/api-reference/file-conventions/loading
+- TanStack Query Suspense mode —
+  https://tanstack.com/query/latest/docs/framework/react/guides/suspense
+- Vue `<Suspense>` — https://vuejs.org/guide/built-ins/suspense
+- Svelte `{#await}` — https://svelte.dev/docs/svelte/await
+
+Working examples (both apply this pattern):
+
+- Next.js —
+  **[aricart/nats-nextjs-example](https://github.com/aricart/nats-nextjs-example)**
+- React Native (Expo) —
+  **[aricart/nats-react-native](https://github.com/aricart/nats-react-native)**
+
 ### CDN
 
 A number of free CDNs are available that make it possible to reference libraries
@@ -167,43 +229,42 @@ import { Svcm } from "https://esm.run/@nats-io/services";
 
 ### Next.js
 
-Is supported out of the box - if you want to
-[see an example, checkout this repo](https://github.com/aricart/nats-nextjs-example)
+Supported out of the box. The example app demonstrates the singleton + Suspense
+pattern described above and is the recommended starting point:
+
+**[aricart/nats-nextjs-example](https://github.com/aricart/nats-nextjs-example)**
+
+It uses the pages router and loads the NATS client via `next/dynamic` with
+`ssr: false` (the WebSocket only runs in the browser).
 
 ### React Native
 
-Previous versions of the libraries were difficult to use in React Native
-requiring shims and many workarounds to get going. Well, we happy to say that it
-works out of the box in the latest version of ReactNative:
+Earlier versions of the libraries needed shims and workarounds. Recent React
+Native + Expo work out of the box on Expo SDK 53+ — package exports are on by
+default, so no `metro.config.js` tweaks are needed.
 
 ```bash
-# Run the template generator
 npx create-expo-app@latest
-# React native is now starting to support package exports
-# https://reactnative.dev/blog/2023/06/21/package-exports-support#enabling-package-exports-beta
-# set 'resolver.unstable_enablePackageExports = true'
-
-npx expo customize metro.config.js
+npx expo install @nats-io/nats-core @nats-io/jetstream @nats-io/kv @nats-io/obj
 ```
 
-Edit `metro.config.js`:
+Two caveats specific to React Native:
 
-```js
-// Learn more https://docs.expo.io/guides/customizing-metro
-const { getDefaultConfig } = require("expo/metro-config");
+- **Reanimated 4 peer dep.** If your template includes `react-native-reanimated`
+  (the default Expo template does), install `react-native-worklets` so
+  `babel-preset-expo` can wire up the worklets plugin:
+  `npx expo install react-native-worklets`. After installing, run
+  `npx expo start --clear` to flush Metro's babel cache.
+- **`crypto.subtle.digest` for ObjectStore.** Hermes does not expose Web
+  Crypto's subtle API. `Objm.create` checks for `crypto.subtle.digest` as a
+  precondition (the actual hashing uses `js-sha256`), so a tiny stub at the top
+  of your NATS module is enough — see
+  [`lib/nats.ts`](https://github.com/aricart/nats-react-native/blob/main/lib/nats.ts)
+  in the example.
 
-/** @type {import('expo/metro-config').MetroConfig} */
-const config = getDefaultConfig(__dirname);
-config.resolver = config.resolver || {};
-config.resolver.unstable_enablePackageExports = true;
-
-module.exports = config;
-```
-
-That is it - now you can just import `@nats-io/nats-core` and use the WebSocket
-client right out of the box. JetStream, KV and ObjectStore all work as well. For
-a starting point sample
-[take a look at this repo](https://github.com/aricart/nats-react-native)
+The sample app at
+[aricart/nats-react-native](https://github.com/aricart/nats-react-native) shows
+the full setup, including the singleton + Suspense pattern described above.
 
 ## Esbuild
 
@@ -222,11 +283,11 @@ cd mynats
 npm init es6 -y
 # Adding all the nats libraries here, but you can certainly reference the ones
 # you need
-npx jsr @nats-io/nats-core
-npx jsr @nats-io/jetstream
-npx jsr @nats-io/kv
-npx jsr @nats-io/obj
-npx jsr @nats-io/services
+npx jsr add @nats-io/nats-core
+npx jsr add @nats-io/jetstream
+npx jsr add @nats-io/kv
+npx jsr add @nats-io/obj
+npx jsr add @nats-io/services
 ```
 
 Now creating a simple file that re-exports all the libraries, "nats.js"
