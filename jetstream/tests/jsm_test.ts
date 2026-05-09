@@ -2064,6 +2064,13 @@ Deno.test("jsm - consumer api action", async () => {
   const ci = await jsm.consumers.createOrUpdate("stream", config);
   assertEquals(ci.config.inactive_threshold, nanos(60 * 1000));
 
+  // createOrUpdate must also create when the consumer doesn't exist
+  const fresh = await jsm.consumers.createOrUpdate("stream", {
+    ack_policy: AckPolicy.Explicit,
+    durable_name: "fresh",
+  } as ConsumerConfig);
+  assertEquals(fresh.config.durable_name, "fresh");
+
   await cleanup(ns, nc);
 });
 
