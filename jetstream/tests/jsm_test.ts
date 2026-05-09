@@ -2060,6 +2060,10 @@ Deno.test("jsm - consumer api action", async () => {
     "consumer already exists",
   );
 
+  // createOrUpdate must accept the modified config and apply it
+  const ci = await jsm.consumers.createOrUpdate("stream", config);
+  assertEquals(ci.config.inactive_threshold, nanos(60 * 1000));
+
   await cleanup(ns, nc);
 });
 

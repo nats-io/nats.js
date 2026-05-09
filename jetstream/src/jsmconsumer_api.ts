@@ -96,7 +96,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     const cr = {} as CreateConsumerRequest;
     cr.config = cfg;
     cr.stream_name = stream;
-    cr.action = opts.action || ConsumerApiAction.Create;
+    cr.action = opts.action ?? ConsumerApiAction.Create;
     cr.pedantic = opts.pedantic || false;
 
     if (cr.config.durable_name) {
@@ -215,6 +215,17 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     }
     const cco = Object.assign({}, { action }, opts);
     return this.addUpdate(stream, cfg, cco);
+  }
+
+  createOrUpdate(
+    stream: string,
+    cfg: ConsumerConfig,
+    opts?: ConsumerCreateOptions,
+  ): Promise<ConsumerInfo> {
+    return this.addUpdate(stream, cfg, {
+      ...(opts ?? {}),
+      action: ConsumerApiAction.CreateOrUpdate,
+    });
   }
 
   async update(
