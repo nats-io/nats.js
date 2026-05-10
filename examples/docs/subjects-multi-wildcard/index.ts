@@ -13,8 +13,13 @@ async function subscribeAndIterate(subject: string) {
   }
 }
 
+// Subscribe to all alarms
 subscribeAndIterate("sensor.alarm.*").catch(console.error);
+
+// Subscribe to all critical
 subscribeAndIterate("sensor.*.*.critical").catch(console.error);
+
+// Subscribe to everything
 subscribeAndIterate("sensor.>").catch(console.error);
 
 // Publish to specific subjects
