@@ -669,3 +669,133 @@ const b = await js.consumers.get(name, { filterSubjects: [`${name}.a`] });
 Note that uses of the consumer API for reading messages are checked for
 concurrency preventing the ordered consumer from having operations initiated
 with `fetch()` and `consume()` or `next()` while another is active.
+
+### JetStream Message Schedules
+
+JetStream Message Schedules are a feature of JetStream that allows you to
+schedule messages to be delivered at a specific time to the stream. This is
+useful to trigger other behaviours via a message. If you are thinking timers,
+you are on the right track.
+
+To enable scheduled messages, you enable the feature on the stream
+`allow_msg_schedules`, and specify at least three subject patterns. One for
+adding schedule configuration, one for canceling an existing schedule, and one
+for the subject where the schedule message will be delivered. Optionally you can
+add other data subjects and have payloads from the last message copied by the
+scheduled message.
+
+Here's a small example where a timer creates random stock prices, and a schedule
+publishes the current stock value. A consumer processes updates based on the
+schedule, not on the rate of messages ingested by the stream.
+
+```typescript
+const name = `schedules-${nuid.next()}`;
+await jsm.streams.add({
+  name,
+  allow_msg_schedules: true,
+  // required to use ttl on schedules - fired messages get Nats-TTL
+  // and auto-purge so the stream doesn't grow unbounded
+  allow_msg_ttl: true,
+  // schedule holds the config portion for a schedule
+  // target the destination message added to the stream by the schedule
+  // stop to cancel scheduling a specific schedule
+  // data the subject to copy value from the last message (optional)
+  subjects: [
+    `${name}.schedule.>`,
+    `${name}.target.>`,
+    `${name}.stop`,
+    `${name}.data.*`,
+  ],
+  max_msgs_per_subject: 10,
+});
+
+await jsm.consumers.add(name, {
+  flow_control: true,
+  idle_heartbeat: nanos(60_000),
+  deliver_subject: "scheduled.message",
+  filter_subject: `${name}.target.>`,
+  ack_policy: "none",
+});
+
+const js = jsm.jetstream();
+
+// update a value every 100ms
+const stocks = ["ABC", "XYZ", "BRB", "ZON"];
+await Promise.all([
+  js.publish(`${name}.data.ABC`, `0`),
+  js.publish(`${name}.data.XYZ`, `0`),
+  js.publish(`${name}.data.BRB`, `0`),
+  js.publish(`${name}.data.ZON`, `0`),
+]);
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+const timer = setInterval(() => {
+  const symbol = pick(stocks);
+  const price = `${Math.floor(Math.random() * 101)}`;
+  js.publish(`${name}.data.${symbol}`, price).catch(console.error);
+}, 100);
+
+// every allows you to specify a duration like 1s, 1h, etc.
+// ttl puts a Nats-TTL on each fired message so they auto-purge
+await js.publish(`${name}.schedule.ABC`, "", {
+  schedule: {
+    specification: { every: "1s" },
+    target: `${name}.target.ABC`,
+    // payload will be the last message in `${name}.data`
+    source: `${name}.data.ABC`,
+    ttl: "5s",
+  },
+});
+
+// you can also specify a one-shot schedule - "in 10s"
+await js.publish(`${name}.schedule.XYZ`, "", {
+  schedule: {
+    specification: `@at ${new Date(Date.now() + 10_000).toISOString()}`,
+    target: `${name}.target.XYZ`,
+    source: `${name}.data.XYZ`,
+    ttl: "5s",
+  },
+});
+
+// or using a cron schedule - here at the 15s intervals in the minute
+await js.publish(`${name}.schedule.BRB`, "", {
+  schedule: {
+    // 0, 15, 30, 45 seconds
+    specification: { cron: "*/15 * * * * *" },
+    target: `${name}.target.BRB`,
+    source: `${name}.data.BRB`,
+    ttl: "5s",
+  },
+});
+
+// or using a predefined schedule:
+// @yearly, @monthly, @weekly, @daily, @midnight, @hourly
+await js.publish(`${name}.schedule.hourly`, "", {
+  schedule: {
+    specification: { predefined: "@hourly" },
+    target: `${name}.target.hourly`,
+    source: `${name}.data.ZON`,
+    ttl: "5s",
+  },
+});
+
+delay(15_000).then(() => {
+  console.log("stopping ABC schedule");
+  js.publish(`${name}.stop`, "", {
+    cancelSchedule: { scheduleSubject: `${name}.schedule.ABC` },
+  }).catch(console.error);
+});
+
+const sub = nc.subscribe("scheduled.message", {
+  // we get 18 updates and quit
+  max: 18,
+  callback: (_err, msg) => {
+    console.log(
+      new Date().toLocaleTimeString(),
+      msg.subject.split(".").pop(),
+      msg.string(),
+    );
+  },
+});
+```

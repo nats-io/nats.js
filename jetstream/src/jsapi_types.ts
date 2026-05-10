@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 The NATS Authors
+ * Copyright 2023-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -1358,5 +1358,19 @@ export const PubHeaders = {
   ScheduleTarget: "Nats-Schedule-Target",
   ScheduleSource: "Nats-Schedule-Source",
   ScheduleTTL: "Nats-Schedule-TTL",
+  ScheduleTimeZone: "Nats-Schedule-Time-Zone",
+  ScheduleRollup: "Nats-Schedule-Rollup",
+  /**
+   * Set on messages produced by the scheduler. Holds the subject of the
+   * schedule that produced the message. Also used by clients to atomically
+   * cancel a schedule (set together with `ScheduleNext: "purge"`).
+   */
+  Scheduler: "Nats-Scheduler",
+  /**
+   * Set on messages produced by the scheduler. Holds the timestamp of the
+   * next invocation for cron schedules, or `purge` for delayed messages.
+   * Also used by clients with value `purge` to atomically cancel a schedule.
+   */
+  ScheduleNext: "Nats-Schedule-Next",
 } as const;
 export type PubHeaders = typeof PubHeaders[keyof typeof PubHeaders];

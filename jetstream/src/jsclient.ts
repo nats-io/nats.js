@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2024 The NATS Authors
+ * Copyright 2022-2026 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -51,6 +51,7 @@ import type {
   JetStreamOptions,
   JetStreamPublishOptions,
   PubAck,
+  ScheduleSpec,
   StreamAPI,
   Streams,
 } from "./types.ts";
@@ -145,17 +146,13 @@ function buildPublishHeaders(
   if (opts.ttl) {
     mh.set(PubHeaders.MessageTTL, `${opts.ttl}`);
   }
+  if (opts.schedule && opts.cancelSchedule) {
+    throw new Error("schedule and cancelSchedule are mutually exclusive");
+  }
   if (opts.schedule) {
     const so = opts.schedule;
     if (so.specification) {
-      if (typeof so.specification === "string") {
-        mh.set(PubHeaders.Schedule, so.specification);
-      } else if (so.specification instanceof Date) {
-        mh.set(
-          PubHeaders.Schedule,
-          "@at " + so.specification.toISOString(),
-        );
-      }
+      mh.set(PubHeaders.Schedule, scheduleSpecToHeader(so.specification));
     }
     if (so.target) {
       mh.set(PubHeaders.ScheduleTarget, so.target);
@@ -166,6 +163,16 @@ function buildPublishHeaders(
     if (so.ttl) {
       mh.set(PubHeaders.ScheduleTTL, so.ttl);
     }
+    if (so.timezone) {
+      mh.set(PubHeaders.ScheduleTimeZone, so.timezone);
+    }
+    if (so.rollup) {
+      mh.set(PubHeaders.ScheduleRollup, so.rollup);
+    }
+  }
+  if (opts.cancelSchedule) {
+    mh.set(PubHeaders.Scheduler, opts.cancelSchedule.scheduleSubject);
+    mh.set(PubHeaders.ScheduleNext, "purge");
   }
   return mh;
 }
@@ -256,6 +263,71 @@ export class JetStreamManagerImpl extends BaseApiClientImpl
   }
 }
 
+/**
+ * Converts a {@link ScheduleSpec}, `Date`, or raw header string into the
+ * value sent on the `Nats-Schedule` header.
+ *
+ * Validates `every` interval is at least 1s (server minimum).
+ *
+ * @internal exported for testing only
+ */
+export function scheduleSpecToHeader(
+  spec: string | Date | ScheduleSpec,
+): string {
+  if (typeof spec === "string") {
+    return spec;
+  }
+  if (spec instanceof Date) {
+    return `@at ${spec.toISOString()}`;
+  }
+  if ("at" in spec) {
+    const iso = spec.at instanceof Date ? spec.at.toISOString() : spec.at;
+    return `@at ${iso}`;
+  }
+  if ("every" in spec) {
+    assertEveryAtLeastOneSecond(spec.every);
+    return `@every ${spec.every}`;
+  }
+  if ("cron" in spec) {
+    return spec.cron;
+  }
+  if ("predefined" in spec) {
+    return spec.predefined;
+  }
+  throw new Error("invalid schedule specification");
+}
+
+function assertEveryAtLeastOneSecond(d: string): void {
+  const trimmed = d.trim();
+  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+  let totalMs = 0;
+  let pos = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(trimmed)) !== null) {
+    if (m.index !== pos) break;
+    pos += m[0].length;
+    const n = parseFloat(m[1]);
+    const unit = m[2];
+    totalMs += unit === "ns"
+      ? n / 1e6
+      : unit === "us" || unit === "µs"
+      ? n / 1e3
+      : unit === "ms"
+      ? n
+      : unit === "s"
+      ? n * 1e3
+      : unit === "m"
+      ? n * 60_000
+      : n * 3_600_000;
+  }
+  if (trimmed === "" || pos !== trimmed.length) {
+    throw new Error(`@every: unrecognized duration format: "${d}"`);
+  }
+  if (totalMs < 1000) {
+    throw new Error("@every interval must be at least 1s");
+  }
+}
+
 export class JetStreamClientImpl extends BaseApiClientImpl
   implements JetStreamClient {
   consumers: Consumers;
@@ -319,6 +391,14 @@ export class JetStreamClientImpl extends BaseApiClientImpl
   ): Promise<Msg> {
     opts = opts || {};
     opts = { ...opts };
+    if (
+      opts.cancelSchedule &&
+      opts.cancelSchedule.scheduleSubject === subj
+    ) {
+      throw new Error(
+        "cancelSchedule.scheduleSubject must not equal the publish subject",
+      );
+    }
     const mh = buildPublishHeaders(opts);
 
     const to = opts.timeout || this.timeout;
