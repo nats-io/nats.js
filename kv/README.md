@@ -170,3 +170,100 @@ watch.stop();
 // danger: destroys all values in the KV!
 await kv.destroy();
 ```
+
+## Per-Key TTLs
+
+Server 2.11+ supports automatic key removal. Enabled by creating the bucket with
+the `markerTTL` option (milliseconds, minimum 1000). Setting it does two things
+on the backing stream:
+
+- enables per-message TTLs (`allow_msg_ttl = true`)
+- when a key is removed by `max_age` or a per-key TTL, the server emits a
+  tombstone marker; `markerTTL` is how long that auto-emitted marker stays in
+  the bucket before the server removes it too
+
+Per-key TTL is exposed in two places only:
+
+- `kv.create(key, value, "<duration>")` — first write only
+- `kv.purge(key, { ttl: "<duration>" })` — lifetime of the purge marker
+
+Duration is a string: `2s`, `2m`, `1.5h`. A bare number means seconds. Minimum
+resolution is one second; See https://pkg.go.dev/time#ParseDuration for more
+information. `put()` does not accept a TTL — if it did, expiry of the latest
+revision could surface an older history entry.
+
+### Purge with a TTL on the marker
+
+```typescript
+// markerTTL on the bucket is required for any per-key/marker TTL to work
+const kv = await new Kvm(js).create("A", { markerTTL: 2_000 });
+await kv.create("k", "hello");
+
+// purge rolls up history immediately; the purge marker itself is removed
+// after 2s thanks to the per-call ttl
+await kv.purge("k", { ttl: "2s" });
+
+// ~2s later the marker is gone and the key is invisible to new watchers/gets
+```
+
+### Bucket-wide TTL with auto-emitted markers
+
+```typescript
+// bucket-wide ttl (max_age) makes every entry live at most 1s;
+// markerTTL keeps the auto-emitted tombstone for 2s after expiry
+const kv = await new Kvm(js).create("A", { markerTTL: 2_000, ttl: 1_000 });
+
+await kv.create("k", "hello");
+
+// deferred can be imported from @nats-io/nats-core
+const d = deferred();
+const now = Date.now();
+const iter = await kv.watch();
+(async () => {
+  for await (const e of iter) {
+    console.log(Date.now() - now, e.operation, e.key);
+    // server emits a marker with Nats-Marker-Reason: MaxAge,
+    // which the client maps to PURGE
+    if (e.operation === "PURGE") {
+      d.resolve();
+    }
+  }
+})().catch();
+await d;
+
+// after markerTTL elapses the marker is also gone
+// delay can be imported from @nats-io/nats-core
+await delay(2500);
+const e = await kv.get("k");
+console.log(e ? "key still found" : "key is gone");
+```
+
+### Per-key TTL on create
+
+```typescript
+const kv = await new Kvm(js).create("A", { markerTTL: 2_000 });
+
+// per-key TTL is a duration string ("5s", "1m", "1.5h"); minimum 1s
+await kv.create("k", "hello", "5s");
+
+// deferred can be imported from @nats-io/nats-core
+const d = deferred();
+const now = Date.now();
+const iter = await kv.watch();
+(async () => {
+  for await (const e of iter) {
+    console.log(Date.now() - now, e.operation, e.key);
+    // ~5s after create the server removes the entry and emits a marker
+    if (e.operation === "PURGE") {
+      d.resolve();
+    }
+  }
+})().catch();
+await d;
+
+// marker itself disappears after the bucket's markerTTL
+// delay can be imported from @nats-io/nats-core
+await delay(2500);
+const e = await kv.get("k");
+console.log(e ? "key still found" : "key is gone");
+```
