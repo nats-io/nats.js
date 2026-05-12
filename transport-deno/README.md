@@ -3,13 +3,13 @@
 A Deno transport for the [NATS messaging system](https://nats.io).
 
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
-![transport-deno](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)
+[![transport-deno](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js)
 
 [![JSR](https://jsr.io/badges/@nats-io/transport-deno)](https://jsr.io/@nats-io/transport-deno)
 [![JSR](https://jsr.io/badges/@nats-io/transport-deno/score)](https://jsr.io/@nats-io/transport-deno)
 
-[![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.deno/badge.svg?branch=main)](https://coveralls.io/github/nats-io/nats.deno?branch=main)
+[![Coverage Status](https://coveralls.io/repos/github/nats-io/nats.js/badge.svg?branch=main&kill_cache=1)](https://coveralls.io/github/nats-io/nats.js?branch=main)
 
 This module implements a Deno native TCP transport for the NATS. This library
 re-exports [NATS core](../core/README.md) library which implements all basic

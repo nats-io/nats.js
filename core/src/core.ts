@@ -223,26 +223,59 @@ export interface ServerInfo {
    * The nats-server version
    */
   version: string;
+  /**
+   * JetStream API level advertised by the server. Present on servers that
+   * support API level negotiation (nats-server 2.11+). Use to gate features
+   * gated by API level (e.g. fast ingest requires `api_lvl >= 4`, available
+   * in nats-server 2.14+).
+   */
+  "api_lvl"?: number;
 }
 
 export interface Server {
-  hostname: string;
-  port: number;
-  listen: string;
-  src: string;
-  tlsName: string;
-
-  resolve(
-    opts: Partial<
-      {
-        fn: DnsResolveFn;
-        randomize: boolean;
-        debug?: boolean;
-        resolve?: boolean;
-      }
-    >,
-  ): Promise<Server[]>;
+  readonly hostname: string;
+  readonly port: number;
+  readonly listen: string;
+  readonly src: string;
+  readonly tlsName: string;
+  readonly reconnects: number;
+  readonly lastConnect: number;
+  readonly gossiped: boolean;
+  readonly didConnect: boolean;
 }
+
+/**
+ * ReconnectToServerHandler is invoked on every connection attempt (initial
+ * connect and reconnects). It receives a snapshot of the current server pool,
+ * with the server the client would have selected at index 0, and the most
+ * recent ServerInfo (null on initial connect, before any INFO has been
+ * received).
+ *
+ * Return one of:
+ *   - a `Server` from the (possibly mutated) pool: the client will dial it
+ *     immediately.
+ *   - `{ server, delay }`: the client will wait `delay` milliseconds (on top
+ *     of any reconnect backoff already applied) before dialing `server`.
+ *     Useful for application-level pacing — not for reconnect backoff
+ *     (configure that via {@link ConnectionOptions.reconnectDelayHandler}).
+ *     The delay is interruptible by `nc.close()`.
+ *   - `null`: defer to default selection (pool[0]).
+ *
+ * The handler must be synchronous and must not throw. If it throws or
+ * returns a Server that is not in the pool, the connection is rejected on
+ * initial connect or closed on reconnect with a ConnectionError wrapping
+ * the underlying cause.
+ *
+ * Reconnect backoff (reconnectTimeWait, reconnectJitter,
+ * reconnectDelayHandler) is applied by the client before invoking this
+ * handler — the handler only selects which server to dial, and may
+ * optionally request additional pre-dial delay via the `{server, delay}`
+ * return shape.
+ */
+export type ReconnectToServerHandler = (
+  pool: ReadonlyArray<Server>,
+  info: ServerInfo | null,
+) => Server | { server: Server; delay: number } | null;
 
 /**
  * ServerChanged records servers in the cluster that were added or deleted.
@@ -447,6 +480,13 @@ export interface NatsConnection {
   drain(): Promise<void>;
 
   /**
+   * Implements the `AsyncDisposable` protocol so the connection can be used
+   * with `await using`. Equivalent to calling {@link drain}; if the connection
+   * is already closed or draining, resolves without error.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
+
+  /**
    * Returns true if the client is closed.
    */
   isClosed(): boolean;
@@ -500,6 +540,27 @@ export interface NatsConnection {
    * this API has no effect, as the client is already attempting to reconnect.
    */
   reconnect(): Promise<void>;
+
+  /**
+   * Replace the client's server pool with the provided list of `host:port`
+   * entries. The new pool is used for subsequent reconnect attempts. The
+   * live connection is not dropped — call {@link reconnect} afterwards to
+   * force the client to switch onto the new pool immediately.
+   *
+   * Throws if `servers` is empty or contains invalid entries. Removing all
+   * reachable servers from the pool can leave the client unable to reconnect.
+   */
+  setServers(servers: string[]): void;
+
+  /**
+   * Returns the current server pool, including gossiped entries received
+   * from the cluster. Each entry exposes `gossiped`, `reconnects`,
+   * `lastConnect`, and `didConnect` for filtering and diagnostics.
+   *
+   * To round-trip with {@link setServers}, map to listens:
+   * `nc.getServers().map(s => s.listen)`.
+   */
+  getServers(): ReadonlyArray<Server>;
 }
 
 /**
@@ -607,6 +668,13 @@ export interface Subscription extends AsyncIterable<Msg> {
    * when the subscription finished draining.
    */
   drain(): Promise<void>;
+
+  /**
+   * Implements the `AsyncDisposable` protocol so the subscription can be used
+   * with `await using`. Equivalent to calling {@link drain}; if the
+   * subscription is already closed or draining, resolves without error.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
 
   /**
    * Returns true if the subscription is draining.
@@ -973,6 +1041,12 @@ export interface ConnectionOptions {
    * option to true, will throw an exception as this option is not available.
    */
   resolve?: boolean;
+
+  /**
+   * Optional handler invoked on every connection attempt to choose which
+   * server the client should dial next. See {@link ReconnectToServerHandler}.
+   */
+  reconnectToServer?: ReconnectToServerHandler;
 }
 
 /**

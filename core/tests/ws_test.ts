@@ -23,6 +23,7 @@ import {
 
 import {
   createInbox,
+  deferred,
   errors,
   wsconnect,
   wsUrlParseFn,
@@ -202,4 +203,69 @@ Deno.test("ws - wsURLParseFn", () => {
   assertEquals(wsUrlParseFn("localhost", false), "ws://localhost:80/");
   assertEquals(wsUrlParseFn("http://localhost"), "ws://localhost:80/");
   assertEquals(wsUrlParseFn("https://localhost"), "wss://localhost:443/");
+});
+
+Deno.test("ws - reconnectToServer invoked on initial connect", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  let calls = 0;
+  let lastPoolLen = -1;
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+    reconnectToServer: (pool) => {
+      calls++;
+      lastPoolLen = pool.length;
+      return pool[0];
+    },
+  });
+  assertEquals(calls, 1);
+  assertEquals(lastPoolLen, 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - getServers returns ws listens", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+  });
+  const servers = nc.getServers();
+  assert(servers.length >= 1);
+  const listens = servers.map((s) => s.listen);
+  assert(
+    listens.some((l) => l.includes(`${ns.websocket}`)),
+    `expected ws port in listens: ${listens.join(",")}`,
+  );
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - setServers replaces pool and reconnect dials new", async () => {
+  const ns0 = await NatsServer.start(wsServerConf());
+  const ns1 = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns0.websocket}`,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  }) as NatsConnectionImpl;
+  assert(nc.getServer().includes(`${ns0.websocket}`));
+
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  nc.setServers([`ws://127.0.0.1:${ns1.websocket}`]);
+  await nc.reconnect();
+  await reconnected;
+
+  assert(
+    nc.getServer().includes(`${ns1.websocket}`),
+    `expected ${ns1.websocket}, got ${nc.getServer()}`,
+  );
+  await nc.close();
+  await ns0.stop();
+  await ns1.stop();
 });

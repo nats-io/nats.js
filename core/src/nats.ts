@@ -37,6 +37,7 @@ import type {
   QueuedIterator,
   RequestManyOptions,
   RequestOptions,
+  Server,
   ServerInfo,
   Stats,
   Status,
@@ -487,6 +488,17 @@ export class NatsConnectionImpl implements NatsConnection {
     return this.protocol.drain();
   }
 
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (this.isClosed()) {
+      return;
+    }
+    if (this.isDraining()) {
+      await this.closed();
+      return;
+    }
+    await this.drain();
+  }
+
   isClosed(): boolean {
     return this.protocol.isClosed();
   }
@@ -498,6 +510,14 @@ export class NatsConnectionImpl implements NatsConnection {
   getServer(): string {
     const srv = this.protocol.getServer();
     return srv ? srv.listen : "";
+  }
+
+  setServers(servers: string[]): void {
+    this.protocol.servers.setServers(servers);
+  }
+
+  getServers(): ReadonlyArray<Server> {
+    return this.protocol.servers.snapshot();
   }
 
   status(): AsyncIterable<Status> {

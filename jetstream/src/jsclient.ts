@@ -84,8 +84,8 @@ export function startFastIngest(
   subj: string,
   payload: Payload | undefined,
   opts:
-    & Pick<FastIngestOptions, "allowGaps">
-    & Partial<Omit<FastIngestOptions, "allowGaps">>
+    & { allowGaps: boolean }
+    & Partial<FastIngestOptions>
     & Partial<JetStreamPublishOptions>,
   defaultTimeout: number = 5000,
 ): Promise<FastIngest> {

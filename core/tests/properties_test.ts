@@ -151,7 +151,8 @@ Deno.test("properties - port is only honored if no servers provided", () => {
 
   buf.forEach((t) => {
     const opts = parseOptions(t.opts);
-    const servers = new Servers(opts.servers as string[], {});
+    const servers = new Servers();
+    servers.setServers(opts.servers as string[]);
     const cs = servers.getCurrentServer();
     assertEquals(cs.listen, t.expected);
   });

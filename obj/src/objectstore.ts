@@ -31,6 +31,7 @@ import {
 
 import type {
   ConsumerConfig,
+  FastIngest,
   JetStreamClient,
   JetStreamClientImpl,
   JetStreamManager,
@@ -55,6 +56,7 @@ import {
   JsHeaders,
   ListerImpl,
   PubHeaders,
+  startFastIngest,
   StoreCompression,
   toJetStreamClient,
 } from "@nats-io/jetstream/internal";
@@ -71,7 +73,7 @@ import type {
   ObjectWatchInfo,
 } from "./types.ts";
 import { Base64UrlPaddedCodec } from "./base64.ts";
-import { sha256 } from "js-sha256";
+import { createSha256 } from "./sha256.ts";
 import { checkSha256, parseSha256 } from "./sha_digest.parser.ts";
 
 export const osPrefix = "OBJ_";
@@ -123,14 +125,44 @@ export class Objm {
    * @param name
    * @param check - if set to false, it will not check if the ObjectStore exists.
    */
-  async open(name: string, check = true): Promise<ObjectStore> {
+  async open(
+    name: string,
+    check: boolean | { check?: boolean } = true,
+  ): Promise<ObjectStore> {
+    let doInfo = true;
+    let allowBatched = false;
+    if (typeof check === "boolean") {
+      doInfo = check;
+    } else {
+      // internal/undocumented opt-in: callers can pass { allowBatched: true }.
+      // if they also pass check:false, we intentionally skip probing stream config
+      // and let capability mismatches fail later
+      const o = check as Record<string, unknown>;
+      doInfo = o.check === true;
+      allowBatched = o.allowBatched === true;
+    }
+    const apiLvl = this.js.nc.info?.api_lvl ?? 0;
+    if (allowBatched && apiLvl < 4) {
+      return Promise.reject(
+        new Error("server does not support batched publishes"),
+      );
+    }
     const jsm = await this.js.jetstreamManager();
     const os = new ObjectStoreImpl(name, jsm, this.js);
     os.stream = objectStoreStreamName(name);
-    if (check) {
-      await os.status();
+    if (doInfo) {
+      const info = await os._si();
+      if (info === null) {
+        return Promise.reject(new Error("object store not found"));
+      }
+      if (allowBatched && info.config.allow_batched !== true) {
+        return Promise.reject(
+          new Error("existing bucket does not support batched publishes"),
+        );
+      }
     }
-    return Promise.resolve(os);
+    os.allowBatched = allowBatched;
+    return os;
   }
 
   #maybeCreate(
@@ -332,11 +364,12 @@ function emptyReadableStream(): ReadableStream {
 
 export class ObjectStoreImpl implements ObjectStore {
   jsm: JetStreamManager;
-  js: JetStreamClient;
+  js: JetStreamClientImpl;
   stream!: string;
   name: string;
+  allowBatched = false;
 
-  constructor(name: string, jsm: JetStreamManager, js: JetStreamClient) {
+  constructor(name: string, jsm: JetStreamManager, js: JetStreamClientImpl) {
     this.name = name;
     this.jsm = jsm;
     this.js = js;
@@ -442,8 +475,7 @@ export class ObjectStoreImpl implements ObjectStore {
     opts.timeout = opts.timeout || jsopts.timeout;
     opts.previousRevision = opts.previousRevision ?? undefined;
     const { timeout, previousRevision } = opts;
-    const si = (this.js as unknown as { nc: NatsConnection }).nc.info;
-    const maxPayload = si?.max_payload || 1024;
+    const maxPayload = this.js.nc.info?.max_payload || 1024;
     meta = meta || {} as ObjectStoreMeta;
     meta.options = meta.options || {};
     let maxChunk = meta.options?.max_chunk_size || 128 * 1024;
@@ -470,9 +502,27 @@ export class ObjectStoreImpl implements ObjectStore {
     const d = deferred<ObjectInfo>();
 
     const db = new DataBuffer();
+    // started lazily on the first chunk so a 0-byte object stays a single publish
+    let fi: FastIngest | null = null;
+
+    const publishChunk = async (payload: Uint8Array): Promise<void> => {
+      if (this.allowBatched) {
+        if (!fi) {
+          fi = await startFastIngest(this.js.nc, chunkSubj, payload, {
+            allowGaps: false,
+            timeout,
+          });
+        } else {
+          await fi.add(chunkSubj, payload, { timeout });
+        }
+        return;
+      }
+      await this.js.publish(chunkSubj, payload, { timeout });
+    };
+
     try {
       const reader = rs ? rs.getReader() : null;
-      const sha = sha256.create();
+      const sha = await createSha256();
 
       while (true) {
         const { done, value } = reader
@@ -485,14 +535,12 @@ export class ObjectStoreImpl implements ObjectStore {
             sha.update(payload);
             info.chunks!++;
             info.size! += payload.length;
-            await this.js.publish(chunkSubj, payload, { timeout });
+            await publishChunk(payload);
           }
 
           // prepare the metadata
           info.mtime = new Date().toISOString();
-          const digest = Base64UrlPaddedCodec.encode(
-            Uint8Array.from(sha.digest()),
-          );
+          const digest = Base64UrlPaddedCodec.encode(sha.digest());
           info.digest = `${digestType}${digest}`;
 
           info.deleted = false;
@@ -507,13 +555,17 @@ export class ObjectStoreImpl implements ObjectStore {
           }
           h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
-          // try to update the metadata
-          const pa = await this.js.publish(metaSubj, JSON.stringify(info), {
-            headers: h,
-            timeout,
-          });
-          // update the revision to point to the sequence where we inserted
-          info.revision = pa.seq;
+          // cast: closure-captured `let` defeats TS narrowing.
+          const ack = fi
+            ? await (fi as FastIngest).last(metaSubj, JSON.stringify(info), {
+              headers: h,
+              timeout,
+            })
+            : await this.js.publish(metaSubj, JSON.stringify(info), {
+              headers: h,
+              timeout,
+            });
+          info.revision = ack.seq;
 
           // if we are here, the new entry is live
           if (old) {
@@ -539,12 +591,19 @@ export class ObjectStoreImpl implements ObjectStore {
             info.size! += maxChunk;
             const payload = db.drain(meta.options.max_chunk_size);
             sha.update(payload);
-            await this.js.publish(chunkSubj, payload, { timeout });
+            await publishChunk(payload);
           }
         }
       }
     } catch (err) {
-      // we failed, remove any partials
+      if (fi) {
+        // close the batch on the server side; ignore failure
+        try {
+          await (fi as FastIngest).end();
+        } catch (_e) { /* ignore */ }
+      }
+      // cleanup: purge any chunks that landed before the failure, otherwise
+      // we leak orphan chunks under chunkSubj
       await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
       d.reject(err);
     }
@@ -660,7 +719,7 @@ export class ObjectStoreImpl implements ObjectStore {
       return Promise.resolve(r as ObjectResult);
     }
 
-    const sha = sha256.create();
+    const sha = await createSha256();
     let controller: ReadableStreamDefaultController;
 
     const cc: Partial<ConsumerConfig> = {};
@@ -677,7 +736,7 @@ export class ObjectStoreImpl implements ObjectStore {
           controller!.enqueue(jm.data);
         }
         if (jm.info.pending === 0) {
-          const computedDigest = Uint8Array.from(sha.digest());
+          const computedDigest = sha.digest();
           if (!checkSha256(digest, computedDigest)) {
             const hex = Array.from(computedDigest)
               .map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -918,7 +977,7 @@ export class ObjectStoreImpl implements ObjectStore {
     return `$O.${this.name}.M.>`;
   }
 
-  async init(opts: Partial<ObjectStoreOptions> = {}): Promise<void> {
+  async init(opts: Partial<ObjectStoreOptions> = {}): Promise<StreamInfo> {
     try {
       this.stream = objectStoreStreamName(this.name);
     } catch (err) {
@@ -932,6 +991,10 @@ export class ObjectStoreImpl implements ObjectStore {
     const { replicas } = opts;
     delete opts.replicas;
 
+    const o = opts as Record<string, unknown>;
+    this.allowBatched = o.allowBatched === true;
+    delete o.allowBatched;
+
     // pacify the tsc compiler downstream
     const sc = Object.assign({ max_age }, opts) as unknown as StreamConfig;
     sc.name = this.stream;
@@ -940,6 +1003,16 @@ export class ObjectStoreImpl implements ObjectStore {
     sc.num_replicas = replicas || 1;
     sc.discard = DiscardPolicy.New;
     sc.subjects = [`$O.${this.name}.C.>`, `$O.${this.name}.M.>`];
+
+    const apiLvl = this.js.nc.info?.api_lvl ?? 0;
+    if (this.allowBatched) {
+      if (apiLvl < 4) {
+        return Promise.reject(
+          new Error("server does not support batched publishes"),
+        );
+      }
+      sc.allow_batched = true;
+    }
     if (opts.placement) {
       sc.placement = opts.placement;
     }
@@ -952,23 +1025,33 @@ export class ObjectStoreImpl implements ObjectStore {
         : StoreCompression.None;
     }
 
+    let si: StreamInfo;
     try {
-      await this.jsm.streams.info(sc.name);
+      si = await this.jsm.streams.info(sc.name);
     } catch (err) {
       if ((err as Error).message === "stream not found") {
-        await this.jsm.streams.add(sc);
+        si = await this.jsm.streams.add(sc);
+      } else {
+        throw err;
       }
     }
+    // if the server doesn't return it - not supported
+    if (this.allowBatched && si.config.allow_batched !== true) {
+      return Promise.reject(
+        new Error("existing bucket does not support batched publishes"),
+      );
+    }
+    return si;
   }
 
   static async create(
-    js: JetStreamClient,
+    js: JetStreamClientImpl,
     name: string,
     opts: Partial<ObjectStoreOptions> = {},
   ): Promise<ObjectStore> {
     const jsm = await js.jetstreamManager();
     const os = new ObjectStoreImpl(name, jsm, js);
     await os.init(opts);
-    return Promise.resolve(os);
+    return os;
   }
 }

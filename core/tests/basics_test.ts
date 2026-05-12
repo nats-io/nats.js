@@ -46,7 +46,7 @@ import type {
   PublishOptions,
   SubscriptionImpl,
 } from "../src/internal_mod.ts";
-import { cleanup, Lock, NatsServer, setup } from "nst";
+import { cleanup, jetstreamServerConf, Lock, NatsServer, setup } from "nst";
 import { connect } from "./connect.ts";
 import { errors } from "../src/errors.ts";
 
@@ -1229,6 +1229,17 @@ Deno.test("basics - server version", async () => {
 Deno.test("basics - info", async () => {
   const { ns, nc } = await setup();
   assertExists(nc.info);
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - info api_lvl", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  const nci = nc as NatsConnectionImpl;
+  assertExists(nc.info);
+  // server 2.11+ advertises api_lvl on INFO; older servers omit it
+  if (nci.protocol.features.require("2.11.0")) {
+    assertEquals(typeof nc.info!.api_lvl, "number");
+  }
   await cleanup(ns, nc);
 });
 

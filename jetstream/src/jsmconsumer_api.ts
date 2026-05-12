@@ -12,7 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseApiClientImpl } from "./jsbaseclient_api.ts";
+import {
+  BaseApiClientImpl,
+  type JetStreamApiRequestOptions,
+} from "./jsbaseclient_api.ts";
 import { ListerImpl } from "./jslister.ts";
 import {
   minValidation,
@@ -30,17 +33,17 @@ import {
   InvalidArgumentError,
 } from "@nats-io/nats-core/internal";
 import type {
-  ConsumerApiOptions,
   ConsumerConfig,
   ConsumerCreateOptions,
   ConsumerInfo,
   ConsumerListResponse,
+  ConsumerResetResponse,
   ConsumerUpdateConfig,
   CreateConsumerRequest,
   PriorityGroups,
   SuccessResponse,
 } from "./jsapi_types.ts";
-import { ConsumerApiAction, PriorityPolicy } from "./jsapi_types.ts";
+import { AckPolicy, ConsumerApiAction, PriorityPolicy } from "./jsapi_types.ts";
 
 import type {
   ConsumerAPI,
@@ -57,7 +60,8 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   async addUpdate(
     stream: string,
     cfg: ConsumerConfig,
-    opts: ConsumerApiOptions,
+    opts: Partial<JetStreamApiRequestOptions>,
+    delta?: Partial<ConsumerConfig>,
   ): Promise<ConsumerInfo> {
     validateStreamName(stream);
     opts = opts || {};
@@ -160,8 +164,41 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
         : `${this.prefix}.CONSUMER.CREATE.${stream}`;
     }
 
-    const r = await this._request(subj, cr);
+    // when called from update(), assert api level only on the partial delta
+    // so unrelated edits to a consumer that already has level-1 fields don't
+    // send a spurious Nats-Required-Api-Level header
+    const assertCfg = delta ?? cr.config;
+    const r = await this._request(
+      subj,
+      cr,
+      { ...opts, ...this.requiredApiOpts(assertCfg) },
+    );
     return r as ConsumerInfo;
+  }
+
+  // mirrors server/jetstream_versioning.go:setStaticConsumerMetadata
+  private minConsumerApi(c: Partial<ConsumerConfig>): number {
+    if (c.ack_policy === AckPolicy.FlowControl) return 4;
+    if (typeof c.pause_until === "string" && c.pause_until !== "") return 1;
+    if (
+      c.priority_policy !== undefined &&
+      c.priority_policy !== PriorityPolicy.None
+    ) return 1;
+    if (typeof c.priority_timeout === "number" && c.priority_timeout > 0) {
+      return 1;
+    }
+    if (Array.isArray(c.priority_groups) && c.priority_groups.length > 0) {
+      return 1;
+    }
+    return 0;
+  }
+
+  private requiredApiOpts(
+    c: Partial<ConsumerConfig>,
+  ): Partial<JetStreamApiRequestOptions> {
+    if (!this.sendRequiredApiLevel()) return {};
+    const minApiVersion = this.minConsumerApi(c);
+    return minApiVersion > 0 ? { minApiVersion } : {};
   }
 
   add(
@@ -191,6 +228,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
       stream,
       Object.assign(ci.config, changable),
       { action: ConsumerApiAction.Update },
+      changable,
     );
   }
 
@@ -255,6 +293,32 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   unpin(stream: string, name: string, group: string): Promise<void> {
     const subj = `${this.prefix}.CONSUMER.UNPIN.${stream}.${name}`;
     return this._request(subj, { group }) as Promise<void>;
+  }
+
+  async reset(
+    stream: string,
+    name: string,
+    seq?: number,
+  ): Promise<ConsumerResetResponse> {
+    validateStreamName(stream);
+    validateDurableName(name);
+    const nci = this.nc as unknown as NatsConnectionImpl;
+    const { min, ok } = nci.features.get(Feature.JS_CONSUMER_RESET);
+    if (!ok) {
+      throw new Error(`consumer reset requires server ${min}`);
+    }
+    // seq === 0 is intentionally allowed: server treats it the same as an
+    // empty body and resets the consumer to ack_floor + 1 (ADR-60).
+    if (typeof seq === "number" && (!Number.isInteger(seq) || seq < 0)) {
+      throw InvalidArgumentError.format(
+        "seq",
+        "must be a non-negative integer",
+      );
+    }
+    const subj = `${this.prefix}.CONSUMER.RESET.${stream}.${name}`;
+    const body = typeof seq === "number" ? { seq } : undefined;
+    const r = await this._request(subj, body);
+    return r as ConsumerResetResponse;
   }
 }
 

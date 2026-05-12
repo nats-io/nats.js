@@ -169,34 +169,14 @@ export type StreamConfig = StreamUpdateConfig & {
   "first_seq": number;
 
   /**
-   * Enables allows header initiated per-message TTLs. If disabled, then the `NATS-TTL`
-   * header will be ignored.
-   */
-  "allow_msg_ttl": boolean;
-
-  /**
-   * Enables a NATS stream implementation of CRDT operations
+   * Enables a NATS stream implementation of CRDT operations.
+   * Cannot be changed once the stream is created.
    */
   "allow_msg_counter": boolean;
 
   /**
-   * Enables the scheduling of messages in a stream.
-   */
-  "allow_msg_schedules": boolean;
-
-  /**
-   * Enables the ability to send atomic batches to the stream
-   */
-  "allow_atomic": boolean;
-
-  /**
-   * Enables the ability to send batched messages to the stream
-   */
-  "allow_batched": boolean;
-
-  /**
    * Sets the persistence model for the stream - the default is PersistMode.Default.
-   * This is a 2.12 feature.
+   * This is a 2.12 feature. Cannot be changed once the stream is created.
    */
   "persist_mode": PersistMode;
 };
@@ -323,6 +303,27 @@ export type StreamUpdateConfig = {
    * When a mirror is configured subjects and sources must be empty.
    */
   mirror?: StreamSource; // same as a source
+
+  /**
+   * Enables allows header initiated per-message TTLs. If disabled, then the `NATS-TTL`
+   * header will be ignored.
+   */
+  "allow_msg_ttl"?: boolean;
+
+  /**
+   * Enables the scheduling of messages in a stream.
+   */
+  "allow_msg_schedules"?: boolean;
+
+  /**
+   * Enables the ability to send atomic batches to the stream.
+   */
+  "allow_atomic"?: boolean;
+
+  /**
+   * Enables the ability to send batched messages to the stream.
+   */
+  "allow_batched"?: boolean;
 };
 
 export type Republish = {
@@ -386,6 +387,31 @@ export type StreamSource = {
    * This feature only supported on 2.10.x and better.
    */
   subject_transforms?: SubjectTransformConfig[];
+  /**
+   * Configures durable sourcing using a pre-created consumer. When set, the
+   * server uses the named durable consumer instead of an ephemeral ordered
+   * consumer. Required for reliable mirroring/sourcing of WorkQueue or
+   * Interest streams. Available on server 2.14+ (ADR-60).
+   */
+  consumer?: StreamConsumerSource;
+};
+
+/**
+ * Identifies a pre-created durable consumer used for stream
+ * sourcing/mirroring. The referenced consumer must exist before the stream
+ * is created and must use `ack_policy: "flow_control"` — any other policy
+ * (`none`, `explicit`, `all`) is rejected by the server. See ADR-60.
+ */
+export type StreamConsumerSource = {
+  /**
+   * Name of the pre-created consumer to use.
+   */
+  name: string;
+  /**
+   * Subject the server delivers messages to. Must match the
+   * `deliver_subject` of the pre-created consumer.
+   */
+  deliver_subject: string;
 };
 
 export type Placement = {
@@ -483,6 +509,11 @@ export const AckPolicy = {
    * All sequences must be explicitly acknowledged
    */
   Explicit: "explicit",
+  /**
+   * Functions like AckAll, but acks based on flow control responses. Used
+   * for durable mirror/source consumers (ADR-60). Available on server 2.14+.
+   */
+  FlowControl: "flow_control",
   /**
    * @ignore
    */
@@ -914,6 +945,20 @@ export type ConsumerInfo = {
 
 export type ConsumerListResponse = ApiResponse & ApiPaged & {
   consumers: ConsumerInfo[];
+};
+
+/**
+ * Response from `$JS.API.CONSUMER.RESET` containing the reset
+ * ConsumerInfo plus the stream sequence the consumer was reset to.
+ *
+ * Requires server v2.14.0+. See ADR-60.
+ */
+export type ConsumerResetResponse = ConsumerInfo & {
+  /**
+   * The stream sequence the consumer was reset to. The next
+   * message delivered will have sequence >= reset_seq.
+   */
+  reset_seq: number;
 };
 
 export type StreamListResponse = ApiResponse & ApiPaged & {

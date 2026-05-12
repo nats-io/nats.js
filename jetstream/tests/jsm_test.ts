@@ -40,6 +40,7 @@ import {
 import type {
   ConsumerConfig,
   ConsumerInfo,
+  ConsumerUpdateConfig,
   Lister,
   PubAck,
   StreamConfig,
@@ -52,6 +53,7 @@ import {
   DiscardPolicy,
   jetstream,
   jetstreamManager,
+  JsHeaders,
   StorageType,
 } from "../src/mod.ts";
 import { initStream } from "./jstest_util.ts";
@@ -2777,7 +2779,6 @@ Deno.test("jsm - stream message ttls", async () => {
 
   await assertRejects(
     () => {
-      //@ts-expect-error: this is a test
       return jsm.streams.update("A", { allow_msg_ttl: false });
     },
     Error,
@@ -2851,6 +2852,347 @@ Deno.test("jsm - mirrors can be removed", async () => {
 
   si = await jsm.streams.update("B", { mirror: undefined });
   assertEquals(si.config.mirror, undefined);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel sets header on stream create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, "4");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel default omits header", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on consumer create", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.CONSUMER.CREATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  await jsm.consumers.add("C", {
+    ack_policy: AckPolicy.Explicit,
+    priority_policy: PriorityPolicy.Overflow,
+    priority_groups: ["g1"],
+  });
+
+  assertEquals(await captured, "1");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on stream update", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "FI", subjects: ["fi"] });
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.UPDATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  await jsm.streams.update("FI", { allow_batched: true });
+
+  assertEquals(await captured, "4");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel stream update no header when delta plain", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  // stream already has a level-4 field set
+  await jsm.streams.add({
+    name: "FI",
+    subjects: ["fi"],
+    allow_batched: true,
+  });
+
+  const captured = deferred<string | null>();
+  nc.subscribe("$JS.API.STREAM.UPDATE.>", {
+    callback: (_err, msg) => {
+      captured.resolve(msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null);
+    },
+    max: 1,
+  });
+
+  // delta touches an unrelated field — header must not be sent
+  await jsm.streams.update("FI", { description: "updated" });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel header on consumer update", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  await jsm.consumers.add("C", {
+    durable_name: "d",
+    ack_policy: AckPolicy.Explicit,
+  });
+
+  const captured = deferred<string | null>();
+  const sub = nc.subscribe("$JS.API.CONSUMER.>");
+  (async () => {
+    for await (const msg of sub) {
+      // ignore INFO lookups issued by update() before the actual CREATE
+      if (msg.subject.includes(".CREATE.")) {
+        captured.resolve(
+          msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null,
+        );
+        sub.unsubscribe();
+        return;
+      }
+    }
+  })();
+
+  await jsm.consumers.update("C", "d", {
+    description: "paused",
+    pause_until: new Date(Date.now() + 60_000).toISOString(),
+  } as unknown as Partial<ConsumerUpdateConfig>);
+
+  assertEquals(await captured, "1");
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - sendRequiredApiLevel consumer update unrelated edit no header", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc, { sendRequiredApiLevel: true });
+  await jsm.streams.add({ name: "C", subjects: ["c"] });
+  // consumer already has a level-1 field set at creation
+  await jsm.consumers.add("C", {
+    durable_name: "d",
+    ack_policy: AckPolicy.Explicit,
+    priority_policy: PriorityPolicy.Overflow,
+    priority_groups: ["g1"],
+  });
+
+  const captured = deferred<string | null>();
+  const sub = nc.subscribe("$JS.API.CONSUMER.>");
+  (async () => {
+    for await (const msg of sub) {
+      // ignore INFO lookups issued by update() before the actual CREATE
+      if (msg.subject.includes(".CREATE.")) {
+        captured.resolve(
+          msg.headers?.get(JsHeaders.RequiredApiLevel) ?? null,
+        );
+        sub.unsubscribe();
+        return;
+      }
+    }
+  })();
+
+  // delta touches an unrelated field — header must not be sent
+  await jsm.consumers.update("C", "d", { description: "edited" });
+
+  assertEquals(await captured, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - mirror/source consumer (ADR-60)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  const js = jetstream(nc);
+
+  await jsm.streams.add({ name: "O", subjects: ["o.>"] });
+
+  // server auto-sets flow_control + 1s heartbeat when ack_policy is flow_control
+  const sourcingCfg = {
+    ack_policy: AckPolicy.FlowControl,
+    idle_heartbeat: nanos(1000),
+  };
+  await Promise.all([
+    jsm.consumers.add("O", {
+      durable_name: "C",
+      deliver_subject: "deliver.mirror",
+      ...sourcingCfg,
+    }),
+    jsm.consumers.add("O", {
+      durable_name: "C2",
+      deliver_subject: "deliver.source",
+      ...sourcingCfg,
+    }),
+  ]);
+
+  const [mi, si] = await Promise.all([
+    jsm.streams.add({
+      name: "M",
+      mirror: {
+        name: "O",
+        consumer: { name: "C", deliver_subject: "deliver.mirror" },
+      },
+    }),
+    jsm.streams.add({
+      name: "S",
+      sources: [{
+        name: "O",
+        consumer: { name: "C2", deliver_subject: "deliver.source" },
+      }],
+    }),
+  ]);
+  assertExists(mi.config.mirror?.consumer);
+  assertEquals(mi.config.mirror?.consumer.name, "C");
+  assertEquals(mi.config.mirror?.consumer.deliver_subject, "deliver.mirror");
+  assertExists(si.config.sources?.[0].consumer);
+  assertEquals(si.config.sources?.[0].consumer?.name, "C2");
+  assertEquals(
+    si.config.sources?.[0].consumer?.deliver_subject,
+    "deliver.source",
+  );
+
+  await Promise.all([
+    js.publish("o.a", "1"),
+    js.publish("o.b", "2"),
+    js.publish("o.c", "3"),
+  ]);
+
+  const wantMsgs = async (stream: string, n: number) => {
+    for (let i = 0; i < 50; i++) {
+      const info = await jsm.streams.info(stream);
+      if (info.state.messages >= n) return;
+      await delay(100);
+    }
+    fail(`${stream} did not reach ${n} messages`);
+  };
+  await Promise.all([wantMsgs("M", 3), wantMsgs("S", 3)]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("jsm - mirror/source consumer requires name and deliver_subject (ADR-60)", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "O", subjects: ["o.>"] });
+
+  // mirror: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M1",
+        mirror: { name: "O", consumer: { name: "", deliver_subject: "d.x" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // mirror: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "M2",
+        mirror: { name: "O", consumer: { name: "C", deliver_subject: "" } },
+      }),
+    jserrors.JetStreamApiError,
+    "stream mirror consumer config is invalid",
+  );
+
+  // source: empty name rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S1",
+        sources: [{
+          name: "O",
+          consumer: { name: "", deliver_subject: "d.x" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
+
+  // source: empty deliver_subject rejected
+  await assertRejects(
+    () =>
+      jsm.streams.add({
+        name: "S2",
+        sources: [{
+          name: "O",
+          consumer: { name: "C", deliver_subject: "" },
+        }],
+      }),
+    jserrors.JetStreamApiError,
+    "stream source consumer config is invalid",
+  );
 
   await cleanup(ns, nc);
 });

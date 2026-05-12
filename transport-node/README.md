@@ -3,12 +3,12 @@
 A Node.js transport for the [NATS messaging system](https://nats.io).
 
 [![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
-![transport-node](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml/badge.svg)
+[![transport-node](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js)
 
 [![NPM Version](https://img.shields.io/npm/v/%40nats-io%2Ftransport-node)](https://www.npmjs.com/package/@nats-io/transport-node)
-![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Ftransport-node)
-![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Ftransport-node)
+[![NPM Downloads](https://img.shields.io/npm/dt/%40nats-io%2Ftransport-node)](https://www.npmjs.com/package/@nats-io/transport-node)
+[![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Ftransport-node)](https://www.npmjs.com/package/@nats-io/transport-node)
 
 This module implements a Node.js native TCP transport for NATS. This library
 re-exports [NATS core](../core/README.md) library which implements all basic
