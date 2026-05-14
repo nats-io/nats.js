@@ -17,7 +17,7 @@
 import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS server
-const nc = await connect({ servers: "nats://localhost:4222" });
+const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
 // Create a wire tap for monitoring

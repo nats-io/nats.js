@@ -17,7 +17,7 @@
 import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "nats://localhost:4222" });
+const nc = await connect({ servers: "localhost:4222" });
 
 // publish a message to the 'hello' subject
 nc.publish("hello", "Hello NATS!");

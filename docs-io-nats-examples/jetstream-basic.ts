@@ -23,7 +23,7 @@ import {
 } from "@nats-io/jetstream";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "nats://localhost:4222" });
+const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
 // Create a stream that captures any subject under `orders.`
