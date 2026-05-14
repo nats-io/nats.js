@@ -20,7 +20,7 @@ import { connect } from "@nats-io/transport-deno";
 const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
-async function subscribeAndIterate(subject: string) {
+async function process(subject: string) {
   const sub = nc.subscribe(subject);
   const label = `[${subject}]`.padEnd(20);
   for await (const msg of sub) {
@@ -28,9 +28,9 @@ async function subscribeAndIterate(subject: string) {
   }
 }
 
-subscribeAndIterate("orders.*.shipped").catch(console.error);
-subscribeAndIterate("orders.*.placed").catch(console.error);
-subscribeAndIterate("orders.retail.*").catch(console.error);
+process("orders.*.shipped").catch(console.error);
+process("orders.*.placed").catch(console.error);
+process("orders.retail.*").catch(console.error);
 
 // Publish to specific subjects
 nc.publish("orders.wholesale.placed", "Order W73737");
@@ -39,6 +39,6 @@ nc.publish("orders.wholesale.shipped", "Order W73001");
 nc.publish("orders.retail.shipped", "Order R65321");
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 100));
+await nc.flush();
 
 await nc.drain();

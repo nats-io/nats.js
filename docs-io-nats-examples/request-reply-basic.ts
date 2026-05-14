@@ -29,6 +29,7 @@ nc.subscribe("time", {
 });
 
 // Make a request
+
 await nc.request("time", "")
   .then((m) => {
     console.log(`Response: ${m.string()}`);
@@ -38,6 +39,5 @@ await nc.request("time", "")
   });
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 100));
 
 await nc.drain();

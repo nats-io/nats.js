@@ -25,31 +25,28 @@ const nc = await connect({ servers: "localhost:4222" });
 const sub = nc.subscribe("calc.add");
 (async (sub: Subscription) => {
   for await (const m of sub) {
-    const parts = m.string().split(/\s+/);
-    if (parts.length === 2) {
-      const a = parseInt(parts[0], 10);
-      const b = parseInt(parts[1], 10);
-      if (!Number.isNaN(a) && !Number.isNaN(b)) {
-        m.respond(String(a + b));
+    try {
+      const {a, b} = m.json<{ a: number, b: number }>();
+      if (typeof a !== "number" || typeof b !== "number") {
+        throw new Error("invalid input");
       }
-      else {
-        m.respond("error: invalid input");
-      }
+      m.respond(JSON.stringify({result: a+b}))
+    } catch(err) {
+      m.respond("error: invalid input");
     }
   }
 })(sub).catch(console.error);
 
 // Make calculations
-let resp = await nc.request("calc.add", "5 3");
+let resp = await nc.request("calc.add", JSON.stringify({a: 5, b: 3}));
 console.log(`5 + 3 = ${resp.string()}`);
 
-resp = await nc.request("calc.add", "10 7");
+resp = await nc.request("calc.add", JSON.stringify({a: 10, b: 7}));
 console.log(`10 + 7 = ${resp.string()}`);
 
-resp = await nc.request("calc.add", "10 x");
+resp = await nc.request("calc.add", JSON.stringify({a: 10, b: "x"}));
 console.log(`10 + x = ${resp.string()}`);
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 100));
-
+await nc.flush();
 await nc.drain();

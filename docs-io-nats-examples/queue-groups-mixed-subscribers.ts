@@ -20,39 +20,32 @@ import { connect } from "@nats-io/transport-deno";
 const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
-// Audit logger - receives all messages
-const auditSub = nc.subscribe("orders.>");
-(async () => {
-  for await (const msg of auditSub) {
-    console.log(`[AUDIT] ${msg.subject}: ${msg.string()}`);
-  }
-})().catch(console.error);
 
-// Metrics collector - receives all messages
-const metricsSub = nc.subscribe("orders.>");
-(async () => {
-  for await (const msg of metricsSub) {
-    console.log(`[METRICS] ${msg.subject}: ${msg.string()}`);
-  }
-})().catch(console.error);
-
-// Workers in queue group - load balanced
-async function subscribeWorker(label: string) {
-  const sub = nc.subscribe("orders.new", { queue: "workers" });
-  for await (const msg of sub) {
-    console.log(`[WORKER ${label}] Processing: ${msg.string()}`);
-  }
+// add a function that creates a subscription and optionally processes messages
+// in a queue group
+function addWorker(label: string, queue = "") {
+  const sub = nc.subscribe("orders.new", { queue });
+  (async () => {
+    for await (const msg of sub) {
+      console.log(`[WORKER ${label}] Processing: ${msg.string()}`);
+    }
+  })().catch(console.error);
 }
 
-subscribeWorker("A").catch(console.error);
-subscribeWorker("B").catch(console.error);
+// Audit logger - receives all messages
+addWorker("AUDIT");
+// Metrics collector - receives all messages
+addWorker("METRICS");
+
+// Workers in queue group - load balanced
+addWorker("A", "q");
+addWorker("B", "q");
 
 // Publish order
 nc.publish("orders.new", "Order 123");
 nc.publish("orders.new", "Order 124");
-// Audit and metrics see them, one worker processes each
+nc.publish("orders.new", "Order 125");
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 100));
-
+await nc.flush();
 await nc.drain();

@@ -14,19 +14,26 @@
  */
 
 // import the connect function from a transport
-import { connect } from "@nats-io/transport-deno";
+import { connect, delay} from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "localhost:4222" });
+const nc = await connect();
 
-// subscribe to the 'hello' subject
-const sub = nc.subscribe("hello");
-console.log("Listening for messages on 'hello'...");
+delay(1000).then(() => {
+  nc.publish("weather.updates", "Weather: Sunny in NYC");
+})
 
-// iterate over messages received
+// NATS-DOC-START
+// Subscribe to the "weather.updates" subject; auto-close after 1 message
+const sub = nc.subscribe("weather.updates");
+
+// iterate over messages received (sub will end after the first message)
 for await (const msg of sub) {
   console.log(`Received: ${msg.string()}`);
+  break;
 }
+
+// NATS-DOC-END
 
 // drain will close the connection after processing pending messages
 await nc.drain();

@@ -14,40 +14,45 @@
  */
 
 // import the connect function from a transport
-import { connect } from "@nats-io/transport-deno";
+import { connect, type Subscription, delay } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
 const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
 // Worker that can be dynamically added/removed
-function newWorker(id: string) {
+function process(id: string): Promise<{id: string, sub: Subscription}> {
   const sub = nc.subscribe("tasks", { queue: "workers" });
   (async () => {
     for await (const msg of sub) {
       console.log(`Worker ${id} processing: ${msg.string()}`);
       // Simulate work
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await delay(100);
     }
   })().catch(console.error);
-  return { id, sub };
+  return Promise.resolve({ id, sub });
 }
 
+setInterval(() => {
+  nc.publish("tasks", new Date().toISOString());
+}, 50)
+
 // Dynamic scaling
-const workers: ReturnType<typeof newWorker>[] = [];
+const workers: { id: string, sub: Subscription }[] = [];
 
 // Scale up
 for (let i = 1; i <= 5; i++) {
-  workers.push(newWorker(`${i}`));
+  workers.push(await process(`${i}`));
 }
 
 // Scale down
+await delay(1000);
 const removed = workers.pop();
 if (removed) {
   removed.sub.unsubscribe();
 }
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 500));
+await delay(1000);
 
 await nc.drain();

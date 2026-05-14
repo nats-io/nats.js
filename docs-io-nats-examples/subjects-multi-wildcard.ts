@@ -20,7 +20,7 @@ import { connect } from "@nats-io/transport-deno";
 const nc = await connect({ servers: "localhost:4222" });
 
 // NATS-DOC-START
-async function subscribeAndIterate(subject: string) {
+async function process(subject: string) {
   const sub = nc.subscribe(subject);
   const label = `[${subject}]`.padEnd(23);
   for await (const msg of sub) {
@@ -29,13 +29,13 @@ async function subscribeAndIterate(subject: string) {
 }
 
 // Subscribe to all alarms
-subscribeAndIterate("sensor.alarm.*").catch(console.error);
+process("sensor.alarm.*").catch(console.error);
 
 // Subscribe to all critical
-subscribeAndIterate("sensor.*.*.critical").catch(console.error);
+process("sensor.*.*.critical").catch(console.error);
 
 // Subscribe to everything
-subscribeAndIterate("sensor.>").catch(console.error);
+process("sensor.>").catch(console.error);
 
 // Publish to specific subjects
 nc.publish("sensor.alarm.smoke", "kitchen,14:22");
@@ -44,6 +44,5 @@ nc.publish("sensor.alarm.water", "basement,16:42");
 nc.publish("sensor.alarm.water.critical", "basement,16:43");
 // NATS-DOC-END
 
-await new Promise((resolve) => setTimeout(resolve, 100));
-
+await nc.flush();
 await nc.drain();
