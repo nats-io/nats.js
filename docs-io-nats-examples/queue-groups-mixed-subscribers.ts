@@ -17,7 +17,7 @@
 import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "demo.nats.io:4222" });
+const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Audit logger - receives all messages

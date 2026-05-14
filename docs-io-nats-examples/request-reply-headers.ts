@@ -18,7 +18,7 @@ import { connect, headers } from "@nats-io/transport-deno";
 import type { Subscription } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "demo.nats.io:4222" });
+const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Header Aware service
@@ -39,7 +39,7 @@ const sub = nc.subscribe("service");
       headers: h,
     });
   }
-})(sub);
+})(sub).catch(console.error);
 
 // Create message with headers
 const h = headers();

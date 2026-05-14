@@ -18,7 +18,7 @@ import { connect } from "@nats-io/transport-deno";
 import type { Subscription } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "demo.nats.io:4222" });
+const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Calculator service
@@ -32,9 +32,12 @@ const sub = nc.subscribe("calc.add");
       if (!Number.isNaN(a) && !Number.isNaN(b)) {
         m.respond(String(a + b));
       }
+      else {
+        m.respond("error: invalid input");
+      }
     }
   }
-})(sub);
+})(sub).catch(console.error);
 
 // Make calculations
 let resp = await nc.request("calc.add", "5 3");
@@ -42,6 +45,9 @@ console.log(`5 + 3 = ${resp.string()}`);
 
 resp = await nc.request("calc.add", "10 7");
 console.log(`10 + 7 = ${resp.string()}`);
+
+resp = await nc.request("calc.add", "10 x");
+console.log(`10 + x = ${resp.string()}`);
 // NATS-DOC-END
 
 await new Promise((resolve) => setTimeout(resolve, 100));

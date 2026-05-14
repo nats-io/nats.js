@@ -18,7 +18,7 @@ import { connect } from "@nats-io/transport-deno";
 import type { Subscription } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "demo.nats.io:4222" });
+const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Multiple responders - only first response is returned
@@ -27,14 +27,14 @@ const subA = nc.subscribe("calc.add");
   for await (const m of sub) {
     m.respond("calculated result from A");
   }
-})(subA);
+})(subA).catch(console.error);
 
 const subB = nc.subscribe("calc.add");
 (async (sub: Subscription) => {
   for await (const m of sub) {
     m.respond("calculated result from B");
   }
-})(subB);
+})(subB).catch(console.error);
 
 // Gets one response
 try {

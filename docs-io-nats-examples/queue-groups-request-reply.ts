@@ -17,7 +17,7 @@
 import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
-const nc = await connect({ servers: "demo.nats.io:4222" });
+const nc = await connect({ servers: "nats://localhost:4222" });
 
 // NATS-DOC-START
 // Service instance with queue group for load balancing
@@ -26,7 +26,7 @@ function createServiceInstance(instanceId: string) {
   (async () => {
     for await (const msg of sub) {
       const data = msg.string().split(",");
-      const result = parseInt(data[0]) + parseInt(data[1]);
+      const result = parseInt(data[0], 10) + parseInt(data[1], 10);
       const response =
         `Result: ${result}, processed by: instance-${instanceId}`;
       msg.respond(response);
