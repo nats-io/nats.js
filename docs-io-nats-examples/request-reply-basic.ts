@@ -30,12 +30,12 @@ nc.subscribe("time", {
 
 // Make a request
 await nc.request("time", "")
-    .then((m) => {
-      console.log(`Response: ${m.string()}`);
-    })
-    .catch((err) => {
-      console.log(`Request failed: ${err.message}`);
-    });
+  .then((m) => {
+    console.log(`Response: ${m.string()}`);
+  })
+  .catch((err) => {
+    console.log(`Request failed: ${err.message}`);
+  });
 // NATS-DOC-END
 
 await new Promise((resolve) => setTimeout(resolve, 100));

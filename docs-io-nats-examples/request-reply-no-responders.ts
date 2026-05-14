@@ -14,19 +14,19 @@
  */
 
 // import the connect function from a transport
-import { connect, errors } from "@nats-io/transport-deno";
+import { connect } from "@nats-io/transport-deno";
 
 // connect to NATS demo server
 const nc = await connect({ servers: "demo.nats.io:4222" });
 
 // NATS-DOC-START
 await nc.request("no.such.service", "test")
-    .then((m) => {
-      console.log(`Response: ${m.string()}`);
-    })
-    .catch((err) => {
-      console.log(`Request failed: ${err.message}`);
-    });
+  .then((m) => {
+    console.log(`Response: ${m.string()}`);
+  })
+  .catch((err) => {
+    console.log(`Request failed: ${err.message}`);
+  });
 // NATS-DOC-END
 
 await nc.drain();

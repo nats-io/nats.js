@@ -72,7 +72,8 @@
       "services/",
       "*.md",
       "transport-node/",
-      "nst/"
+      "nst/",
+      "docs-io-nats-examples/"
     ],
     "exclude": [
       "core/lib",

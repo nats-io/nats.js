@@ -35,7 +35,9 @@ const sub = nc.subscribe("service");
     if (pri) {
       h.append("X-Priority", pri);
     }
-    m.respond(m.data, {headers: h})
+    m.respond(m.data, {
+      headers: h,
+    });
   }
 })(sub);
 
@@ -44,7 +46,10 @@ const h = headers();
 h.append("X-Request-ID", "123");
 h.append("X-Priority", "high");
 
-const response = await nc.request("service", "data", {headers: h, timeout:1000});
+const response = await nc.request("service", "data", {
+  headers: h,
+  timeout: 1000,
+});
 console.log(`Response: ${response.string()}`);
 const responseId = response.headers?.get("X-Response-ID");
 if (responseId) {

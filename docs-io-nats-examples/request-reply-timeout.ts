@@ -22,12 +22,12 @@ const nc = await connect({ servers: "demo.nats.io:4222" });
 // NATS-DOC-START
 // Request with custom timeout
 await nc.request("service", "data", { timeout: 2000 })
-    .then((m) => {
-      console.log(`Response: ${m.string()}`);
-    })
-    .catch((err) => {
-      console.log(`Request failed: ${err.message}`);
-    });
+  .then((m) => {
+    console.log(`Response: ${m.string()}`);
+  })
+  .catch((err) => {
+    console.log(`Request failed: ${err.message}`);
+  });
 // NATS-DOC-END
 
 await nc.drain();
