@@ -36,6 +36,7 @@
     "test-services": "deno test -A --parallel --reload --quiet --coverage=coverage/services services/tests",
     "test-transport-deno": "deno test -A --parallel --reload --quiet --coverage=coverage/transport-deno transport-deno/tests",
     "test-nst": "deno test -A --parallel --reload --quiet --coverage=coverage/nst nst/tests",
+    "test-core-remote": "deno test -A --parallel --reload --quiet --config deno.remote.json core/tests",
     "coverage": "deno coverage ./coverage/core ./coverage/jetstream ./coverage/kv ./coverage/obj ./coverage/services ./coverage/unsafe ./coverage/transport-deno --exclude=nst --exclude=tests --exclude=examples --exclude=sha256 --exclude=bench.ts --lcov > ./coverage/out.lcov",
     "cover": "deno task coverage && genhtml --ignore-errors inconsistent,corrupt -o ./coverage/html ./coverage/out.lcov && open ./coverage/html/index.html",
     "lint": "deno task lint-core && deno task lint-jetstream && deno task lint-kv && deno task lint-obj && deno task lint-services && deno task lint-nst",
@@ -143,7 +144,8 @@
     "./kv",
     "./obj",
     "./services",
-    "./nst"
+    "./nst",
+    "./nst-remote"
   ],
   "nodeModulesDir": "none"
 }

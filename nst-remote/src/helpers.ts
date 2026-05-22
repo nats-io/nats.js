@@ -15,48 +15,37 @@
 
 import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
 import { compare, parseSemVer } from "@nats-io/nats-core/internal";
-import { mkdtempSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import type { ManagedServer } from "@nats-io/nst";
+import { NatsServer } from "./server.ts";
 
-import { NatsServer } from "./launcher.ts";
-import process from "node:process";
-export { check } from "./check.ts";
-export { Lock } from "./lock.ts";
-export { Connection, TestServer } from "./test_server.ts";
-export { assertBetween } from "./asserts.ts";
-export { NatsServer, ServerSignals, toConf } from "./launcher.ts";
-export type { ConnZ, JSZ, PortInfo, Ports, VarZ } from "./launcher.ts";
-export type { ManagedServer, ServerFactory } from "./managed.ts";
-export { getConnect, registerConnect } from "./connect.ts";
-export type { ConnectFn } from "./connect.ts";
-
-const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
-export function disabled(reason: string): void {
-  process.stdout.write(`${RED}skipping: ${reason} ${RESET}`);
-}
+export type SetupContext = {
+  ns: NatsServer;
+  nc: NatsConnection;
+  [Symbol.asyncDispose](): Promise<void>;
+};
 
 export function jsopts(): Record<string, unknown> {
-  const store_dir = mkdtempSync(join(tmpdir(), "jetstream"));
   return {
     jetstream: {
       max_file_store: 1024 * 1024,
       max_mem_store: 1024 * 1024,
-      store_dir,
     },
   };
 }
 
 export function wsopts(): Record<string, unknown> {
   return {
-    websocket: {
-      no_tls: true,
-      port: -1,
-    },
+    websocket: { no_tls: true },
   };
+}
+
+export function jetstreamServerConf(
+  opts: unknown = {},
+): Record<string, unknown> {
+  return Object.assign(jsopts(), opts);
 }
 
 export function jetstreamExportServerConf(
@@ -64,7 +53,7 @@ export function jetstreamExportServerConf(
   prefix = "IPA.>",
 ): Record<string, unknown> {
   const template = {
-    "no_auth_user": "a",
+    no_auth_user: "a",
     accounts: {
       JS: {
         jetstream: "enabled",
@@ -89,35 +78,15 @@ export function jetstreamExportServerConf(
   return jetstreamServerConf(conf);
 }
 
-export function jetstreamServerConf(
-  opts: unknown = {},
-): Record<string, unknown> {
-  const conf = Object.assign(jsopts(), opts) as {
-    jetstream: { store_dir?: unknown };
-  };
-  if (typeof conf.jetstream.store_dir !== "string") {
-    conf.jetstream.store_dir = mkdtempSync(join(tmpdir(), "jetstream"));
-  }
-  return conf as Record<string, unknown>;
-}
-
 export function wsServerConf(opts: unknown = {}): Record<string, unknown> {
   return Object.assign(wsopts(), opts);
 }
-
-export type SetupContext = {
-  ns: NatsServer;
-  nc: NatsConnection;
-  [Symbol.asyncDispose](): Promise<void>;
-};
 
 export async function setup(
   serverConf?: Record<string, unknown>,
   clientOpts?: Partial<ConnectionOptions>,
 ): Promise<SetupContext> {
-  const dt = serverConf as { debug?: boolean; trace?: boolean };
-  const debug = !!(dt && (dt.debug || dt.trace));
-  const ns = await NatsServer.start(serverConf, debug);
+  const ns = await NatsServer.start(serverConf);
   const nc = await ns.connect(clientOpts);
   return {
     ns,
@@ -129,19 +98,15 @@ export async function setup(
 }
 
 export async function cleanup(
-  ns: NatsServer,
+  ns: ManagedServer,
   ...nc: NatsConnection[]
 ): Promise<void> {
-  const conns: Promise<void>[] = [];
-  nc.forEach((v) => {
-    conns.push(v.close());
-  });
-  await Promise.all(conns);
+  await Promise.all(nc.map((v) => v.close()));
   await ns.stop(true);
 }
 
 export async function notCompatible(
-  ns: NatsServer,
+  ns: ManagedServer,
   nc: NatsConnection,
   version?: string,
 ): Promise<boolean> {
@@ -149,43 +114,35 @@ export async function notCompatible(
   const varz = await ns.varz() as unknown as Record<string, string>;
   const sv = parseSemVer(varz.version);
   if (compare(sv, parseSemVer(version)) < 0) {
-    process.stdout.write(
-      `${YELLOW}skipping test as server (${varz.version}) doesn't implement required feature from ${version} ${RESET}`,
+    log(
+      `skipping test as server (${varz.version}) doesn't implement required feature from ${version} `,
     );
     await cleanup(ns, nc);
     return true;
   }
   return false;
 }
+
 export async function notSupported(
-  ns: NatsServer,
+  ns: ManagedServer,
   version?: string,
 ): Promise<boolean> {
   version = version ?? "2.3.3";
   const varz = await ns.varz() as unknown as Record<string, string>;
   const sv = parseSemVer(varz.version);
   if (compare(sv, parseSemVer(version)) < 0) {
-    process.stdout.write(
-      `${YELLOW}skipping test as server (${varz.version}) doesn't implement required feature from ${version} ${RESET}`,
+    log(
+      `skipping test as server (${varz.version}) doesn't implement required feature from ${version} `,
     );
     return true;
   }
   return false;
 }
 
-export function flakyTest(
-  fn: () => void | Promise<void>,
-  { count = 3 } = {},
-): () => Promise<void> {
-  return async () => {
-    const errors: Error[] = [];
-    for (let i = 0; i < count; i++) {
-      try {
-        return await fn();
-      } catch (err) {
-        errors.push(err as Error);
-      }
-    }
-    throw new AggregateError(errors);
-  };
+function log(msg: string): void {
+  // deno-lint-ignore no-explicit-any
+  const g = globalThis as any;
+  const out = g.process?.stdout?.write?.bind(g.process.stdout) ??
+    ((s: string) => console.log(s));
+  out(`${YELLOW}${msg}${RESET}`);
 }
