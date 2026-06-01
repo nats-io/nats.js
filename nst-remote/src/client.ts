@@ -160,6 +160,7 @@ async function loadCoreConnect(
   }
   // deno-lint-ignore no-explicit-any
   if ((globalThis as any).Deno) {
+    // @ts-ignore — Deno-only dep, not resolvable from a Node tsc build.
     const { connect } = await import("@nats-io/transport-deno");
     return connect as unknown as (
       opts: Record<string, unknown>,
