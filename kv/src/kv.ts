@@ -308,6 +308,7 @@ export class Bucket implements KV {
     this._prefixLen = 0;
   }
 
+  /** @internal */
   static async create(
     js: JetStreamClient,
     name: string,
@@ -320,6 +321,7 @@ export class Bucket implements KV {
     return bucket;
   }
 
+  /** @internal */
   static async bind(
     js: JetStreamClient,
     name: string,

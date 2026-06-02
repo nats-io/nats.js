@@ -2,5 +2,6 @@
   "readme": "./README.md",
   "theme": "default",
   "out": "./docs/",
+  "excludeInternal": true,
   "entryPoints": ["build/src/mod.ts"]
 }
