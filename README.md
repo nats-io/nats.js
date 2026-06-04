@@ -105,6 +105,75 @@ Each of the modules has an introductory page that shows the main API usage for
 the module. You can access it's
 [JSDoc here](https://nats-io.github.io/nats.js/).
 
+## Client and Orbit
+
+NATS client functionality is split across two layers: the **core client**
+(the `@nats-io/*` modules in this repo) and
+**[Orbit](https://github.com/synadia-io/orbit.js)**, a separate set of
+modules with higher-level utilities.
+
+The split exists so the core can stay small, stable, and consistent across
+NATS clients in every language, while Orbit can iterate quickly on
+opinionated abstractions without dragging the core API along for the ride.
+
+### Core client (`nats.js`)
+
+- Direct API over Core NATS and JetStream as exposed by `nats-server`.
+- Lightweight, unopinionated, performance-oriented.
+- API surface kept in **parity** with other official NATS clients
+  (Rust, Go, .NET, Java, Python, C). A feature shipped here should look
+  the same shape everywhere.
+- Stable, conservative versioning. Breaking changes are rare and deliberate.
+
+### Orbit (`orbit.js`)
+
+- Higher-level, opinionated abstractions built **on top of** the core client.
+- Per-module versioning, so an experimental utility can iterate
+  without bumping every other piece.
+- Free to be language-specific: a JavaScript-idiomatic API does not need to
+  match the equivalent in other languages.
+- May lag, omit, or extend cross-client parity items.
+
+### What goes where?
+
+| Concern                                            | Core (`nats.js`)    | Orbit |
+|----------------------------------------------------|:-------------------:|:-----:|
+| Connect, publish, subscribe, request/reply         | ✅                  |       |
+| JetStream publish, consumers, streams, KV, OS      | ✅                  |       |
+| Service API (request/reply micro-services)         | ✅                  |       |
+| Wire-protocol coverage, auth, TLS, reconnection    | ✅                  |       |
+| Cross-client parity, conservative semver           | ✅                  |       |
+| Opinionated helpers / sugar over core APIs         |                     | ✅    |
+| New experimental patterns (e.g. partitioned groups)|                     | ✅    |
+| KV codecs, distributed counters, NATS contexts     |                     | ✅    |
+| JS-idiomatic abstractions with no parity mandate   |                     | ✅    |
+| Per-utility versioning, faster API churn allowed   |                     | ✅    |
+
+> **Rule of thumb:** if it is a thin mapping of something `nats-server`
+> already speaks and every official client must expose it, it belongs in
+> core. If it is a pattern, helper, or abstraction layered on top, it
+> belongs in Orbit.
+
+### Layering
+
+```text
+   ┌──────────────────────────────────────────────────────┐
+   │  Application code                                    │
+   └──────────────┬───────────────────────────┬───────────┘
+                  │                           │
+                  ▼                           ▼
+        ┌───────────────────┐       ┌───────────────────┐
+        │ Orbit modules     │  uses │ nats.js (core)    │
+        │ (opinionated,     │──────▶│ (parity, stable,  │
+        │  per-mod semver)  │       │  protocol-level)  │
+        └───────────────────┘       └─────────┬─────────┘
+                                              │
+                                              ▼
+                                       ┌─────────────┐
+                                       │ nats-server │
+                                       └─────────────┘
+```
+
 ## Contributing
 
 If you are interested in contributing to NATS, read about our...
