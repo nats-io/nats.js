@@ -506,6 +506,44 @@ Deno.test("kv - codec crud", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("kv - json reviver", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const n = nuid.next();
+  const js = jetstream(nc);
+  const kv = await new Kvm(js).create(n);
+
+  await kv.put("a", JSON.stringify({ date: Date.now(), auth: true }));
+
+  const reviver = (key: string, value: unknown) => {
+    if (typeof value === "boolean") {
+      return value ? "yes" : "no";
+    }
+    switch (key) {
+      case "date":
+        return new Date(value as number);
+      default:
+        return value;
+    }
+  };
+
+  // get() entry (KvStoredEntryImpl)
+  const e = await kv.get("a");
+  assertExists(e);
+  const d = e.json<{ date: Date; auth: string }>(reviver);
+  assert(d.date instanceof Date);
+  assertEquals(d.auth, "yes");
+
+  // history entry (KvJsMsgEntryImpl)
+  const iter = await kv.history({ key: "a" });
+  for await (const he of iter) {
+    const hd = he.json<{ date: Date; auth: string }>(reviver);
+    assert(hd.date instanceof Date);
+    assertEquals(hd.auth, "yes");
+  }
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("kv - history", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {

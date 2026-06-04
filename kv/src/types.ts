@@ -19,7 +19,7 @@ import type {
   StreamInfo,
   StreamSource,
 } from "@nats-io/jetstream";
-import type { Payload, QueuedIterator } from "@nats-io/nats-core";
+import type { Payload, QueuedIterator, ReviverFn } from "@nats-io/nats-core";
 
 export type KvEntry = {
   bucket: string;
@@ -36,7 +36,7 @@ export type KvEntry = {
    * Convenience method to parse the entry payload as JSON. This method
    * will throw an exception if there's a parsing error;
    */
-  json<T>(): T;
+  json<T>(reviver?: ReviverFn): T;
 
   /**
    * Convenience method to parse the entry payload as string. This method
