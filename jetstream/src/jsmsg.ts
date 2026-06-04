@@ -19,6 +19,7 @@ import type {
   MsgImpl,
   ProtocolHandler,
   RequestOptions,
+  ReviverFn,
 } from "@nats-io/nats-core/internal";
 import {
   DataBuffer,
@@ -141,7 +142,7 @@ export type JsMsg = {
    * Convenience method to parse the message payload as JSON. This method
    * will throw an exception if there's a parsing error;
    */
-  json<T>(): T;
+  json<T>(reviver?: ReviverFn): T;
 
   /**
    * Convenience method to parse the message payload as string. This method
@@ -356,8 +357,8 @@ export class JsMsgImpl implements JsMsg {
     this.doAck(term);
   }
 
-  json<T = unknown>(): T {
-    return this.msg.json();
+  json<T = unknown>(reviver?: ReviverFn): T {
+    return this.msg.json(reviver);
   }
 
   string(): string {

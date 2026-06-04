@@ -322,6 +322,58 @@ Deno.test("jsmsg - time and timestamp", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("jsmsg - json reviver", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
+  await jsm.streams.add({
+    name: "A",
+    subjects: ["a.>"],
+    storage: StorageType.Memory,
+    allow_direct: true,
+  });
+
+  const js = jetstream(nc);
+  await js.publish("a.a", JSON.stringify({ date: Date.now(), auth: true }));
+
+  const reviver = (key: string, value: unknown) => {
+    if (typeof value === "boolean") {
+      return value ? "yes" : "no";
+    }
+    switch (key) {
+      case "date":
+        return new Date(value as number);
+      default:
+        return value;
+    }
+  };
+
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    ack_policy: AckPolicy.None,
+  });
+  const oc = await js.consumers.get("A", "a");
+  const m = await oc.next();
+  assertExists(m);
+  const d = m.json<{ date: Date; auth: string }>(reviver);
+  assert(d.date instanceof Date);
+  assertEquals(d.auth, "yes");
+
+  const dm = await jsm.direct.getMessage("A", { seq: 1 });
+  assertExists(dm);
+  const dd = dm.json<{ date: Date; auth: string }>(reviver);
+  assert(dd.date instanceof Date);
+  assertEquals(dd.auth, "yes");
+
+  const s = await jsm.streams.get("A");
+  const sm = await s.getMessage({ seq: 1 });
+  assertExists(sm);
+  const sd = sm.json<{ date: Date; auth: string }>(reviver);
+  assert(sd.date instanceof Date);
+  assertEquals(sd.auth, "yes");
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("jsmsg - reply/sid", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc) as JetStreamManagerImpl;
