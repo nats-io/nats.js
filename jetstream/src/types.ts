@@ -445,6 +445,20 @@ export type ConsumerAPI = {
   ): Promise<ConsumerInfo>;
 
   /**
+   * Adds the consumer if it does not exist, or updates it in place if it
+   * does. The full configuration provided is sent to the server, which decides
+   * whether to create or update.
+   * @param stream
+   * @param cfg
+   * @param opts
+   */
+  addOrUpdate(
+    stream: string,
+    cfg: Partial<ConsumerConfig>,
+    opts?: ConsumerCreateOptions,
+  ): Promise<ConsumerInfo>;
+
+  /**
    * Updates the consumer configuration for the specified consumer on the specified
    * stream that has the specified durable name.
    * @param stream
