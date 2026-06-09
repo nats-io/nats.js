@@ -217,7 +217,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
     return this.addUpdate(stream, cfg, cco);
   }
 
-  createOrUpdate(
+  addOrUpdate(
     stream: string,
     cfg: ConsumerConfig,
     opts?: ConsumerCreateOptions,
