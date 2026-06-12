@@ -378,6 +378,25 @@ export type RoKV = {
    * @param filter - default is all keys
    */
   keys(filter?: string | string[]): Promise<QueuedIterator<string>>;
+
+  /**
+   * Returns an iterator yielding the last {@link KvEntry} for each key
+   * matching the specified filter, retrieved with a single batch direct get
+   * request. Unlike {@link history}, {@link watch} and {@link keys}, this
+   * creates no server-side consumer, making it well-suited to frequent reads
+   * of a bucket's current state.
+   *
+   * Entries are returned as-is, including those marked with a "DEL" or "PURGE"
+   * operation - filter on {@link KvEntry.operation} if only live values are
+   * wanted.
+   *
+   * Requires the bucket to have been created with `allow_direct` and a
+   * server that supports batch direct get (2.11.0 or better); the returned
+   * promise rejects otherwise. A filter matching no keys yields an empty
+   * iterator.
+   * @param filter - default is all keys
+   */
+  getLastFor(filter?: string | string[]): Promise<QueuedIterator<KvEntry>>;
 };
 
 export type KV = RoKV & {

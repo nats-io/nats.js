@@ -144,6 +144,19 @@ await (async () => {
 })();
 console.log(`keys contains hello.world: ${buf[0] === "hello.world"}`);
 
+// getLastFor returns the last entry for each key matching a filter using a
+// single batch direct get - unlike keys()/history()/watch() it creates no
+// server-side consumer, so it is well-suited to frequent reads of a bucket's
+// current state. It requires a bucket created with `allow_direct` (the
+// default when the server supports it). Entries include "DEL"/"PURGE"
+// markers - filter on `e.operation` if you only want live values.
+const last = await kv.getLastFor("hello.>");
+await (async () => {
+  for await (const e of last) {
+    console.log(`getLastFor: ${e.key}: ${e.operation} ${e.string()}`);
+  }
+})();
+
 let h = await kv.history({ key: "hello.world" });
 await (async () => {
   for await (const e of h) {

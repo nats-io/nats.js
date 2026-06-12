@@ -2759,3 +2759,102 @@ Deno.test("kv - watcherPrefix", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - getLastFor returns last value per key", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return await cleanup(ns, nc);
+  }
+  const js = jetstream(nc);
+  const bucket = await new Kvm(js).create(nuid.next(), { history: 5 });
+
+  await bucket.put("a", "1");
+  await bucket.put("a", "2");
+  await bucket.put("b", "1");
+  await bucket.put("c", "1");
+
+  const entries = await collect(await bucket.getLastFor());
+  const got = new Map(entries.map((e) => [e.key, e.string()]));
+
+  assertEquals(got.size, 3);
+  assertEquals(got.get("a"), "2");
+  assertEquals(got.get("b"), "1");
+  assertEquals(got.get("c"), "1");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - getLastFor filters by key", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return await cleanup(ns, nc);
+  }
+  const js = jetstream(nc);
+  const bucket = await new Kvm(js).create(nuid.next());
+
+  await bucket.put("a.x", "1");
+  await bucket.put("a.y", "2");
+  await bucket.put("b.x", "3");
+
+  const wild = await collect(await bucket.getLastFor("a.>"));
+  assertEquals(wild.map((e) => e.key).sort(), ["a.x", "a.y"]);
+
+  const multi = await collect(await bucket.getLastFor(["a.x", "b.x"]));
+  assertEquals(multi.map((e) => e.key).sort(), ["a.x", "b.x"]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - getLastFor empty match yields empty iterator", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return await cleanup(ns, nc);
+  }
+  const js = jetstream(nc);
+  const bucket = await new Kvm(js).create(nuid.next());
+
+  const entries = await collect(await bucket.getLastFor("does.not.exist"));
+  assertEquals(entries.length, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - getLastFor includes tombstones", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return await cleanup(ns, nc);
+  }
+  const js = jetstream(nc);
+  const bucket = await new Kvm(js).create(nuid.next());
+
+  await bucket.put("live", "1");
+  await bucket.put("gone", "1");
+  await bucket.delete("gone");
+
+  const entries = await collect(await bucket.getLastFor());
+  const ops = new Map(entries.map((e) => [e.key, e.operation]));
+
+  assertEquals(ops.get("live"), "PUT");
+  assertEquals(ops.get("gone"), "DEL");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - getLastFor rejects when not direct", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return await cleanup(ns, nc);
+  }
+  const js = jetstream(nc);
+  const bucket = await new Kvm(js).create(nuid.next(), { allow_direct: false });
+
+  await bucket.put("a", "1");
+
+  await assertRejects(
+    () => bucket.getLastFor(),
+    Error,
+    "direct",
+  );
+
+  await cleanup(ns, nc);
+});
