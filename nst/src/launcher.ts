@@ -30,6 +30,7 @@ import {
 } from "@nats-io/nats-core/internal";
 import { Certs } from "./certs.ts";
 import { getConnect } from "./connect.ts";
+import type { ManagedServer } from "./managed.ts";
 
 export const ServerSignals = {
   QUIT: "SIGQUIT",
@@ -162,7 +163,7 @@ function rgb24(s: string, c: { r: number; g: number; b: number }): string {
   return `\x1b[38;2;${c.r};${c.g};${c.b}m${s}\x1b[0m`;
 }
 
-export class NatsServer implements PortInfo {
+export class NatsServer implements ManagedServer {
   hostname: string;
   clusterName?: string;
   port: number;

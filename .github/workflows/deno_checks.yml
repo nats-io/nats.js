@@ -4,12 +4,73 @@ on:
   workflow_call:
 
 jobs:
+  # core runs against the synadia/server-tester service via nst-remote.
+  # A few tests pin local @nats-io/nst via direct path import (tls, mrequest,
+  # events, doublesubs) — those still need nats-server on the runner.
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        deno-version: [2.7.x]
+
+    services:
+      tester:
+        image: synadia/server-tester:2.14.0
+        ports:
+          - 4222:4222
+        options: --name tester
+
+    steps:
+      - name: Git Checkout Sources
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Install Deno ${{ matrix.deno-version }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ matrix.deno-version }}
+
+      - name: Install nats-server
+        uses: aricart/install-binary@v2.0.0
+        with:
+          repo: nats-io/nats-server
+          name: nats-server
+
+      - name: Wait for tester service
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 4222 && exit 0
+            sleep 1
+          done
+          echo "tester service did not come up" >&2
+          exit 1
+
+      - name: Test core against remote backend
+        env:
+          NST_REMOTE_URL: nats://localhost:4222
+          TMPDIR: ${{ runner.temp }}
+          CI: true
+        run: deno task test-core-remote
+
+      - name: Coverage
+        run: deno task coverage
+
+      - name: Upload coverage
+        uses: coverallsapp/github-action@v2
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel: true
+          flag-name: core
+          file: ./coverage/out.lcov
+
   install:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         deno-version: [2.7.x]
-        module: [core, jetstream, kv, obj, services, nst, transport-deno]
+        module: [jetstream, kv, obj, services, nst, transport-deno]
 
     steps:
       - name: Git Checkout Sources
@@ -48,4 +109,3 @@ jobs:
           parallel: true
           flag-name: ${{ matrix.module }}
           file: ./coverage/out.lcov
-

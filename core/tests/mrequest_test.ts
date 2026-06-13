@@ -12,7 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { cleanup, setup } from "nst";
+// One test in this file uses ns.reload() — only the local launcher supports
+// dynamic auth reloads, so the whole file is pinned to the local nst.
+import { cleanup, setup } from "../../nst/src/mod.ts";
+import "./connect.ts";
 import type {
   Msg,
   NatsConnectionImpl,
