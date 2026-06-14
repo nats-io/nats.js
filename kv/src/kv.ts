@@ -1002,6 +1002,44 @@ export class Bucket implements KV {
     return keys;
   }
 
+  async getLastFor(
+    filter: string | string[] = ">",
+  ): Promise<QueuedIterator<KvEntry>> {
+    if (!this.direct) {
+      return Promise.reject(
+        new Error("getLastFor requires a bucket created with allow_direct"),
+      );
+    }
+
+    const a = !Array.isArray(filter) ? [filter] : filter;
+    const multi_last = a.map((k) => {
+      const ek = this.encodeKey(k);
+      this.validateSearchKey(k);
+      return this.fullKeyName(ek);
+    });
+
+    const direct = (this.jsm as unknown as { direct: DirectStreamAPI }).direct;
+    const src = await direct.getLastMessagesFor(this.stream, { multi_last });
+
+    const entries = new QueuedIteratorImpl<KvEntry>();
+    (async () => {
+      try {
+        for await (const sm of src) {
+          entries.push(this.smToEntry(sm));
+        }
+        entries.push(() => {
+          entries.stop();
+        });
+      } catch (err) {
+        entries.push(() => {
+          entries.stop(err as Error);
+        });
+      }
+    })().then();
+
+    return entries;
+  }
+
   purgeBucket(opts?: PurgeOpts): Promise<PurgeResponse> {
     return this.jsm.streams.purge(this.bucketName(), opts);
   }
