@@ -1002,12 +1002,12 @@ export class Bucket implements KV {
     return keys;
   }
 
-  async getLastFor(
+  async getMany(
     filter: string | string[] = ">",
   ): Promise<QueuedIterator<KvEntry>> {
     if (!this.direct) {
       return Promise.reject(
-        new Error("getLastFor requires a bucket created with allow_direct"),
+        new Error("getMany requires a bucket created with allow_direct"),
       );
     }
 
@@ -1018,6 +1018,8 @@ export class Bucket implements KV {
       return this.fullKeyName(ek);
     });
 
+    // The server caps a batch direct get at 1024 results; matching more than
+    // that stops the iterator with a "too many results" error (no truncation).
     const direct = (this.jsm as unknown as { direct: DirectStreamAPI }).direct;
     const src = await direct.getLastMessagesFor(this.stream, { multi_last });
 

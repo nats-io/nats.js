@@ -380,11 +380,17 @@ export type RoKV = {
   keys(filter?: string | string[]): Promise<QueuedIterator<string>>;
 
   /**
-   * Returns an iterator yielding the last {@link KvEntry} for each key
-   * matching the specified filter, retrieved with a single batch direct get
-   * request. Unlike {@link history}, {@link watch} and {@link keys}, this
-   * creates no server-side consumer, making it well-suited to frequent reads
-   * of a bucket's current state.
+   * Like {@link get}, but returns the last {@link KvEntry} for *each* key
+   * matching the specified filter(s) in a single batch direct get request.
+   * Unlike {@link history}, {@link watch} and {@link keys}, this creates no
+   * server-side consumer, making it well-suited to frequent reads of a
+   * bucket's current state.
+   *
+   * The server caps the result set at **1024 entries**. If more than 1024
+   * keys match the filter the returned iterator stops with a "too many
+   * results" error rather than truncating, so filters should be scoped to
+   * stay under that limit. A filter matching no keys yields an empty
+   * iterator.
    *
    * Entries are returned as-is, including those marked with a "DEL" or "PURGE"
    * operation - filter on {@link KvEntry.operation} if only live values are
@@ -392,11 +398,10 @@ export type RoKV = {
    *
    * Requires the bucket to have been created with `allow_direct` and a
    * server that supports batch direct get (2.11.0 or better); the returned
-   * promise rejects otherwise. A filter matching no keys yields an empty
-   * iterator.
+   * promise rejects otherwise.
    * @param filter - default is all keys
    */
-  getLastFor(filter?: string | string[]): Promise<QueuedIterator<KvEntry>>;
+  getMany(filter?: string | string[]): Promise<QueuedIterator<KvEntry>>;
 };
 
 export type KV = RoKV & {
