@@ -23,7 +23,8 @@ const nc = await connect({ servers: "nats://localhost:4222" });
 // NATS-DOC-START
 // Bind to the existing durable and read every stored message in order. Ask the
 // consumer how many are waiting (num_pending) instead of guessing a count, then
-// fetch exactly that many. The ack_policy is none, so there's nothing to ack.
+// fetch exactly that many. Ack each message after handling it so the server
+// advances the consumer past it and won't redeliver it.
 const js = jetstream(nc);
 const c = await js.consumers.get("ORDERS", "orders-reader");
 const info = await c.info();
@@ -37,6 +38,7 @@ if (n === 0) {
     console.log(
       `stream seq ${m.info.streamSequence}, delivery seq ${m.info.deliverySequence}: ${m.string()}`,
     );
+    await m.ack();
   }
 }
 // NATS-DOC-END

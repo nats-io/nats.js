@@ -27,11 +27,13 @@ const nc = await connect({ servers: "nats://localhost:4222" });
 // NATS-DOC-START
 // Create a durable consumer on the ORDERS stream. A durable keeps its position
 // under a fixed name, so a reader can come back later and pick up where it left
-// off. add() is idempotent: calling it again with the same config is a no-op.
+// off. With explicit acks the server only advances that position once a reader
+// acks each message. add() is idempotent: calling it again with the same config
+// is a no-op.
 const jsm = await jetstreamManager(nc);
 await jsm.consumers.add("ORDERS", {
   durable_name: "orders-reader",
-  ack_policy: AckPolicy.None,
+  ack_policy: AckPolicy.Explicit,
   deliver_policy: DeliverPolicy.All,
 });
 console.log("Created durable consumer: orders-reader");
