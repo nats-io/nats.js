@@ -32,11 +32,11 @@ const nc = await connect({ servers: "nats://localhost:4222" });
 // is a no-op.
 const jsm = await jetstreamManager(nc);
 await jsm.consumers.add("ORDERS", {
-  durable_name: "orders-reader",
+  durable_name: "billing",
   ack_policy: AckPolicy.Explicit,
   deliver_policy: DeliverPolicy.All,
 });
-console.log("Created durable consumer: orders-reader");
+console.log("Created durable consumer: billing");
 // NATS-DOC-END
 
 // drain the connection (flushes and closes)

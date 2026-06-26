@@ -26,7 +26,7 @@ const nc = await connect({ servers: "nats://localhost:4222" });
 // fetch exactly that many. Ack each message after handling it so the server
 // advances the consumer past it and won't redeliver it.
 const js = jetstream(nc);
-const c = await js.consumers.get("ORDERS", "orders-reader");
+const c = await js.consumers.get("ORDERS", "billing");
 const info = await c.info();
 const n = info.num_pending;
 
