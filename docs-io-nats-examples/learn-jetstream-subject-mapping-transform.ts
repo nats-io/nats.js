@@ -1,0 +1,43 @@
+/*
+ * Copyright 2026 The NATS Authors
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// import the connect function from a transport
+import { connect } from "@nats-io/transport-deno";
+import { jetstreamManager } from "@nats-io/jetstream";
+
+// connect to NATS
+const nc = await connect({ servers: "nats://localhost:4222" });
+
+// get a JetStream manager
+const jsm = await jetstreamManager(nc);
+
+// NATS-DOC-START
+// Create ORDERS-SHARDED with a subject transform. Every message on `ingest.*`
+// is rewritten before it is stored: `partition(3,1)` shards each customer
+// (the first wildcard token) into one of three buckets, and `wildcard(1)`
+// keeps the customer id, so `ingest.acme` becomes `orders.<0-2>.acme`.
+const info = await jsm.streams.add({
+  name: "ORDERS-SHARDED",
+  subjects: ["ingest.*"],
+  subject_transform: {
+    src: "ingest.*",
+    dest: "orders.{{partition(3,1)}}.{{wildcard(1)}}",
+  },
+});
+console.log(`Created stream: ${info.config.name}`);
+// NATS-DOC-END
+
+// drain the connection (flushes and closes)
+await nc.drain();
