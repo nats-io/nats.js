@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "outDir": "./lib/",
+    "moduleResolution": "nodenext",
+    "sourceMap": true,
+    "declaration": true,
+    "allowJs": true,
+    "removeComments": false,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "./build/src/**/*"
+  ]
+}

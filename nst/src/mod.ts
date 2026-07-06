@@ -25,7 +25,9 @@ export { check } from "./check.ts";
 export { Lock } from "./lock.ts";
 export { Connection, TestServer } from "./test_server.ts";
 export { assertBetween } from "./asserts.ts";
-export { NatsServer, ServerSignals } from "./launcher.ts";
+export { NatsServer, ServerSignals, toConf } from "./launcher.ts";
+export type { ConnZ, JSZ, PortInfo, Ports, VarZ } from "./launcher.ts";
+export type { ManagedServer, ServerFactory } from "./managed.ts";
 export { getConnect, registerConnect } from "./connect.ts";
 export type { ConnectFn } from "./connect.ts";
 
