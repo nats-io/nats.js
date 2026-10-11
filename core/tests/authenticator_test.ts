@@ -23,9 +23,11 @@ import {
   delay,
   jwtAuthenticator,
   nkeyAuthenticator,
+  nkeyFromWebCryptoPublicKey,
   nkeys,
   tokenAuthenticator,
   usernamePasswordAuthenticator,
+  webCryptoJwtAuthenticator,
 } from "../src/internal_mod.ts";
 import type {
   Auth,
@@ -498,124 +500,84 @@ Deno.test("authenticator - async fn: real server's Authentication Timeout is rep
   }
 });
 
-// nkey's text format for a raw Ed25519 public key: [prefix byte, 32 key
-// bytes, 2-byte little-endian CRC16-XMODEM checksum], base32-encoded. Ported
-// line-for-line from this package's own crc16.ts/base32.ts/codec.ts (see
-// core/src/nkeys.ts's "@nats-io/nkeys" re-export) rather than imported,
-// because those internals aren't exposed from its package root — only the
-// high-level create*/from* helpers, none of which fit "I already generated
-// this key with WebCrypto, just encode its public half." This is the same
-// port already shipping in geekdotdev/nats-nkey-demo-priv's browser code
-// (spa-server/public/labs/callout-pop-zero-permission.js), verified there by
-// round-tripping known outputs through both this package's own fromPublic()
-// and Go's nkeys.IsValidPublicUserKey — a text/checksum format, not a
-// cryptographic operation, so porting it carries none of the risk
-// hand-rolling actual crypto would.
-const NKEY_USER_PREFIX = 160; // this package's Prefix.User; base32-encodes to 'U...'
-// deno-fmt-ignore
-const CRC16_TABLE = new Uint16Array([
-  0x0000,0x1021,0x2042,0x3063,0x4084,0x50a5,0x60c6,0x70e7,
-  0x8108,0x9129,0xa14a,0xb16b,0xc18c,0xd1ad,0xe1ce,0xf1ef,
-  0x1231,0x0210,0x3273,0x2252,0x52b5,0x4294,0x72f7,0x62d6,
-  0x9339,0x8318,0xb37b,0xa35a,0xd3bd,0xc39c,0xf3ff,0xe3de,
-  0x2462,0x3443,0x0420,0x1401,0x64e6,0x74c7,0x44a4,0x5485,
-  0xa56a,0xb54b,0x8528,0x9509,0xe5ee,0xf5cf,0xc5ac,0xd58d,
-  0x3653,0x2672,0x1611,0x0630,0x76d7,0x66f6,0x5695,0x46b4,
-  0xb75b,0xa77a,0x9719,0x8738,0xf7df,0xe7fe,0xd79d,0xc7bc,
-  0x48c4,0x58e5,0x6886,0x78a7,0x0840,0x1861,0x2802,0x3823,
-  0xc9cc,0xd9ed,0xe98e,0xf9af,0x8948,0x9969,0xa90a,0xb92b,
-  0x5af5,0x4ad4,0x7ab7,0x6a96,0x1a71,0x0a50,0x3a33,0x2a12,
-  0xdbfd,0xcbdc,0xfbbf,0xeb9e,0x9b79,0x8b58,0xbb3b,0xab1a,
-  0x6ca6,0x7c87,0x4ce4,0x5cc5,0x2c22,0x3c03,0x0c60,0x1c41,
-  0xedae,0xfd8f,0xcdec,0xddcd,0xad2a,0xbd0b,0x8d68,0x9d49,
-  0x7e97,0x6eb6,0x5ed5,0x4ef4,0x3e13,0x2e32,0x1e51,0x0e70,
-  0xff9f,0xefbe,0xdfdd,0xcffc,0xbf1b,0xaf3a,0x9f59,0x8f78,
-  0x9188,0x81a9,0xb1ca,0xa1eb,0xd10c,0xc12d,0xf14e,0xe16f,
-  0x1080,0x00a1,0x30c2,0x20e3,0x5004,0x4025,0x7046,0x6067,
-  0x83b9,0x9398,0xa3fb,0xb3da,0xc33d,0xd31c,0xe37f,0xf35e,
-  0x02b1,0x1290,0x22f3,0x32d2,0x4235,0x5214,0x6277,0x7256,
-  0xb5ea,0xa5cb,0x95a8,0x8589,0xf56e,0xe54f,0xd52c,0xc50d,
-  0x34e2,0x24c3,0x14a0,0x0481,0x7466,0x6447,0x5424,0x4405,
-  0xa7db,0xb7fa,0x8799,0x97b8,0xe75f,0xf77e,0xc71d,0xd73c,
-  0x26d3,0x36f2,0x0691,0x16b0,0x6657,0x7676,0x4615,0x5634,
-  0xd94c,0xc96d,0xf90e,0xe92f,0x99c8,0x89e9,0xb98a,0xa9ab,
-  0x5844,0x4865,0x7806,0x6827,0x18c0,0x08e1,0x3882,0x28a3,
-  0xcb7d,0xdb5c,0xeb3f,0xfb1e,0x8bf9,0x9bd8,0xabbb,0xbb9a,
-  0x4a75,0x5a54,0x6a37,0x7a16,0x0af1,0x1ad0,0x2ab3,0x3a92,
-  0xfd2e,0xed0f,0xdd6c,0xcd4d,0xbdaa,0xad8b,0x9de8,0x8dc9,
-  0x7c26,0x6c07,0x5c64,0x4c45,0x3ca2,0x2c83,0x1ce0,0x0cc1,
-  0xef1f,0xff3e,0xcf5d,0xdf7c,0xaf9b,0xbfba,0x8fd9,0x9ff8,
-  0x6e17,0x7e36,0x4e55,0x5e74,0x2e93,0x3eb2,0x0ed1,0x1ef0,
-]);
+// ---- webCryptoJwtAuthenticator --------------------------------------------------------------------------
+// The helper that turns WebCrypto's raw public key into the nkey text a user JWT's `sub` needs is checked here
+// against this package's own nkeys parser, so a wrong prefix or checksum cannot slip through.
 
-function crc16(data: Uint8Array): number {
-  let crc = 0;
-  for (let i = 0; i < data.byteLength; i++) {
-    crc = ((crc << 8) & 0xffff) ^ CRC16_TABLE[((crc >> 8) ^ data[i]) & 0xff];
-  }
-  return crc;
+async function generatePair(extractable = false): Promise<CryptoKeyPair> {
+  return await crypto.subtle.generateKey({ name: "Ed25519" }, extractable, [
+    "sign",
+    "verify",
+  ]) as CryptoKeyPair;
 }
 
-const B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+Deno.test("webcrypto - nkeyFromWebCryptoPublicKey: a valid user nkey that parses back to the same public key", async () => {
+  const kp = await generatePair();
+  const nkey = await nkeyFromWebCryptoPublicKey(kp.publicKey);
+  assertEquals(nkey.length, 56);
+  assertEquals(nkey[0], "U");
+  // fromPublic validates the prefix and the checksum, and getPublicKey returns the same text.
+  assertEquals(nkeys.fromPublic(nkey).getPublicKey(), nkey);
+  // and it is the key it claims to be: a signature made with the private half verifies against the parsed nkey
+  const data = new TextEncoder().encode("a nonce");
+  const sig = new Uint8Array(
+    await crypto.subtle.sign({ name: "Ed25519" }, kp.privateKey, data),
+  );
+  assertEquals(nkeys.fromPublic(nkey).verify(data, sig), true);
+});
 
-function base32Encode(bytes: Uint8Array): string {
-  let bits = 0;
-  let value = 0;
-  let out = "";
-  for (let i = 0; i < bytes.length; i++) {
-    value = (value << 8) | bytes[i];
-    bits += 8;
-    while (bits >= 5) {
-      out += B32_ALPHABET[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
-  return out;
-}
-
-// Encodes a raw 32-byte Ed25519 public key (as exported from WebCrypto) into
-// nkey text form for the given prefix byte (NKEY_USER_PREFIX here, always —
-// this test only ever mints user identities this way).
-function encodeNatsPublicKey(
-  prefixByte: number,
-  rawPublicKeyBytes: Uint8Array,
-): string {
-  const raw = new Uint8Array(1 + rawPublicKeyBytes.length + 2);
-  raw[0] = prefixByte;
-  raw.set(rawPublicKeyBytes, 1);
-  const checksum = crc16(raw.subarray(0, 1 + rawPublicKeyBytes.length));
-  new DataView(raw.buffer).setUint16(
-    1 + rawPublicKeyBytes.length,
-    checksum,
+Deno.test("webcrypto - webCryptoJwtAuthenticator: presents the jwt, the nkey, and a signature over the nonce", async () => {
+  const kp = await generatePair();
+  const auth = webCryptoJwtAuthenticator({ keyPair: kp, jwt: "the.user.jwt" });
+  const result = await auth("server-nonce") as unknown as Record<
+    string,
+    string
+  >;
+  assertEquals(result.jwt, "the.user.jwt");
+  assertEquals(result.nkey, await nkeyFromWebCryptoPublicKey(kp.publicKey));
+  assertEquals(result.auth_token, undefined);
+  const sig = Uint8Array.from(atob(result.sig), (c) => c.charCodeAt(0));
+  assertEquals(
+    nkeys.fromPublic(result.nkey).verify(
+      new TextEncoder().encode("server-nonce"),
+      sig,
+    ),
     true,
   );
-  return base32Encode(raw);
-}
+});
 
-// Builds an AsyncAuthenticator that signs the server's nonce with a
-// WebCrypto private key directly (crypto.subtle.sign — never exporting the
-// key, exactly as a non-extractable key requires), and presents the given
-// jwt/nkey alongside it. Mirrors dpopAuthenticator in
-// geekdotdev/nats-nkey-demo-priv's callout-pop-zero-permission.js line for
-// line: nkeys.encode() here is this fork's own bundled encoder, so the wire
-// format matches exactly what the server expects.
-function webCryptoAuthenticator(
-  jwt: string,
-  nkey: string,
-  privateKey: CryptoKey,
-): (nonce?: string) => Promise<Auth> {
-  return async (nonce?: string): Promise<Auth> => {
-    const challenge = new TextEncoder().encode(nonce || "");
-    const sigBuffer = await crypto.subtle.sign(
-      { name: "Ed25519" },
-      privateKey,
-      challenge,
-    );
-    const sig = nkeys.encode(new Uint8Array(sigBuffer));
-    return { jwt, nkey, sig } as Auth;
-  };
-}
+Deno.test("webcrypto - webCryptoJwtAuthenticator: jwt and authToken functions are read on every call", async () => {
+  const kp = await generatePair();
+  let n = 0;
+  const auth = webCryptoJwtAuthenticator({
+    keyPair: kp,
+    jwt: () => `jwt-${++n}`,
+    authToken: () => `token-${n}`,
+  });
+  const first = await auth("a") as unknown as Record<string, string>;
+  const second = await auth("b") as unknown as Record<string, string>;
+  assertEquals([first.jwt, first.auth_token], ["jwt-1", "token-1"]);
+  assertEquals([second.jwt, second.auth_token], ["jwt-2", "token-2"]);
+  assertEquals(first.nkey, second.nkey);
+});
+
+Deno.test("webcrypto - webCryptoJwtAuthenticator: WebCrypto's own error is passed through for a key that cannot sign", async () => {
+  const ecdsa = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const edPublicOnly = await generatePair();
+  const wrongAlgorithm = webCryptoJwtAuthenticator({
+    keyPair: {
+      publicKey: edPublicOnly.publicKey,
+      privateKey: ecdsa.privateKey,
+    },
+    jwt: "j",
+  });
+  const err = await assertRejects(() => wrongAlgorithm("n"));
+  assertEquals((err as DOMException).name, "InvalidAccessError");
+});
 
 // This is the actual end-to-end proof that the chain of trust from a
 // constructed, key-bound JWT to the server's nonce-signature verification is
@@ -623,28 +585,15 @@ function webCryptoAuthenticator(
 // only ever be usable by the connection that holds that key pair's private
 // half. Two *different*, real, non-extractable WebCrypto-generated Ed25519
 // key pairs stand in for "a legitimate holder" and "an attacker who has
-// somehow obtained a copy of the JWT but not the matching private key" — the
-// second one tries to connect with kp1's JWT while signing with kp2's key,
-// i.e. presenting kp2's own nkey/signature alongside kp1's sub claim. No such
-// test existed in this file before this one.
+// somehow obtained a copy of the JWT but not the matching private key": the
+// second one tries to connect with kp1's JWT while signing with kp2's key.
 Deno.test("authenticator - async fn: a JWT bound to one WebCrypto key pair is rejected when signed with a different one", async () => {
   const O = nkeys.createOperator();
   const A = nkeys.createAccount();
 
-  const kp1 = await crypto.subtle.generateKey({ name: "Ed25519" }, false, [
-    "sign",
-  ]) as CryptoKeyPair;
-  const kp2 = await crypto.subtle.generateKey({ name: "Ed25519" }, false, [
-    "sign",
-  ]) as CryptoKeyPair;
-  const pub1 = encodeNatsPublicKey(
-    NKEY_USER_PREFIX,
-    new Uint8Array(await crypto.subtle.exportKey("raw", kp1.publicKey)),
-  );
-  const pub2 = encodeNatsPublicKey(
-    NKEY_USER_PREFIX,
-    new Uint8Array(await crypto.subtle.exportKey("raw", kp2.publicKey)),
-  );
+  const kp1 = await generatePair();
+  const kp2 = await generatePair();
+  const pub1 = await nkeyFromWebCryptoPublicKey(kp1.publicKey);
 
   // The JWT's sub is pub1 only. encodeUser's second parameter accepts a bare
   // nkey string (jsr:@nats-io/jwt's Key = string | Uint8Array | KeyPair) —
@@ -664,14 +613,17 @@ Deno.test("authenticator - async fn: a JWT bound to one WebCrypto key pair is re
 
   const ns = await NatsServer.start(conf);
   try {
-    // The spoof attempt: kp1's JWT, but kp2's nkey and kp2's signature over
-    // the nonce. If the server accepted this, the JWT's sub binding would be
+    // The spoof attempt: kp1's JWT, but signed (and identified, by nkey) with
+    // kp2. If the server accepted this, the JWT's sub binding would be
     // decorative rather than load-bearing — exactly the property this fork's
     // AsyncAuthenticator (and the browser PoP flow it exists for) depends on.
     const err = await assertRejects(() =>
       ns.connect({
         reconnect: false,
-        asyncAuthenticator: webCryptoAuthenticator(ujwt, pub2, kp2.privateKey),
+        asyncAuthenticator: webCryptoJwtAuthenticator({
+          keyPair: kp2,
+          jwt: ujwt,
+        }),
       })
     );
     assertInstanceOf(err, AuthorizationError);
@@ -694,7 +646,10 @@ Deno.test("authenticator - async fn: a JWT bound to one WebCrypto key pair is re
     // path, were the real problem, this connection would fail too.
     const nc = await ns.connect({
       reconnect: false,
-      asyncAuthenticator: webCryptoAuthenticator(ujwt, pub1, kp1.privateKey),
+      asyncAuthenticator: webCryptoJwtAuthenticator({
+        keyPair: kp1,
+        jwt: ujwt,
+      }),
     });
     await nc.flush();
     assertEquals(nc.isClosed(), false);
