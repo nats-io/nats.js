@@ -873,7 +873,15 @@ export interface Authenticator {
  * AsyncAuthenticator is like {@link Authenticator}, but for credential
  * schemes that cannot compute their result synchronously — for example,
  * signing the connection nonce with a non-extractable WebCrypto key, which
- * is asynchronous on every browser by specification. Mutually exclusive
+ * is asynchronous on every browser by specification.
+ *
+ * If your key is a WebCrypto Ed25519 key pair, do not implement this yourself:
+ * use `webCryptoJwtAuthenticator()`, which returns an AsyncAuthenticator and
+ * does the signing, the nkey encoding and the reconnect handling for you.
+ * Implement this interface directly only for other kinds of signer, such as a
+ * hardware token or a remote signing service.
+ *
+ * @see webCryptoJwtAuthenticator Mutually exclusive
  * with {@link Authenticator} in practice: if set, it takes precedence for
  * the initial CONNECT, and the existing synchronous {@link Authenticator}
  * path is otherwise unaffected by its presence.
