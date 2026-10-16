@@ -1693,16 +1693,18 @@ Deno.test("kv - size", async () => {
 Deno.test(
   "kv - mirror cross domain",
   flakyTest(async () => {
-    const { ns, nc } = await setup(
+    // disposed on exit so a failed attempt doesn't leak servers into retries
+    await using hub = await setup(
       jetstreamServerConf({
         server_name: "HUB",
         jetstream: { domain: "HUB" },
       }),
     );
+    const { ns, nc } = hub;
     // the ports file doesn't report leaf node
     const varz = await ns.varz() as unknown;
 
-    const { ns: lns, nc: lnc } = await setup(
+    await using leaf = await setup(
       jetstreamServerConf({
         server_name: "LEAF",
         jetstream: { domain: "LEAF" },
@@ -1714,6 +1716,7 @@ Deno.test(
         },
       }),
     );
+    const { ns: lns, nc: lnc } = leaf;
 
     // setup a KV
     const js = jetstream(nc);

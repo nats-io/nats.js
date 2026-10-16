@@ -14,6 +14,7 @@
  */
 import {
   assert,
+  assertArrayIncludes,
   assertEquals,
   assertExists,
   assertInstanceOf,
@@ -982,14 +983,37 @@ Deno.test("basics - subscription cb with timeout cancels on message", async () =
 });
 
 Deno.test("basics - resolve", async () => {
-  const nci = await connect({
-    servers: "demo.nats.io",
-  }) as NatsConnectionImpl;
-
-  await nci.flush();
-  const srv = nci.protocol.servers.getCurrentServer();
-  assert(srv.resolves && srv.resolves.length > 1);
-  await nci.close();
+  // fake dns so the test doesn't depend on public records. the server
+  // only listens on 127.0.0.1, so the first alternate (::1) fails and
+  // connecting proves the next resolved alternate is tried.
+  const ns = await NatsServer.start();
+  const resolveDns = Deno.resolveDns;
+  const lookups: string[] = [];
+  // @ts-ignore: test
+  Deno.resolveDns = (query: string, type: Deno.RecordType) => {
+    lookups.push(`${query}/${type}`);
+    if (query !== "nats.test") {
+      return resolveDns(query, type as "A");
+    }
+    return Promise.resolve(type === "A" ? ["::1", "127.0.0.1"] : []);
+  };
+  let nci: NatsConnectionImpl | undefined;
+  try {
+    nci = await connect({
+      servers: `nats.test:${ns.port}`,
+      noRandomize: true,
+    }) as NatsConnectionImpl;
+    await nci.flush();
+    assertArrayIncludes(lookups, ["nats.test/A", "nats.test/AAAA"]);
+    const srv = nci.protocol.servers.getCurrentServer();
+    assertExists(srv.resolves);
+    assertEquals(srv.resolves.map((s) => s.hostname), ["::1", "127.0.0.1"]);
+    assertEquals(srv.resolves[0].tlsName, "nats.test");
+  } finally {
+    Deno.resolveDns = resolveDns;
+    await nci?.close();
+    await ns.stop();
+  }
 });
 
 Deno.test("basics - port and server are mutually exclusive", async () => {
