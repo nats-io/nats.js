@@ -67,6 +67,11 @@ export {
   tokenAuthenticator,
   usernamePasswordAuthenticator,
 } from "./authenticator.ts";
+export {
+  nkeyFromWebCryptoPublicKey,
+  webCryptoJwtAuthenticator,
+} from "./webcrypto_authenticator.ts";
+export type { WebCryptoJwtAuthenticatorOptions } from "./webcrypto_authenticator.ts";
 export type { Codec } from "./codec.ts";
 export * from "./nkeys.ts";
 export { QueuedIteratorImpl } from "./queued_iterator.ts";
@@ -84,6 +89,7 @@ export { Empty } from "./types.ts";
 export { extractProtocolMessage, protoLen } from "./transport.ts";
 
 export type {
+  AsyncAuthenticator,
   Auth,
   Authenticator,
   CallbackFn,

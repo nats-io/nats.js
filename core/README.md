@@ -666,6 +666,199 @@ const nc = await connect(
 );
 ```
 
+#### AsyncAuthenticator
+
+For credential schemes that cannot compute their result synchronously — for
+example, signing the connection nonce with a non-extractable WebCrypto key,
+which every browser makes asynchronous by specification — assign an
+`asyncAuthenticator` instead of `authenticator`. It has the same shape as
+`Authenticator`, except it returns `Promise<Auth>`:
+
+```typescript
+asyncAuthenticator?: (nonce?: string) => Promise<Auth>;
+```
+
+When set, it takes precedence over `authenticator` for the initial `CONNECT`.
+
+`asyncAuthenticator` is the general contract. **If your key is a WebCrypto key,
+do not implement it yourself: use `webCryptoJwtAuthenticator`, described next.**
+Writing your own is for signers that are not WebCrypto keys (see
+[Writing your own AsyncAuthenticator](#writing-your-own-asyncauthenticator)).
+
+##### Use `webCryptoJwtAuthenticator` for WebCrypto keys (recommended)
+
+For nearly every use of `asyncAuthenticator` — a browser, Deno, Node or Bun
+client that authenticates with a user JWT bound to an Ed25519 key it holds as a
+WebCrypto key — we strongly recommend `webCryptoJwtAuthenticator`. It does the
+signing, encodes the public key as an nkey, re-reads your JWT on every
+reconnect, and hands WebCrypto's own errors straight back to you. Hand-written
+versions of this tend to get the nkey text format, the signature encoding or the
+reconnect behaviour subtly wrong.
+
+```javascript
+import {
+  nkeyFromWebCryptoPublicKey,
+  webCryptoJwtAuthenticator,
+  wsconnect,
+} from "@nats-io/nats-core";
+
+// A key pair made by generateKey. The private key can be non-extractable:
+// it is only ever used to sign the server's nonce, and never leaves WebCrypto.
+const keyPair = await crypto.subtle.generateKey("Ed25519", false, [
+  "sign",
+  "verify",
+]);
+
+// The user JWT's `sub` must be this key pair's public key, as an nkey. Ask your
+// own service (the one that holds the account signing key) to mint it.
+const nkey = await nkeyFromWebCryptoPublicKey(keyPair.publicKey);
+const jwt = await mintUserJwtFor(nkey);
+
+const nc = await wsconnect({
+  servers: "wss://nats.example.com",
+  asyncAuthenticator: webCryptoJwtAuthenticator({ keyPair, jwt }),
+});
+```
+
+A complete, runnable version of this (it starts a server in operator mode, signs
+a JWT for the key's public half, connects, and shows that the same JWT with a
+different key is refused) is in
+[`core/examples/webcrypto-auth.ts`](examples/webcrypto-auth.ts):
+`deno run -A core/examples/webcrypto-auth.ts`, with `nats-server` on your
+`PATH`.
+
+Options:
+
+- `keyPair` — the `CryptoKeyPair` from `crypto.subtle.generateKey()`.
+- `jwt` — the user JWT, or a function that returns it. A function is called on
+  every connect, so a JWT you renew is the one presented on a reconnect.
+- `authToken` (optional) — a string or function returned as `auth_token` beside
+  the JWT, for a server-side authorization callout that wants one.
+
+If WebCrypto cannot use the key (a key of another algorithm, a public key passed
+as the private one, a browser without Ed25519), the error is WebCrypto's own
+(`InvalidAccessError`, `NotSupportedError`, `TypeError`), and it ends the
+connection attempt. The library does not wrap or re-label it.
+
+> **Warning: keys created with `importKey()` are not supported.** Use a key pair
+> that `crypto.subtle.generateKey()` created. The authenticator reads the public
+> key out of the pair with `exportKey("raw", …)`. For a generated pair that
+> always works, even when the pair is non-extractable. A public key you imported
+> may be non-extractable, and then that export fails with `InvalidAccessError`.
+> Imported halves are also not known to belong together: WebCrypto cannot tell
+> whether a non-extractable private key matches a public key, so a mismatch only
+> shows up as an authorization failure from the server. A pair that was
+> _generated_, stored in IndexedDB and read back later is fine: it is still a
+> generated pair. If you have to build the credential from imported material,
+> write your own `AsyncAuthenticator` (below).
+
+The server's authentication timeout applies to this authenticator as it does to
+any asynchronous one. See
+[the risk](#the-risk-the-servers-authentication-timeout-doesnt-know-its-waiting-on-a-promise).
+
+##### Writing your own AsyncAuthenticator
+
+Implement the interface directly only when the signer is not a WebCrypto key
+pair — a hardware token, a remote signing service, or a scheme that needs
+imported key material.
+
+`asyncAuthenticator` exists for the one part of a credential scheme that's
+inherently async: producing a signature with a non-extractable key. Treat it as
+a signing step only, not a place to also fetch or mint the credential itself.
+Obtain/refresh that separately — on load, on a timer, after a token exchange —
+and cache it, so the callback has nothing left to do but sign:
+
+```javascript
+// Kept fresh by a separate refresh cycle, not by this callback.
+let cachedJwt;
+
+const asyncAuthenticator = async (nonce) => {
+  const sig = await crypto.subtle.sign(alg, nonExtractableKey, nonce);
+  return { jwt: cachedJwt, sig };
+};
+```
+
+##### The risk: the server's Authentication Timeout doesn't know it's waiting on a promise
+
+nats-server closes a connection that hasn't sent `CONNECT` within its
+`authorization { timeout: <seconds> }` window. The default is 2 seconds.
+
+A synchronous authenticator can't miss that window — signing with a seed locally
+is CPU-bound math that runs inline, in the same turn that builds `CONNECT`. An
+asynchronous one can, because awaiting its result hands control back to the
+event loop, and nothing guarantees that turn comes back quickly:
+
+- a user-presence or biometric gate on the key
+- a backgrounded or throttled tab
+- a non-local (network-backed) signer
+- main-thread contention delaying the continuation
+- sleep/wake during the await
+
+Each of these can plausibly push a real signing operation past 2 seconds, even
+though the cryptography itself takes microseconds.
+
+**A user-presence or biometric gate on the key.** Some non-extractable key
+backings (platform authenticators, TPM/Secure-Enclave-backed keys with a
+presence requirement) don't just compute when you call `sign()` — they can raise
+a Face ID/fingerprint/PIN prompt and wait on the person. A slow or distracted
+user is real, human-timescale latency the crypto operation itself never has.
+
+**A backgrounded or throttled tab.** Browsers deliberately deprioritize a
+background tab's JS execution to save power. If whatever triggers the reconnect
+fires while the tab holding the key isn't focused, the `sign()` promise can sit
+unresolved long after the operation itself would have finished, for reasons that
+have nothing to do with the cryptography.
+
+**A non-local (network-backed) signer.** `AsyncAuthenticator`'s contract doesn't
+require WebCrypto specifically — a real deployment could back it with a remote
+KMS or HSM call instead. That's now subject to ordinary network latency,
+congestion, DNS, TLS handshake overhead, or a cold-starting signing service,
+none of which local nkey-seed signing is ever exposed to.
+
+**Main-thread contention delaying the continuation.** Even when the underlying
+crypto is fast, a promise only resolves once the event loop gets back around to
+it. A page doing something synchronously heavy elsewhere (a big layout/reflow, a
+large `JSON.parse`, another script hogging the thread) delays when `.then()`
+runs, independent of how fast the signature itself was computed.
+
+**Sleep/wake during the await.** A laptop lid closing and reopening, or an OS
+suspend, while the sign call is in flight — wall-clock time keeps moving on the
+server the entire time, regardless of what the client's JS thinks elapsed.
+
+##### Pitfalls
+
+It's tempting to fold the credential fetch into the same callback shown in Usage
+above, rather than keeping it as a separate, cached step:
+
+```javascript
+const asyncAuthenticator = async (nonce) => {
+  // Mints/fetches a credential inline, inside the CONNECT leg — avoid this.
+  const token = await fetch("https://auth.example.com/mint", { ... });
+  const sig = await crypto.subtle.sign(alg, nonExtractableKey, nonce);
+  return { jwt: token.jwt, sig };
+};
+```
+
+This often works in development, which is exactly what makes it a trap: it
+exposes the CONNECT leg to every risk factor described above, stacked on top of
+whatever latency the signing operation itself already adds. The failure is
+intermittent (depends on network conditions at connect time) and surfaces as a
+generic authentication timeout, with nothing pointing back at the authenticator
+as the cause.
+
+##### A candidate workaround
+
+If your authenticator can plausibly take longer than a couple of seconds even
+with the Usage pattern above — a biometric gate, a remote signer, or a client
+environment (browser tabs, laptops) you don't control the scheduling of — one
+option today is to raise the server's own `authorization { timeout: <seconds>
+}`
+accordingly. This interface itself has no client-side way to extend that
+deadline: the server enforces it unilaterally from the moment the TCP connection
+opens, before it has any way to know whether the client's authenticator is
+synchronous or asynchronous, let alone how long a particular async one might
+need.
+
 ### Flush
 
 Flush sends a `PING` protocol message to the server. When the server responds

@@ -41,6 +41,7 @@ export {
   MsgHdrsImpl,
   nanos,
   nkeyAuthenticator,
+  nkeyFromWebCryptoPublicKey,
   nkeys,
   NoRespondersError,
   Nuid,
@@ -53,10 +54,12 @@ export {
   tokenAuthenticator,
   UserAuthenticationExpiredError,
   usernamePasswordAuthenticator,
+  webCryptoJwtAuthenticator,
   wsconnect,
 } from "./internal_mod.ts";
 
 export type {
+  AsyncAuthenticator,
   Auth,
   Authenticator,
   Backoff,
@@ -107,6 +110,7 @@ export type {
   TlsOptions,
   TokenAuth,
   UserPass,
+  WebCryptoJwtAuthenticatorOptions,
   WithRequired,
   WsConnectionOptions,
   WsSocketFactory,
