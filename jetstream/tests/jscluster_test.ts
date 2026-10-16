@@ -20,6 +20,7 @@ import {
   assertEquals,
   assertExists,
   assertRejects,
+  assertStringIncludes,
   fail,
 } from "@std/assert";
 
@@ -77,27 +78,30 @@ Deno.test("jsm - stream update properties", async () => {
     opt: Partial<StreamUpdateConfig | StreamConfig>,
     shouldFail = false,
   ): Promise<void> {
+    let si;
     try {
-      const si = await jsm.streams.update(name, opt);
-      for (const v of Object.keys(opt)) {
-        const sc = si.config;
-        //@ts-ignore: test
-        assertEquals(sc[v], opt[v]);
-      }
-      if (shouldFail) {
-        fail("expected to fail with update: " + JSON.stringify(opt));
-      }
+      si = await jsm.streams.update(name, opt);
     } catch (err) {
       if (!shouldFail) {
         fail((err as Error).message);
       }
+      return;
+    }
+    if (shouldFail) {
+      fail("expected to fail with update: " + JSON.stringify(opt));
+    }
+    for (const v of Object.keys(opt)) {
+      const sc = si.config;
+      //@ts-ignore: test
+      assertEquals(sc[v], opt[v]);
     }
   }
 
   await updateOption({ name: "nn" }, true);
-  await updateOption({ retention: RetentionPolicy.Interest }, true);
+  // servers allow changing retention to interest and max_consumers
+  await updateOption({ retention: RetentionPolicy.Interest });
   await updateOption({ storage: StorageType.Memory }, true);
-  await updateOption({ max_consumers: 5 }, true);
+  await updateOption({ max_consumers: 5 });
 
   await updateOption({ subjects: ["subj", "a"] });
   await updateOption({ description: "xx" });
@@ -111,9 +115,17 @@ Deno.test("jsm - stream update properties", async () => {
   await updateOption({ duplicate_window: nanos(15 * 1000) });
   await updateOption({ allow_rollup_hdrs: true });
   await updateOption({ allow_rollup_hdrs: false });
-  // stream update allows the replica count to be bumped
-  // this is possibly by design?
-  await updateOption({ num_replicas: 3 });
+  // non-clustered servers either accept a replica bump (older servers) or
+  // reject it (nats-server f413f3d7e, 2.14.6+)
+  try {
+    const si = await jsm.streams.update(name, { num_replicas: 3 });
+    assertEquals(si.config.num_replicas, 3);
+  } catch (err) {
+    assertStringIncludes(
+      (err as Error).message,
+      "replicas > 1 not supported in non-clustered mode",
+    );
+  }
   await updateOption({ num_replicas: 1 });
   await updateOption({ deny_delete: true });
   await updateOption({ deny_purge: true });
