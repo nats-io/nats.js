@@ -870,21 +870,19 @@ Deno.test("basics - subs pending count", async () => {
   const subj = createInbox();
 
   const sub = nc.subscribe(subj, { max: 10 });
-  const done = (async () => {
-    let count = 0;
-    for await (const _m of sub) {
-      count++;
-      assertEquals(count, sub.getProcessed());
-      console.log({ processed: sub.getProcessed(), pending: sub.getPending() });
-      assertEquals(sub.getProcessed() + sub.getPending(), 10);
-    }
-  })();
-
   for (let i = 0; i < 10; i++) {
     nc.publish(subj);
   }
+  // all messages are queued before iterating, so the counts add up
   await nc.flush();
-  await done;
+
+  let count = 0;
+  for await (const _m of sub) {
+    count++;
+    assertEquals(count, sub.getProcessed());
+    assertEquals(sub.getProcessed() + sub.getPending(), 10);
+  }
+  assertEquals(count, 10);
   await cleanup(ns, nc);
 });
 
