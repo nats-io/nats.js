@@ -672,3 +672,39 @@ Deno.test("fast ingest ping - pings stop at the timeout", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("fast ingest ping - calls blocked together send one ping", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  await batchStream(nc);
+  const seen = pings(nc, "q");
+
+  const fi = createFastIngest(nc, {
+    allowGaps: false,
+    ackInterval: 2,
+    maxOutstandingAcks: 2,
+  }, 3000);
+  // every flow ack after the one for 2 is lost, so only the ack a ping
+  // brings back releases the blocked adds
+  dropFlowAcks(fi, [4, 6, 8, 10]);
+
+  for (let i = 1; i <= 5; i++) {
+    await fi.add("q", `${i}`);
+  }
+  // the adds of 6 to 10 all block on the window at once
+  const blocked = [];
+  for (let i = 6; i <= 10; i++) {
+    blocked.push(fi.add("q", `${i}`));
+  }
+  await Promise.all(blocked);
+  await nc.flush();
+
+  assertEquals(seen, [10]);
+
+  const ack = await fi.end();
+  assertEquals(ack.count, 10);
+
+  await cleanup(ns, nc);
+});

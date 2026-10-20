@@ -647,6 +647,9 @@ class FastIngestImpl implements FastIngest {
   closeErr?: Error;
   startDeferred: ReturnType<typeof deferred<void>>;
   closedDeferred: ReturnType<typeof deferred<BatchAck>>;
+  // when the last automatic ping was sent, shared by every waiting call so
+  // calls blocked at the same time send one ping, not one each
+  lastPing: number;
 
   constructor(
     nc: NatsConnection,
@@ -654,6 +657,7 @@ class FastIngestImpl implements FastIngest {
     defaultTimeout: number,
   ) {
     this.nc = nc;
+    this.lastPing = 0;
     this.batchSubj = "";
     this.gapMode = opts.allowGaps ? "ok" : "fail";
     this.initialFlow = opts.ackInterval;
@@ -713,17 +717,24 @@ class FastIngestImpl implements FastIngest {
   // waitAndPing waits for p as deadlineOrClose does, and while it waits pings
   // the batch every third of the timeout, so the server sends again a flow ack
   // that was lost. The timeout bounds the whole wait: pings recover lost acks,
-  // they do not keep an idle batch open.
+  // they do not keep an idle batch open. Calls waiting at the same time share
+  // their pings: a tick sends none when another ping went out less than half
+  // an interval ago, or when a ping() on the same sequence is pending.
   private waitAndPing<T>(p: Promise<T>, ms: number): Promise<T> {
+    const interval = Math.max(1, Math.floor(ms / 3));
     const timer = setInterval(() => {
       if (this.closed) return;
+      const now = Date.now();
+      if (now - this.lastPing < interval / 2) return;
+      const rs = this.replyFor(FastIngestOp.Ping, this.seq);
+      if (this.pending.get(rs)?.op === FastIngestOp.Ping) return;
+      this.lastPing = now;
       try {
-        const rs = this.replyFor(FastIngestOp.Ping, this.seq);
         this.nc.publish(this.batchSubj, Empty, { reply: rs });
       } catch {
         // the deadline reports the failure
       }
-    }, Math.max(1, Math.floor(ms / 3)));
+    }, interval);
     return this.deadlineOrClose(p, ms).finally(() => clearInterval(timer));
   }
 
