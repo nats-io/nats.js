@@ -99,8 +99,15 @@ export const ServiceApiPrefix = "$SRV";
 
 export class ServiceMsgImpl implements ServiceMsg {
   msg: Msg;
-  constructor(msg: Msg) {
+  // the error response sent, as "code:description", counted in the endpoint
+  // stats when the handler returns
+  respondErr?: string;
+  // counts an error response as soon as it is sent, for endpoints that have
+  // no handler to return, iterators
+  onError?: (err: string) => void;
+  constructor(msg: Msg, onError?: (err: string) => void) {
     this.msg = msg;
+    this.onError = onError;
   }
 
   get data(): Uint8Array {
@@ -137,7 +144,12 @@ export class ServiceMsgImpl implements ServiceMsg {
     opts.headers = opts.headers || headers();
     opts.headers?.set(ServiceErrorCodeHeader, `${code}`);
     opts.headers?.set(ServiceErrorHeader, description);
-    return this.msg.respond(data, opts);
+    const ok = this.msg.respond(data, opts);
+    if (ok) {
+      this.respondErr = `${code}:${description}`;
+      this.onError?.(this.respondErr);
+    }
+    return ok;
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
@@ -193,6 +205,11 @@ export class ServiceGroupImpl implements ServiceGroup {
     let { subject, handler, metadata, queue } = args;
     subject = subject || name;
     queue = queue || this.queue;
+    // the endpoint keeps its own copy, so changing the caller's map does not
+    // change what INFO reports
+    if (metadata) {
+      metadata = Object.freeze({ ...metadata });
+    }
     validSubjectName("endpoint subject", subject);
     subject = this.calcSubject(this.subject, subject);
 
@@ -296,8 +313,11 @@ export class ServiceImpl implements Service {
       this.config.queue = "q";
     }
 
-    // don't allow changing metadata
-    config.metadata = Object.freeze(config.metadata || {});
+    // don't allow changing metadata: keep a frozen copy, so the caller's map
+    // is neither frozen nor able to change what INFO reports
+    if (config.metadata) {
+      this.config.metadata = Object.freeze({ ...config.metadata });
+    }
 
     // this will throw if no name
     validateName("name", this.config.name);
@@ -388,8 +408,13 @@ export class ServiceImpl implements Service {
           return;
         }
         const start = Date.now();
+        const smsg = new ServiceMsgImpl(msg);
         try {
-          handler(err, new ServiceMsgImpl(msg));
+          handler(err, smsg);
+          // an error response sent before the handler returned is an error
+          if (smsg.respondErr !== undefined) {
+            sv.stats.countError(new Error(smsg.respondErr));
+          }
         } catch (err) {
           sv.stats.countError(err as Error);
           msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
@@ -591,8 +616,7 @@ export class ServiceImpl implements Service {
   }
 
   reset(): void {
-    // pretend we restarted
-    this.started = new Date().toISOString();
+    // only the metrics reset: started stays the time the service started
     if (this.handlers) {
       for (const h of this.handlers) {
         h.stats.reset(h.qi);
@@ -620,7 +644,9 @@ export class ServiceImpl implements Service {
     qi.noIterator = typeof e.handler === "function";
     if (!qi.noIterator) {
       e.handler = (err, msg): void => {
-        err ? this.stop(err).catch() : qi.push(new ServiceMsgImpl(msg));
+        err ? this.stop(err).catch() : qi.push(
+          new ServiceMsgImpl(msg, (e) => ss.stats.countError(new Error(e))),
+        );
       };
       // close the service if the iterator closes
       qi.iterClosed.then(() => {
@@ -645,7 +671,8 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
   num_requests: number;
   processing_time: Nanos;
   num_errors: number;
-  last_error?: string;
+  // "" when no error was counted, so STATS always carries the field
+  last_error: string;
   data?: unknown;
   metadata?: Record<string, string>;
   queue: string;
@@ -655,6 +682,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     this.subject = subject;
     this.average_processing_time = 0;
     this.num_errors = 0;
+    this.last_error = "";
     this.num_requests = 0;
     this.processing_time = 0;
     this.queue = queue;
@@ -664,7 +692,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     this.processing_time = 0;
     this.average_processing_time = 0;
     this.num_errors = 0;
-    this.last_error = undefined;
+    this.last_error = "";
     this.data = undefined;
     const qii = qi as QueuedIteratorImpl<unknown>;
     if (qii) {
