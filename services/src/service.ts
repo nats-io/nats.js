@@ -208,12 +208,9 @@ export class ServiceGroupImpl implements ServiceGroup {
     // each level uses its own queue if it sets one, "" included, otherwise
     // its parent's
     queue = queue ?? this.queue ?? this.srv.config.queue ?? "";
-    // a queue is only a token on the SUB line, so whitespace is the one
-    // thing it cannot hold
-    if (/\s/.test(queue)) {
-      throw new Error(
-        `invalid queue name - queue name cannot contain whitespace`,
-      );
+    // the same check the service queue gets, wherever the queue was set
+    if (queue !== "") {
+      validateName("queue", queue);
     }
     // the endpoint keeps its own copy, so changing the caller's map does not
     // change what INFO reports

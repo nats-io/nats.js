@@ -1387,7 +1387,7 @@ Deno.test("service - empty queue is no queue at every level", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("service - group and endpoint queues cannot hold whitespace", async () => {
+Deno.test("service - group and endpoint queues are validated like the service queue", async () => {
   const { ns, nc } = await setup();
 
   const svc = new Svcm(nc);
@@ -1396,16 +1396,12 @@ Deno.test("service - group and endpoint queues cannot hold whitespace", async ()
     version: "0.0.1",
   }) as ServiceImpl;
 
-  // a queue is not a subject: anything but whitespace is accepted
-  for (const ok of ["a.b", "a*", "a>", "a:b"]) {
-    srv.addEndpoint(`e${ok.length}${ok.charCodeAt(1)}`, {
-      handler: () => {},
-      queue: ok,
-    });
-    srv.addGroup(`g${ok.charCodeAt(1)}`, ok).addEndpoint("e", () => {});
-  }
+  // the names the service queue accepts are accepted
+  srv.addEndpoint("ok", { handler: () => {}, queue: "work-ers_1" });
+  srv.addGroup("gok", "work-ers_1").addEndpoint("e", () => {});
 
-  for (const bad of ["one two", " ", "a\tb"]) {
+  // and the ones it refuses are refused
+  for (const bad of ["one two", " ", "a\tb", "a.b", "a*", "a>", "a:b"]) {
     assertThrows(
       () => srv.addEndpoint("e", { handler: () => {}, queue: bad }),
       Error,
