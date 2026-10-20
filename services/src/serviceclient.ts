@@ -58,7 +58,13 @@ export class ServiceClientImpl implements ServiceClient {
     name = "",
     id = "",
   ): Promise<QueuedIterator<ServiceStats>> {
-    return this.q<ServiceStats>(ServiceVerb.STATS, name, id);
+    return this.q<ServiceStats>(ServiceVerb.STATS, name, id, (s) => {
+      // services from older versions omit last_error when there was no error
+      for (const e of s.endpoints ?? []) {
+        e.last_error ??= "";
+      }
+      return s;
+    });
   }
 
   info(
@@ -72,6 +78,7 @@ export class ServiceClientImpl implements ServiceClient {
     v: ServiceVerb,
     name = "",
     id = "",
+    normalize?: (r: T) => T,
   ): Promise<QueuedIterator<T>> {
     const iter = new QueuedIteratorImpl<T>();
     const subj = ServiceImpl.controlSubject(v, name, id, this.prefix);
@@ -80,7 +87,7 @@ export class ServiceClientImpl implements ServiceClient {
       for await (const m of responses) {
         try {
           const s = m.json<T>();
-          iter.push(s);
+          iter.push(normalize ? normalize(s) : s);
         } catch (err) {
           // @ts-ignore: pushing fn
           iter.push(() => {

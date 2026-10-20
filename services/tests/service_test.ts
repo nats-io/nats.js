@@ -1317,3 +1317,36 @@ Deno.test("service - reset keeps started", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("service - client fills a missing last_error", async () => {
+  const { ns, nc } = await setup();
+
+  // a service from an older version, which omits last_error when there was
+  // no error
+  nc.subscribe("$SRV.STATS", {
+    callback: (_err, msg) => {
+      msg.respond(JSON.stringify({
+        type: ServiceResponseType.STATS,
+        name: "old",
+        id: "1",
+        version: "0.0.1",
+        started: new Date().toISOString(),
+        endpoints: [{
+          name: "a",
+          subject: "a",
+          queue_group: "q",
+          num_requests: 0,
+          num_errors: 0,
+          processing_time: 0,
+          average_processing_time: 0,
+        }],
+      }));
+    },
+  });
+
+  const stats = await collect(await new Svcm(nc).client().stats());
+  assertEquals(stats.length, 1);
+  assertEquals(stats[0].endpoints![0].last_error, "");
+
+  await cleanup(ns, nc);
+});
