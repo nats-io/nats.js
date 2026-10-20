@@ -525,7 +525,7 @@ Deno.test("service - reset", async () => {
   assertEquals(stat.processing_time, 0);
   assertEquals(stat.average_processing_time, 0);
   assertEquals(stat.num_errors, 0);
-  assertEquals(stat.last_error, undefined);
+  assertEquals(stat.last_error, "");
 
   await cleanup(ns, nc);
 });
@@ -1170,6 +1170,150 @@ Deno.test("service - stop should stop iterators", async () => {
   await srv.stop();
 
   await deadline(done, 5_000);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - metadata is copied", async () => {
+  const { ns, nc } = await setup();
+
+  const svcMeta: Record<string, string> = { owner: "team-a" };
+  const epMeta: Record<string, string> = { owner: "team-a" };
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: svcMeta,
+  }) as ServiceImpl;
+  srv.addEndpoint("a", {
+    handler: (_err, msg) => msg.respond(),
+    metadata: epMeta,
+  });
+
+  // the caller's maps stay the caller's: not frozen, and changing them
+  // changes nothing the service reports
+  svcMeta.owner = "team-b";
+  epMeta.owner = "team-b";
+  const info = srv.info();
+  assertEquals(info.metadata, { owner: "team-a" });
+  assertEquals(info.endpoints[0].metadata, { owner: "team-a" });
+
+  // and what the service hands out cannot be changed either
+  assertThrows(() => {
+    info.endpoints[0].metadata!.owner = "team-c";
+  }, TypeError);
+  assertEquals(srv.info().endpoints[0].metadata, { owner: "team-a" });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - last_error is empty until an error is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("fail", () => {
+    throw new Error("boom");
+  });
+
+  const endpoint = async () => (await srv.stats()).endpoints![0];
+
+  let stats = await endpoint();
+  assertEquals(stats.last_error, "");
+
+  await nc.request("fail").catch(() => {});
+  stats = await endpoint();
+  assertEquals(stats.num_errors, 1);
+  assertEquals(stats.last_error, "boom");
+
+  srv.reset();
+  stats = await endpoint();
+  assertEquals(stats.num_errors, 0);
+  assertEquals(stats.last_error, "");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - respondError counts as an error", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("bad", (_err, msg) => {
+    msg.respondError(400, "bad input");
+  });
+  srv.addEndpoint("later", (_err, msg) => {
+    // responded after the handler returned: not counted
+    setTimeout(() => msg.respondError(500, "too late"), 0);
+  });
+  srv.addEndpoint("both", (_err, msg) => {
+    msg.respondError(400, "bad input");
+    throw new Error("boom");
+  });
+
+  await nc.request("bad").catch(() => {});
+  await nc.request("later").catch(() => {});
+  await nc.request("both").catch(() => {});
+
+  const stats = await srv.stats();
+  const endpoint = (name: string) =>
+    stats.endpoints!.find((e) => e.name === name)!;
+
+  assertEquals(endpoint("bad").num_requests, 1);
+  assertEquals(endpoint("bad").num_errors, 1);
+  assertEquals(endpoint("bad").last_error, "400:bad input");
+
+  assertEquals(endpoint("later").num_requests, 1);
+  assertEquals(endpoint("later").num_errors, 0);
+  assertEquals(endpoint("later").last_error, "");
+
+  // one error per request: the throw, which came last
+  assertEquals(endpoint("both").num_errors, 1);
+  assertEquals(endpoint("both").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - respondError counts as an error in an iterator", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const iter = srv.addEndpoint("it");
+  (async () => {
+    for await (const m of iter) {
+      m.string() === "bad" ? m.respondError(400, "bad input") : m.respond();
+    }
+  })().then();
+
+  await nc.request("it", "ok");
+  await nc.request("it", "bad").catch(() => {});
+  await nc.request("it", "ok");
+
+  const stats = await srv.stats();
+  const ep = stats.endpoints![0];
+  assertEquals(ep.num_requests, 3);
+  assertEquals(ep.num_errors, 1);
+  assertEquals(ep.last_error, "400:bad input");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - reset keeps started", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("a", (_err, msg) => msg.respond());
+  await nc.request("a");
+
+  const before = (await srv.stats()).started;
+  await delay(10);
+  srv.reset();
+  const stats = await srv.stats();
+
+  assertEquals(stats.started, before);
+  assertEquals(stats.endpoints![0].num_requests, 0);
 
   await cleanup(ns, nc);
 });

@@ -143,9 +143,11 @@ export type NamedEndpointStats = {
    */
   num_errors: number;
   /**
-   * If set, the last error triggered by the endpoint
+   * The last error triggered by the endpoint, or an empty string when there
+   * has been none. Always present, as ADR-32 and the micro stats schema
+   * require and other clients send; older nats.js services may omit it.
    */
-  last_error?: string;
+  last_error: string;
   /**
    * A field that can be customized with any data as returned by stats handler see {@link ServiceConfig}
    */
