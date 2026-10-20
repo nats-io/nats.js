@@ -163,9 +163,10 @@ export class ServiceMsgImpl implements ServiceMsg {
 
 export class ServiceGroupImpl implements ServiceGroup {
   subject: string;
-  queue: string;
+  // undefined uses the service's queue, "" is no queue
+  queue?: string;
   srv: ServiceImpl;
-  constructor(parent: ServiceGroup, name = "", queue = "") {
+  constructor(parent: ServiceGroup, name = "", queue?: string) {
     if (name !== "") {
       validInternalToken("service group", name);
     }
@@ -204,7 +205,13 @@ export class ServiceGroupImpl implements ServiceGroup {
     validateName("endpoint", name);
     let { subject, handler, metadata, queue } = args;
     subject = subject || name;
-    queue = queue || this.queue;
+    // each level uses its own queue if it sets one, "" included, otherwise
+    // its parent's
+    queue = queue ?? this.queue ?? this.srv.config.queue ?? "";
+    // the same check the service queue gets, wherever the queue was set
+    if (queue !== "") {
+      validateName("queue", queue);
+    }
     // the endpoint keeps its own copy, so changing the caller's map does not
     // change what INFO reports
     if (metadata) {
@@ -391,7 +398,7 @@ export class ServiceImpl implements Service {
     internal = false,
   ): ServiceSubscription {
     // internals don't use a queue
-    const queue = internal ? "" : (h.queue ? h.queue : this.config.queue);
+    const queue = internal ? "" : (h.queue ?? this.config.queue ?? "");
     const { name, subject, handler } = h as NamedEndpoint;
     const sv = h as ServiceSubscription;
     sv.internal = internal;

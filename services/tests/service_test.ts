@@ -1350,3 +1350,72 @@ Deno.test("service - client fills a missing last_error", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("service - empty queue is no queue at every level", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    queue: "svcq",
+  }) as ServiceImpl;
+
+  // an endpoint that sets no queue
+  srv.addEndpoint("a", { queue: "" });
+  checkQueueGroup(srv, "a", "");
+
+  // a group that sets no queue: its endpoints and subgroups have none
+  const g = srv.addGroup("g", "");
+  g.addEndpoint("a");
+  checkQueueGroup(srv, "g.a", "");
+  g.addGroup("h").addEndpoint("a");
+  checkQueueGroup(srv, "g.h.a", "");
+  // unless they set one
+  g.addEndpoint("b", { queue: "epq" });
+  checkQueueGroup(srv, "g.b", "epq");
+
+  // an endpoint that sets no queue under a group that has one
+  const q = srv.addGroup("q", "grpq");
+  q.addEndpoint("a", { queue: "" });
+  checkQueueGroup(srv, "q.a", "");
+
+  // a group that sets nothing still inherits the service queue
+  srv.addGroup("i").addEndpoint("a");
+  checkQueueGroup(srv, "i.a", "svcq");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - group and endpoint queues are validated like the service queue", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+  }) as ServiceImpl;
+
+  // the names the service queue accepts are accepted
+  srv.addEndpoint("ok", { handler: () => {}, queue: "work-ers_1" });
+  srv.addGroup("gok", "work-ers_1").addEndpoint("e", () => {});
+
+  // and the ones it refuses are refused
+  for (const bad of ["one two", " ", "a\tb", "a.b", "a*", "a>", "a:b"]) {
+    assertThrows(
+      () => srv.addEndpoint("e", { handler: () => {}, queue: bad }),
+      Error,
+      "invalid queue name",
+    );
+    assertThrows(
+      () => srv.addGroup("g", bad).addEndpoint("e", () => {}),
+      Error,
+      "invalid queue name",
+    );
+  }
+  // nothing was subscribed for a refused endpoint
+  assertEquals(getSubscriptionBySubject(nc, "e"), undefined);
+  assertEquals(getSubscriptionBySubject(nc, "g.e"), undefined);
+
+  await cleanup(ns, nc);
+});
