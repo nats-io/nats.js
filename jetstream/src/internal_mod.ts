@@ -25,6 +25,7 @@ export {
 } from "./types.ts";
 
 export {
+  createFastIngest,
   jetstream,
   JetStreamClientImpl,
   jetstreamManager,

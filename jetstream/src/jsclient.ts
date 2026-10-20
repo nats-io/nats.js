@@ -74,8 +74,47 @@ import { JetStreamError, JetStreamNotEnabled } from "./jserrors.ts";
 import { DirectStreamAPIImpl } from "./jsm_direct.ts";
 
 /**
- * Starts a fast-ingest batch on the stream that consumes `subj`. Internal
- * export — exposed via `@nats-io/jetstream/internal` and intended for
+ * Creates a fast-ingest batch without publishing anything. The batch starts on
+ * the server with the first {@link FastIngest.add} (or {@link FastIngest.last}),
+ * whose subject selects the stream. A batch that never adds holds no server or
+ * client resources and needs no cleanup. Throws if the options are invalid.
+ * Internal export — exposed via `@nats-io/jetstream/internal` and intended for
+ * companion packages to wrap. Not part of the public {@link JetStreamClient}
+ * API.
+ */
+export function createFastIngest(
+  nc: NatsConnection,
+  opts: { allowGaps: boolean } & Partial<FastIngestOptions>,
+  defaultTimeout: number = 5000,
+): FastIngest {
+  const { ackInterval, allowGaps, inboxPrefix, maxOutstandingAcks } = opts;
+  const prefix = inboxPrefix ?? "_INBOX";
+  if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
+    throw new Error(
+      `inboxPrefix must be non-empty, no wildcards or whitespace (got "${prefix}")`,
+    );
+  }
+  const max = maxOutstandingAcks ?? 2;
+  if (!Number.isInteger(max) || max < 1 || max > 3) {
+    throw errors.InvalidArgumentError.format(
+      "maxOutstandingAcks",
+      `must be an integer between 1 and 3 (got ${max})`,
+    );
+  }
+  const o: FastIngestOptions = {
+    ackInterval: ackInterval ?? 10,
+    allowGaps,
+    inboxPrefix: prefix,
+    maxOutstandingAcks: max,
+  };
+  return new FastIngestImpl(nc, o, defaultTimeout);
+}
+
+/**
+ * Starts a fast-ingest batch on the stream that consumes `subj`, publishing
+ * `payload` as its first message. Same as {@link createFastIngest} followed by
+ * {@link FastIngest.add}. Rejects if the options are invalid.
+ * Internal export — exposed via `@nats-io/jetstream/internal` and intended for
  * companion packages to wrap. Not part of the public {@link JetStreamClient}
  * API.
  */
@@ -96,22 +135,17 @@ export function startFastIngest(
     maxOutstandingAcks,
     ...publishOpts
   } = opts;
-  const prefix = inboxPrefix ?? "_INBOX";
-  if (!prefix || /\s/.test(prefix) || /[*>]/.test(prefix)) {
-    return Promise.reject(
-      new Error(
-        `inboxPrefix must be non-empty, no wildcards or whitespace (got "${prefix}")`,
-      ),
+  let fi: FastIngest;
+  try {
+    fi = createFastIngest(
+      nc,
+      { ackInterval, allowGaps, inboxPrefix, maxOutstandingAcks },
+      defaultTimeout,
     );
+  } catch (err) {
+    return Promise.reject(err);
   }
-  const o: FastIngestOptions = {
-    ackInterval: ackInterval ?? 10,
-    allowGaps,
-    inboxPrefix: prefix,
-    maxOutstandingAcks: Math.min(3, Math.max(1, maxOutstandingAcks ?? 2)),
-  };
-  const fi = new FastIngestImpl(nc, o, subj, defaultTimeout);
-  return fi.start(payload, publishOpts).then(() => fi);
+  return fi.add(subj, payload, publishOpts).then(() => fi);
 }
 
 function buildPublishHeaders(
@@ -606,7 +640,8 @@ class FastIngestImpl implements FastIngest {
   maxOutstandingAcks: number;
   defaultTimeout: number;
   gapIter?: QueuedIteratorImpl<{ lastSeq: number; seq: number }>;
-  sub: ReturnType<NatsConnection["subscribe"]>;
+  // created by start(), so a batch that never adds holds no subscription
+  sub?: ReturnType<NatsConnection["subscribe"]>;
   pending: Map<string, Pending>;
   closed: boolean;
   closeErr?: Error;
@@ -616,11 +651,10 @@ class FastIngestImpl implements FastIngest {
   constructor(
     nc: NatsConnection,
     opts: FastIngestOptions,
-    firstSubj: string,
     defaultTimeout: number,
   ) {
     this.nc = nc;
-    this.batchSubj = firstSubj;
+    this.batchSubj = "";
     this.gapMode = opts.allowGaps ? "ok" : "fail";
     this.initialFlow = opts.ackInterval;
     this.inboxPrefix = opts.inboxPrefix;
@@ -637,21 +671,28 @@ class FastIngestImpl implements FastIngest {
     // swallow unhandled rejection if caller never attaches to done()
     this.closedDeferred.catch(() => {});
     this.startDeferred.catch(() => {});
-
-    const inbox = `${this.inboxPrefix}.${this.batch}.>`;
-    this.sub = this.nc.subscribe(inbox, {
-      callback: (err, msg) => this.route(err, msg),
-    });
   }
 
   replyFor(op: FastIngestOpValue, seq: number): string {
     return `${this.inboxPrefix}.${this.batch}.${this.initialFlow}.${this.gapMode}.${seq}.${op}.$FI`;
   }
 
-  start(
+  private started(): boolean {
+    return this.seq > 0;
+  }
+
+  // start publishes the first message of the batch, which starts it on the
+  // server; its subject is the one end() and ping() publish to.
+  private start(
+    subj: string,
     payload?: Payload,
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<void> {
+    this.batchSubj = subj;
+    const inbox = `${this.inboxPrefix}.${this.batch}.>`;
+    this.sub = this.nc.subscribe(inbox, {
+      callback: (err, msg) => this.route(err, msg),
+    });
     this.seq = 1;
     const rs = this.replyFor(FastIngestOp.Start, 1);
     const headers = opts ? buildPublishHeaders(opts) : undefined;
@@ -667,6 +708,23 @@ class FastIngestImpl implements FastIngest {
       if (!this.closed) this.close(err as Error);
       throw err;
     });
+  }
+
+  // waitAndPing waits for p as deadlineOrClose does, and while it waits pings
+  // the batch every third of the timeout, so the server sends again a flow ack
+  // that was lost. The timeout bounds the whole wait: pings recover lost acks,
+  // they do not keep an idle batch open.
+  private waitAndPing<T>(p: Promise<T>, ms: number): Promise<T> {
+    const timer = setInterval(() => {
+      if (this.closed) return;
+      try {
+        const rs = this.replyFor(FastIngestOp.Ping, this.seq);
+        this.nc.publish(this.batchSubj, Empty, { reply: rs });
+      } catch {
+        // the deadline reports the failure
+      }
+    }, Math.max(1, Math.floor(ms / 3)));
+    return this.deadlineOrClose(p, ms).finally(() => clearInterval(timer));
   }
 
   private route(err: Error | null, m: Msg): void {
@@ -707,7 +765,7 @@ class FastIngestImpl implements FastIngest {
       this.closedDeferred.resolve(ack);
       this.closed = true;
       this.gapIter?.stop();
-      this.sub.unsubscribe();
+      this.sub?.unsubscribe();
       return;
     }
 
@@ -767,7 +825,7 @@ class FastIngestImpl implements FastIngest {
     this.startDeferred.reject(err);
     this.closedDeferred.reject(err);
     this.gapIter?.stop();
-    this.sub.unsubscribe();
+    this.sub?.unsubscribe();
   }
 
   add(
@@ -776,6 +834,11 @@ class FastIngestImpl implements FastIngest {
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<FastIngestProgress> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    if (!this.started()) {
+      return this.start(subj, payload, opts).then(() => {
+        return { batchSeq: 1, ackSeq: this.acked };
+      });
+    }
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.Append, mySeq);
     const headers = opts ? buildPublishHeaders(opts) : undefined;
@@ -786,7 +849,7 @@ class FastIngestImpl implements FastIngest {
     }
     const d = deferred<FastIngestProgress>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Append, deferred: d });
-    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+    return this.waitAndPing(d, opts?.timeout ?? this.defaultTimeout);
   }
 
   last(
@@ -795,28 +858,54 @@ class FastIngestImpl implements FastIngest {
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<BatchAck> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    if (!this.started()) {
+      // the first message can only start the batch, so commit it with an EOB
+      const timeout = opts?.timeout;
+      return this.start(subj, payload, opts).then(() => {
+        return this.end(timeout === undefined ? undefined : { timeout });
+      });
+    }
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.Final, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Final, deferred: d });
     const headers = opts ? buildPublishHeaders(opts) : undefined;
     this.nc.publish(subj, payload, { reply: rs, headers });
-    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+    return this.waitAndPing(d, opts?.timeout ?? this.defaultTimeout);
   }
 
   end(opts?: Partial<JetStreamPublishOptions>): Promise<BatchAck> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    if (!this.started()) {
+      // nothing was published, so there is nothing to commit
+      const ack: BatchAck = {
+        stream: "",
+        seq: 0,
+        duplicate: false,
+        batch: this.batch,
+        count: 0,
+      };
+      this.closed = true;
+      this.startDeferred.resolve();
+      this.closedDeferred.resolve(ack);
+      this.gapIter?.stop();
+      return Promise.resolve(ack);
+    }
     const mySeq = ++this.seq;
     const rs = this.replyFor(FastIngestOp.EOB, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.EOB, deferred: d });
     const headers = opts ? buildPublishHeaders(opts) : undefined;
     this.nc.publish(this.batchSubj, Empty, { reply: rs, headers });
-    return this.deadlineOrClose(d, opts?.timeout ?? this.defaultTimeout);
+    return this.waitAndPing(d, opts?.timeout ?? this.defaultTimeout);
   }
 
   ping(timeout: number = this.defaultTimeout): Promise<FastIngestProgress> {
     if (this.closed) return Promise.reject(new Error(BATCH_CLOSED));
+    if (!this.started()) {
+      // the server knows nothing of the batch yet
+      return Promise.resolve({ batchSeq: 0, ackSeq: 0 });
+    }
     const rs = this.replyFor(FastIngestOp.Ping, this.seq);
     // coalesce concurrent pings on same seq — same reply subject, one server ack
     const existing = this.pending.get(rs);
