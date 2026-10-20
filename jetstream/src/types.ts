@@ -1006,7 +1006,7 @@ export type FastIngestOptions = {
    *   most use cases and high-concurrency publishers.
    * - `3`: may help on high-RTT links; use consciously, not by default.
    *
-   * Values outside 1–3 are clamped.
+   * Values outside 1–3 are rejected.
    */
   maxOutstandingAcks: number;
 };
