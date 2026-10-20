@@ -1461,3 +1461,70 @@ Deno.test("service - endpoints cannot use $SRV subjects", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("service - prefix replaces $SRV", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "orders",
+    version: "0.0.1",
+    prefix: "AcMe",
+  }) as ServiceImpl;
+
+  // the nine discovery subjects move to the prefix, its case kept
+  const nci = nc as NatsConnectionImpl;
+  const subjects = nci.protocol.subscriptions.all().map((s) => s.subject)
+    .sort();
+  const want = ["PING", "STATS", "INFO"].flatMap((v) => [
+    `AcMe.${v}`,
+    `AcMe.${v}.orders`,
+    `AcMe.${v}.orders.${srv.id}`,
+  ]).sort();
+  assertEquals(subjects, want);
+
+  // and answer there
+  const r = await nc.request("AcMe.PING.orders");
+  assertEquals(r.json<ServiceIdentity>().id, srv.id);
+  const ids = await collect(await svc.client(undefined, "AcMe").ping("orders"));
+  assertEquals(ids.map((i) => i.id), [srv.id]);
+
+  // endpoints cannot be added under the prefix; $SRV is free again
+  assertThrows(
+    () => srv.addEndpoint("a", { subject: "AcMe.a" }),
+    Error,
+    "AcMe is reserved",
+  );
+  assertThrows(
+    () => srv.addGroup("AcMe").addEndpoint("b"),
+    Error,
+    "AcMe is reserved",
+  );
+  srv.addEndpoint("c", { subject: "$SRV.c" });
+  assertExists(getSubscriptionBySubject(nc, "$SRV.c"));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - prefix must be literal subject tokens", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  for (const bad of ["", "a b", "a.*", "a.>", "a..b", ".a"]) {
+    await assertRejects(
+      () => svc.add({ name: "orders", version: "0.0.1", prefix: bad }),
+      Error,
+      "invalid prefix",
+    );
+  }
+  // several tokens are fine, as with a JetStream API prefix
+  const srv = await svc.add({
+    name: "orders",
+    version: "0.0.1",
+    prefix: "acme.srv",
+  }) as ServiceImpl;
+  const r = await nc.request("acme.srv.PING.orders");
+  assertEquals(r.json<ServiceIdentity>().id, srv.id);
+
+  await cleanup(ns, nc);
+});
