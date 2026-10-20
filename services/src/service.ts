@@ -219,15 +219,6 @@ export class ServiceGroupImpl implements ServiceGroup {
     }
     validSubjectName("endpoint subject", subject);
     subject = this.calcSubject(this.subject, subject);
-    // subjects under $SRV are reserved for the service's internal handlers;
-    // the check is on the full subject, so a group named $SRV is caught too
-    if (
-      subject === ServiceApiPrefix || subject.startsWith(`${ServiceApiPrefix}.`)
-    ) {
-      throw new Error(
-        `invalid endpoint subject - ${ServiceApiPrefix} is reserved for internal handlers`,
-      );
-    }
 
     const ne = { name, subject, queue, handler, metadata };
     return this.srv._addEndpoint(ne);
