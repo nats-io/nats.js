@@ -223,6 +223,13 @@ export type ServiceConfig = {
    * not be run in a queue.
    */
   queue?: string;
+  /**
+   * Optional prefix for the service's discovery subjects (PING, STATS and
+   * INFO), used in place of `$SRV` the way a JetStream API prefix replaces
+   * `$JS.API`, so tools can reach the service across accounts. Its case is
+   * kept as given. Endpoints cannot be added under it. Defaults to `$SRV`.
+   */
+  prefix?: string;
 };
 /**
  * The stats of a service

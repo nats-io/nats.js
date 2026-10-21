@@ -219,13 +219,13 @@ export class ServiceGroupImpl implements ServiceGroup {
     }
     validSubjectName("endpoint subject", subject);
     subject = this.calcSubject(this.subject, subject);
-    // subjects under $SRV are reserved for the service's internal handlers;
-    // the check is on the full subject, so a group named $SRV is caught too
-    if (
-      subject === ServiceApiPrefix || subject.startsWith(`${ServiceApiPrefix}.`)
-    ) {
+    // subjects under the service's prefix ($SRV unless configured) are
+    // reserved for its internal handlers; the check is on the full subject,
+    // so a group named after the prefix is caught too
+    const prefix = this.srv.config.prefix ?? ServiceApiPrefix;
+    if (subject === prefix || subject.startsWith(`${prefix}.`)) {
       throw new Error(
-        `invalid endpoint subject - ${ServiceApiPrefix} is reserved for internal handlers`,
+        `invalid endpoint subject - ${prefix} is reserved for internal handlers`,
       );
     }
 
@@ -254,6 +254,20 @@ function validSubjectName(context: string, subj: string) {
       throw new Error(`${context} cannot have internal '>': '${subj}'`);
     }
   });
+}
+
+// validPrefix checks a discovery prefix: one or more literal subject tokens
+function validPrefix(prefix: string) {
+  if (/\s/.test(prefix)) {
+    throw new Error(`invalid prefix - prefix cannot contain whitespace`);
+  }
+  for (const t of prefix.split(".")) {
+    if (t === "" || t === "*" || t === ">") {
+      throw new Error(
+        `invalid prefix - prefix must be literal subject tokens: '${prefix}'`,
+      );
+    }
+  }
 }
 
 function validInternalToken(context: string, subj: string) {
@@ -328,6 +342,10 @@ export class ServiceImpl implements Service {
     if (this.config.queue === undefined) {
       this.config.queue = "q";
     }
+    if (this.config.prefix === undefined) {
+      this.config.prefix = ServiceApiPrefix;
+    }
+    validPrefix(this.config.prefix);
 
     // don't allow changing metadata: keep a frozen copy, so the caller's map
     // is neither frozen nor able to change what INFO reports
@@ -531,7 +549,12 @@ export class ServiceImpl implements Service {
   ) {
     const endpoint = {} as NamedEndpoint;
     endpoint.name = name;
-    endpoint.subject = ServiceImpl.controlSubject(verb, kind, id);
+    endpoint.subject = ServiceImpl.controlSubject(
+      verb,
+      kind,
+      id,
+      this.config.prefix,
+    );
     endpoint.handler = handler;
     this.setupHandler(endpoint, true);
   }
