@@ -365,6 +365,93 @@ Deno.test("authenticator - async fn ignores data before connect", async () => {
   await cleanup(ns, nc);
 });
 
+// The server counts PINGs the client has not answered, and keeps counting
+// them after CONNECT. Here the authenticator is slow enough to miss the
+// server's one allowed PING (ping_max 1) but fast enough to send CONNECT
+// before the server gives up on the connection (at 2 x ping_interval). With
+// the PING simply dropped, the server closes the connection at its next check
+// after CONNECT, and with reconnect off the client is closed. Answering it
+// right after CONNECT clears the count.
+Deno.test("authenticator - async fn: a PING missed while pending does not leave the connection stale", async () => {
+  const user = nkeys.createUser();
+  const seed = user.getSeed();
+  const nkey = user.getPublicKey();
+
+  const { ns, nc } = await setup({
+    authorization: {
+      users: [{ nkey }],
+    },
+    ping_interval: "500ms",
+    ping_max: 1,
+  }, {
+    asyncAuthenticator: delayedNkeyAsyncAuthenticator(seed, 750),
+    reconnect: false,
+  });
+
+  // several server ping intervals after CONNECT
+  await delay(1600);
+  assertEquals(nc.isClosed(), false);
+  await nc.flush();
+  await cleanup(ns, nc);
+});
+
+// The server rejects a PONG sent before CONNECT (Authorization Violation), so
+// the PONG for a PING that arrived while the authenticator was pending must
+// follow CONNECT, and one is enough however many PINGs were missed.
+Deno.test("authenticator - async fn: PONG for a missed PING follows CONNECT, once", async () => {
+  const lines: string[] = [];
+  const sockets: Socket[] = [];
+  const server = createServer((sock) => {
+    sockets.push(sock);
+    sock.on("error", () => {});
+    let partial = "";
+    sock.on("data", (b: Buffer) => {
+      const parts = (partial + b.toString()).split("\r\n");
+      partial = parts.pop() ?? "";
+      for (const line of parts) {
+        lines.push(line.startsWith("CONNECT ") ? "CONNECT" : line);
+        if (line === "PING") {
+          sock.write("PONG\r\n");
+        }
+      }
+    });
+    const info = JSON.stringify({
+      server_id: "SCRIPTED",
+      version: "2.10.0",
+      host: "127.0.0.1",
+      port: 0,
+      headers: true,
+      nonce: "n",
+    });
+    sock.write(`INFO ${info}\r\nPING\r\nPING\r\n`);
+  });
+  const ready = deferred<void>();
+  let port = 0;
+  server.listen(0, "127.0.0.1", () => {
+    port = (server.address() as AddressInfo).port;
+    ready.resolve();
+  });
+  await ready;
+  try {
+    const nc = await connect({
+      port,
+      reconnect: false,
+      asyncAuthenticator: async () => {
+        await delay(200);
+        return { auth_token: "x" };
+      },
+    });
+    // CONNECT, the client's own PING that connect() waits on, then the owed
+    // PONG; nothing from the client precedes CONNECT
+    assertEquals(lines.slice(0, 3), ["CONNECT", "PING", "PONG"]);
+    assertEquals(lines.filter((l) => l === "PONG").length, 1);
+    await nc.close();
+  } finally {
+    sockets.forEach((s) => s.destroy());
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
 // A server that sends INFO (with a nonce) and a PING, then an -ERR after
 // `afterMs`, and leaves the socket open, recording every CONNECT it receives.
 // Leaving the socket open isolates what the client does on its own: with a

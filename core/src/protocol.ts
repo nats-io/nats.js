@@ -401,6 +401,12 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   // nothing else the server sends in that window should be acted on. See
   // ASYNC-AUTHENTICATOR-SCOPE.md.
   awaitingAsyncConnect: boolean;
+  // Set when the server's PING arrived while awaitingAsyncConnect. The server
+  // rejects a PONG sent before CONNECT, so it is answered right after CONNECT
+  // instead. The server counts unanswered PINGs against ping_max across the
+  // CONNECT, and any one PONG clears the count, so one PONG covers however
+  // many PINGs arrived.
+  pongOwed: boolean;
   // Bumped every time resetOutbound() runs (a fresh dial/reconnect attempt).
   // An in-flight asyncAuthenticator resolution captures the generation it
   // started in and checks it before acting, so a disconnect/reconnect that
@@ -444,6 +450,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.connectedOnce = false;
     this.infoReceived = false;
     this.awaitingAsyncConnect = false;
+    this.pongOwed = false;
     this.connectGeneration = 0;
     this.noMorePublishing = false;
     this.abortReconnect = false;
@@ -498,6 +505,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.parser = new Parser(this);
     this.infoReceived = false;
     this.awaitingAsyncConnect = false;
+    this.pongOwed = false;
     this.connectGeneration++;
   }
 
@@ -861,6 +869,16 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.transport.send(PONG_CMD);
   }
 
+  // Sends the PONG owed for PINGs that arrived while an asyncAuthenticator
+  // was resolving; must run after CONNECT is sent. One PONG is enough: the
+  // server clears its count of unanswered PINGs on any PONG.
+  private answerHeldPing(): void {
+    if (this.pongOwed) {
+      this.pongOwed = false;
+      this.transport.send(PONG_CMD);
+    }
+  }
+
   processPong() {
     const cb = this.pongs.shift();
     if (cb) {
@@ -929,6 +947,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
             if (generation !== this.connectGeneration) return;
             this.awaitingAsyncConnect = false;
             this.sendConnect(info.nonce, !!info.headers, creds);
+            this.answerHeldPing();
           })
           .catch((err) => {
             if (generation !== this.connectGeneration) return;
@@ -980,9 +999,18 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     // eventual resolution (or rejection) see it is stale, so it neither sends
     // a CONNECT nor closes the connection. The authenticator itself is not
     // cancelled; its result is simply discarded.
+    //
+    // A PING is dropped too, but remembered: the server sends them before it
+    // has seen a CONNECT, rejects a PONG sent before one, and keeps counting
+    // the unanswered ones afterwards, so a client slow enough to miss
+    // ping_max of them would be closed as a stale connection right after
+    // it connected. The PONG is sent right after CONNECT (answerHeldPing()).
     if (this.awaitingAsyncConnect && e.kind === Kind.ERR) {
       this.awaitingAsyncConnect = false;
       this.connectGeneration++;
+    }
+    if (this.awaitingAsyncConnect && e.kind === Kind.PING) {
+      this.pongOwed = true;
     }
     if (this.awaitingAsyncConnect && e.kind !== Kind.INFO) {
       return;

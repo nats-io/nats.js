@@ -920,7 +920,9 @@ export interface ConnectionOptions {
    * for the initial CONNECT; while it is resolving, any protocol messages
    * the server sends are deliberately ignored, since this connection has
    * not yet sent its own CONNECT and nothing arriving in that window should
-   * be acted on.
+   * be acted on. The one exception is a server PING, which is answered with
+   * a single PONG right after CONNECT, so that a slow authenticator does not
+   * leave the server counting unanswered PINGs against the connection.
    */
   asyncAuthenticator?: AsyncAuthenticator;
   /**
