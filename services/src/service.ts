@@ -97,6 +97,12 @@ function validName(name = ""): string {
  */
 export const ServiceApiPrefix = "$SRV";
 
+// oneLine joins the lines of an error description: header values cannot hold
+// CR or LF
+function oneLine(s: string): string {
+  return s.replace(/[\r\n]+/g, " ");
+}
+
 export class ServiceMsgImpl implements ServiceMsg {
   msg: Msg;
   // the error response sent, as "code:description", counted in the endpoint
@@ -143,7 +149,7 @@ export class ServiceMsgImpl implements ServiceMsg {
     opts = opts || {};
     opts.headers = opts.headers || headers();
     opts.headers?.set(ServiceErrorCodeHeader, `${code}`);
-    opts.headers?.set(ServiceErrorHeader, description);
+    opts.headers?.set(ServiceErrorHeader, oneLine(description));
     const ok = this.msg.respond(data, opts);
     if (ok) {
       this.respondErr = `${code}:${description}`;
@@ -411,10 +417,10 @@ export class ServiceImpl implements Service {
     const h = headers();
     if (err instanceof ServiceError) {
       const se = err as ServiceError;
-      h.set(ServiceErrorHeader, se.message);
+      h.set(ServiceErrorHeader, oneLine(se.message));
       h.set(ServiceErrorCodeHeader, `${se.code}`);
     } else {
-      h.set(ServiceErrorHeader, err.message);
+      h.set(ServiceErrorHeader, oneLine(err.message));
       h.set(ServiceErrorCodeHeader, "500");
     }
     return h;
@@ -443,17 +449,37 @@ export class ServiceImpl implements Service {
         }
         const start = Date.now();
         const smsg = new ServiceMsgImpl(msg);
-        try {
-          handler(err, smsg);
-          // an error response sent before the handler returned is an error
-          if (smsg.respondErr !== undefined) {
+        // done counts the request once the handler returned, or settled when
+        // it is async: its latency, then one error, the one it threw or
+        // rejected with, else an error response it sent before it was done
+        const done = (failed: boolean, reason?: unknown) => {
+          sv.stats.countLatency(start);
+          if (failed) {
+            const e = reason as Error;
+            sv.stats.countError(e);
+            try {
+              msg.respond(Empty, { headers: this.errorToHeader(e) });
+            } catch {
+              // the connection closed or is draining: no one to answer
+            }
+          } else if (smsg.respondErr !== undefined) {
             sv.stats.countError(new Error(smsg.respondErr));
           }
+        };
+        let r: unknown;
+        try {
+          r = handler(err, smsg);
         } catch (err) {
-          sv.stats.countError(err as Error);
-          msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
-        } finally {
-          sv.stats.countLatency(start);
+          done(true, err);
+          return;
+        }
+        if (typeof (r as PromiseLike<void> | undefined)?.then === "function") {
+          Promise.resolve(r as PromiseLike<void>).then(
+            () => done(false),
+            (err) => done(true, err),
+          );
+        } else {
+          done(false);
         }
       }
       : undefined;
@@ -742,7 +768,8 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
   countLatency(start: number) {
     this.num_requests++;
     this.processing_time += nanos(Date.now() - start);
-    this.average_processing_time = Math.round(
+    // whole nanoseconds, truncated as integer division would
+    this.average_processing_time = Math.trunc(
       this.processing_time / this.num_requests,
     );
   }
@@ -784,7 +811,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
       this.num_requests = qii.processed;
       this.average_processing_time =
         this.processing_time > 0 && this.num_requests > 0
-          ? this.processing_time / this.num_requests
+          ? Math.trunc(this.processing_time / this.num_requests)
           : 0;
     }
     return this._stats();

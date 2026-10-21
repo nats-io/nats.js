@@ -29,6 +29,7 @@ import {
   collect,
   createInbox,
   deadline,
+  deferred,
   delay,
   errors,
 } from "@nats-io/nats-core/internal";
@@ -1506,6 +1507,30 @@ Deno.test("service - prefix replaces $SRV", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("service - async handler is counted when it settles", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("slow", async (_err, msg) => {
+    await delay(100);
+    msg.respond();
+  });
+
+  await nc.request("slow");
+  await delay(10);
+
+  const ep = (await srv.stats()).endpoints![0];
+  assertEquals(ep.num_requests, 1);
+  // a lower bound only: timers may fire a little early
+  assert(
+    ep.processing_time >= 80_000_000,
+    `processing_time ${ep.processing_time}`,
+  );
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("service - prefix must be literal subject tokens", async () => {
   const { ns, nc } = await setup();
 
@@ -1527,4 +1552,152 @@ Deno.test("service - prefix must be literal subject tokens", async () => {
   assertEquals(r.json<ServiceIdentity>().id, srv.id);
 
   await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler rejection is counted and answered", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("bad", async () => {
+    await delay(10);
+    throw new ServiceError(400, "bad input");
+  });
+  srv.addEndpoint("boom", async () => {
+    await delay(10);
+    throw new Error("boom");
+  });
+
+  const r = await nc.request("bad");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "400");
+  assertEquals(r.headers?.get(ServiceErrorHeader), "bad input");
+  const r2 = await nc.request("boom");
+  assertEquals(r2.headers?.get(ServiceErrorCodeHeader), "500");
+  assertEquals(r2.headers?.get(ServiceErrorHeader), "boom");
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("bad").num_requests, 1);
+  assertEquals(ep("bad").num_errors, 1);
+  assertEquals(ep("bad").last_error, "bad input");
+  assertEquals(ep("boom").num_errors, 1);
+  assertEquals(ep("boom").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler respondError is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("after", async (_err, msg) => {
+    await delay(10);
+    msg.respondError(400, "bad input");
+  });
+  srv.addEndpoint("before", async (_err, msg) => {
+    msg.respondError(400, "bad input");
+    await delay(10);
+    throw new Error("boom");
+  });
+
+  await nc.request("after");
+  await nc.request("before");
+  // the reply to "before" arrives before its handler settles
+  await delay(50);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("after").num_errors, 1);
+  assertEquals(ep("after").last_error, "400:bad input");
+  // one request, one error: the rejection, which came last
+  assertEquals(ep("before").num_requests, 1);
+  assertEquals(ep("before").num_errors, 1);
+  assertEquals(ep("before").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler that never replies is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const stored = deferred<void>();
+  const failed = deferred<void>();
+  srv.addEndpoint("ingest", async () => {
+    // stands in for storing the data, with no reply
+    await delay(50);
+    stored.resolve();
+  });
+  srv.addEndpoint("fail", async () => {
+    await delay(10);
+    failed.resolve();
+    throw new Error("disk full");
+  });
+
+  nc.publish("ingest");
+  nc.publish("fail");
+  await stored;
+  await failed;
+  await delay(10);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("ingest").num_requests, 1);
+  assertEquals(ep("ingest").num_errors, 0);
+  assert(ep("ingest").processing_time >= 40_000_000);
+  assertEquals(ep("fail").num_requests, 1);
+  assertEquals(ep("fail").num_errors, 1);
+  assertEquals(ep("fail").last_error, "disk full");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - multi-line error descriptions are sent on one line", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("sync", () => {
+    throw new Error("line one\nline two");
+  });
+  srv.addEndpoint("async", async () => {
+    await delay(10);
+    throw new ServiceError(400, "line one\r\nline two");
+  });
+  srv.addEndpoint("respond", (_err, msg) => {
+    msg.respondError(400, "line one\nline two");
+  });
+
+  for (const subj of ["sync", "async", "respond"]) {
+    const r = await nc.request(subj);
+    assertEquals(r.headers?.get(ServiceErrorHeader), "line one line two");
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async rejection after the connection closed does not throw", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const started = deferred<void>();
+  const gate = deferred<void>();
+  const srv = await svc.add({ name: "late", version: "0.0.1" });
+  srv.addEndpoint("late", async () => {
+    started.resolve();
+    await gate;
+    throw new Error("boom");
+  });
+
+  nc.publish("late", undefined, { reply: createInbox() });
+  await started;
+  await nc.close();
+  // the error reply now fails to publish; an unhandled rejection would fail
+  // the test
+  gate.resolve();
+  await delay(50);
+
+  await ns.stop();
 });
