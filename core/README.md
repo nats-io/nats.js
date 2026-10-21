@@ -740,10 +740,9 @@ as the private one, a browser without Ed25519), the error is WebCrypto's own
 (`InvalidAccessError`, `NotSupportedError`, `TypeError`), and it ends the
 connection attempt. The library does not wrap or re-label it.
 
-> **Warning: keys created with `importKey()` are not supported.** Use a key pair
-> that `crypto.subtle.generateKey()` created. The authenticator reads the public
-> key out of the pair with `exportKey("raw", …)`. For a generated pair that
-> always works, even when the pair is non-extractable. A public key you imported
+> **Warning: webCryptoJwtAuthenticator reads the public key's raw bytes, so 
+> key pairs read in with `importKey()` are not supported.** Use a key pair
+> that `crypto.subtle.generateKey()` created. A public key you imported
 > may be non-extractable, and then that export fails with `InvalidAccessError`.
 > Imported halves are also not known to belong together: WebCrypto cannot tell
 > whether a non-extractable private key matches a public key, so a mismatch only
