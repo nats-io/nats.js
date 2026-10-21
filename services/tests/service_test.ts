@@ -1618,6 +1618,76 @@ Deno.test("service - async handler respondError is counted", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("service - a request gets at most one error response", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const second: boolean[] = [];
+  // data responses then a throw: the data, then one error response
+  srv.addEndpoint("data-sync", (_err, msg) => {
+    msg.respond("a");
+    msg.respond("b");
+    throw new Error("boom");
+  });
+  srv.addEndpoint("data-async", async (_err, msg) => {
+    msg.respond("a");
+    msg.respond("b");
+    await delay(10);
+    throw new Error("boom");
+  });
+  // an error response then a throw: no second error response
+  srv.addEndpoint("error-sync", (_err, msg) => {
+    msg.respondError(400, "bad input");
+    throw new Error("boom");
+  });
+  srv.addEndpoint("error-async", async (_err, msg) => {
+    msg.respondError(400, "bad input");
+    await delay(10);
+    throw new Error("boom");
+  });
+  // respondError twice: the second is refused
+  srv.addEndpoint("twice", (_err, msg) => {
+    msg.respondError(400, "first");
+    second.push(msg.respondError(500, "second"));
+  });
+
+  const replies = async (subj: string): Promise<Msg[]> => {
+    const inbox = createInbox();
+    const sub = nc.subscribe(inbox);
+    nc.publish(subj, undefined, { reply: inbox });
+    await delay(100);
+    sub.unsubscribe();
+    return collect(sub);
+  };
+  const errorOf = (m: Msg) => m.headers?.get(ServiceErrorHeader) || "";
+
+  for (const subj of ["data-sync", "data-async"]) {
+    const r = await replies(subj);
+    assertEquals(r.map((m) => m.string()), ["a", "b", ""], subj);
+    assertEquals(r.map(errorOf), ["", "", "boom"], subj);
+  }
+  for (const subj of ["error-sync", "error-async"]) {
+    const r = await replies(subj);
+    assertEquals(r.map(errorOf), ["bad input"], subj);
+  }
+  const r = await replies("twice");
+  assertEquals(r.map(errorOf), ["first"]);
+  assertEquals(second, [false]);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  for (const name of ["data-sync", "data-async", "error-sync", "error-async"]) {
+    assertEquals(ep(name).num_requests, 1, name);
+    assertEquals(ep(name).num_errors, 1, name);
+    assertEquals(ep(name).last_error, "boom", name);
+  }
+  assertEquals(ep("twice").num_errors, 1);
+  assertEquals(ep("twice").last_error, "400:first");
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("service - async handler that never replies is counted", async () => {
   const { ns, nc } = await setup();
 

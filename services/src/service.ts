@@ -146,6 +146,10 @@ export class ServiceMsgImpl implements ServiceMsg {
     data?: Payload,
     opts?: PublishOptions,
   ): boolean {
+    // a request gets at most one error response
+    if (this.respondErr !== undefined) {
+      return false;
+    }
     opts = opts || {};
     opts.headers = opts.headers || headers();
     opts.headers?.set(ServiceErrorCodeHeader, `${code}`);
@@ -457,10 +461,14 @@ export class ServiceImpl implements Service {
           if (failed) {
             const e = reason as Error;
             sv.stats.countError(e);
-            try {
-              msg.respond(Empty, { headers: this.errorToHeader(e) });
-            } catch {
-              // the connection closed or is draining: no one to answer
+            // data responses may precede it, but an error response is sent
+            // once: not when the handler already sent one
+            if (smsg.respondErr === undefined) {
+              try {
+                msg.respond(Empty, { headers: this.errorToHeader(e) });
+              } catch {
+                // the connection closed or is draining: no one to answer
+              }
             }
           } else if (smsg.respondErr !== undefined) {
             sv.stats.countError(new Error(smsg.respondErr));
