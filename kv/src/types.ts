@@ -386,14 +386,14 @@ export type KV = RoKV & {
    * the current version is deleted or the key is purged)
    * If the entry already exists, this operation fails.
    *
-   * markerTTL is specified as a [Go duration strings](https://pkg.go.dev/maze.io/x/duration#ParseDuration)
+   * ttl is specified as a [Go duration strings](https://pkg.go.dev/maze.io/x/duration#ParseDuration)
    * ("10s", "1m", "1h"...)
    *
    * @param k
    * @param data
-   * @param markerTTL - duration is specified as a string
+   * @param ttl - duration is specified as a string
    */
-  create(k: string, data: Payload, markerTTL?: string): Promise<number>;
+  create(k: string, data: Payload, ttl?: string): Promise<number>;
 
   /**
    * Updates the existing entry provided that the previous sequence
