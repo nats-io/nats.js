@@ -326,17 +326,25 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             const lastStreamSequence = parseInt(
               msg.headers?.get(JsHeaders.LastStreamSeqHdr) ?? "0",
             );
+            // FIX for https://github.com/nats-io/nats.js/issues/374
+            const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
+            const stalled = typeof maybeStuck === "string" && maybeStuck !== "";
             this.notify({
               type: "heartbeat",
               lastStreamSequence,
               lastConsumerSequence,
+              stalled,
             });
 
-            // FIX for https://github.com/nats-io/nats.js/issues/374
-            const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
-            if (typeof maybeStuck === "string" && maybeStuck !== "") {
+            if (stalled) {
               this.lastFlowControlSubject = maybeStuck;
               (msg as MsgImpl).publisher.publish(maybeStuck, Empty);
+            } else if (
+              this.ordered && lastConsumerSequence !== this.cursor.deliver_seq
+            ) {
+              // the server sent messages we didn't get (ie the tail of the
+              // stream was lost) - no message will reveal the gap, so reset
+              this.reset();
             }
             return;
           }
