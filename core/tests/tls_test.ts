@@ -16,7 +16,9 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { connect } from "./connect.ts";
 import { errors } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { cleanup, NatsServer } from "nst";
+// TLS tests rely on cert-file paths and tlsConfig() — features not yet
+// expressible against testing.go. Always use the local launcher.
+import { cleanup, NatsServer } from "../../nst/src/mod.ts";
 
 Deno.test("tls - fail if server doesn't support TLS", async () => {
   const ns = await NatsServer.start();

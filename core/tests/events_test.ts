@@ -12,7 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Lock, NatsServer, ServerSignals } from "nst";
+// Uses signal() and addClusterMember() — local launcher only.
+import { Lock, NatsServer, ServerSignals } from "../../nst/src/mod.ts";
 import { connect } from "./connect.ts";
 import { assertEquals } from "@std/assert";
 import { deferred, delay } from "../src/internal_mod.ts";

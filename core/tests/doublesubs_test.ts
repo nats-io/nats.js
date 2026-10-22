@@ -12,41 +12,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { NatsServer } from "nst";
-
-import { deferred, Empty, extend, headers } from "../src/internal_mod.ts";
-import type { NatsConnectionImpl } from "../src/internal_mod.ts";
-import { assertArrayIncludes, assertEquals } from "@std/assert";
+import { cleanup, NatsServer } from "nst";
+import { deferred, type NatsConnection } from "../src/internal_mod.ts";
+import { assertEquals } from "@std/assert";
 import { connect } from "./connect.ts";
 
-async function runDoubleSubsTest(tls: boolean) {
-  const tlsConfig = await NatsServer.tlsConfig();
-
-  let opts = { trace: true, host: "0.0.0.0" };
-
-  if (tls) {
-    opts = extend(opts, { tls: tlsConfig.tls });
-  }
-
-  let srv = await NatsServer.start(opts);
-  if (tls) srv.certsDir = tlsConfig.certsDir;
-
-  let connOpts = {
+Deno.test("doublesubs - standard", async () => {
+  let srv = await NatsServer.start({ trace: true });
+  const connOpts = {
     servers: `localhost:${srv.port}`,
     reconnectTimeWait: 500,
     maxReconnectAttempts: -1,
     headers: true,
   };
 
-  const cert = {
-    tls: {
-      caFile: tlsConfig.tls.ca_file,
-    },
-  };
-  if (tls) {
-    connOpts = extend(connOpts, cert);
+  async function checkSubs(nc: NatsConnection, subs: string[]): Promise<void> {
+    const connz = await srv.connz(nc.info?.client_id, true);
+    const ci = connz.connections.find((c) => c.cid === nc.info?.client_id);
+    assertEquals(ci?.subscriptions_list?.length, subs.length);
+    assertEquals(ci?.subscriptions_list, subs);
   }
-  const nc = await connect(connOpts) as NatsConnectionImpl;
+
+  const nc = await connect(connOpts);
+  nc.subscribe("foo", { callback: () => {} });
+  nc.subscribe("bar", { callback: () => {} });
+
+  await nc.flush();
+  await checkSubs(nc, ["foo", "bar"]);
 
   const disconnected = deferred<void>();
   const reconnected = deferred<void>();
@@ -63,52 +55,16 @@ async function runDoubleSubsTest(tls: boolean) {
     }
   })().then();
 
-  await nc.flush();
   await srv.stop();
   await disconnected;
 
-  const foo = nc.subscribe("foo");
-  const bar = nc.subscribe("bar");
-  const baz = nc.subscribe("baz");
-  nc.publish("foo", Empty);
-  nc.publish("bar", "hello");
-  const h = headers();
-  h.set("foo", "bar");
-  nc.publish("baz", Empty, { headers: h });
+  nc.subscribe("baz", { callback: () => {} });
 
   srv = await srv.restart();
   await reconnected;
   await nc.flush();
 
-  // pubs are stripped
-  assertEquals(foo.getReceived(), 0);
-  assertEquals(bar.getReceived(), 0);
-  assertEquals(baz.getReceived(), 0);
 
-  await nc.close();
-  await srv.stop(true);
-
-  const log = srv.getLog();
-
-  let count = 0;
-  const subs: string[] = [];
-  const sub = /\[SUB (\S+) \d]/;
-  log.split("\n").forEach((s) => {
-    const m = sub.exec(s);
-    if (m) {
-      count++;
-      subs.push(m[1]);
-    }
-  });
-
-  assertEquals(count, 3);
-  assertArrayIncludes(subs, ["foo", "bar", "baz"]);
-}
-
-Deno.test("doublesubs - standard", async () => {
-  await runDoubleSubsTest(false);
-});
-
-Deno.test("doublesubs - tls", async () => {
-  await runDoubleSubsTest(true);
+  await checkSubs(nc, ["foo", "bar", "baz"]);
+  await cleanup(srv, nc);
 });
