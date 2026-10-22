@@ -161,6 +161,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   getConsumerOpts(): ConsumerConfig {
+    // inactive_threshold is carried over from the current consumer config
     const src = Object.assign({}, this.consumer._info.config);
     this.serial++;
     const name = `${this.namePrefix}_${this.serial}`;
@@ -170,7 +171,6 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       deliver_policy: DeliverPolicy.StartSequence,
       opt_start_seq: this.cursor.stream_seq + 1,
       ack_policy: AckPolicy.None,
-      inactive_threshold: nanos(5 * 60 * 1000),
       num_replicas: 1,
       flow_control: true,
       idle_heartbeat: nanos(30 * 1000),

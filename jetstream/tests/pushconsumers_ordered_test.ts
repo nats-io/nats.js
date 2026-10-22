@@ -33,7 +33,7 @@ import type {
   PushConsumerImpl,
   PushConsumerMessagesImpl,
 } from "../src/pushconsumer.ts";
-import { delay } from "@nats-io/nats-core/internal";
+import { delay, nanos } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("ordered push consumers - get", async () => {
@@ -101,6 +101,67 @@ Deno.test(
 
     assertEquals(seen, [2, 2, 1]);
     assertEquals(oc.serial, 3);
+
+    await cleanup(ns, nc);
+  }),
+);
+
+Deno.test("ordered push consumers - inactive_threshold", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const js = jetstream(nc);
+  const jsm = await js.jetstreamManager();
+  await jsm.streams.add({ name: "test", subjects: ["test"] });
+
+  const oc = await js.consumers.getPushConsumer("test", {
+    inactive_threshold: 10_000,
+  });
+  let ci = await oc.info();
+  assertEquals(ci.config.inactive_threshold, nanos(10_000));
+
+  const dc = await js.consumers.getPushConsumer("test");
+  ci = await dc.info();
+  assertEquals(ci.config.inactive_threshold, nanos(5 * 60 * 1000));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test(
+  "ordered push consumers - reset preserves inactive_threshold",
+  flakyTest(async () => {
+    const { ns, nc } = await setup(jetstreamServerConf());
+    const js = jetstream(nc);
+
+    const jsm = await jetstreamManager(nc);
+    await jsm.streams.add({ name: "test", subjects: ["test.*"] });
+    await js.publish("test.a");
+    await js.publish("test.b");
+    await js.publish("test.c");
+
+    const oc = await js.consumers.getPushConsumer("test", {
+      inactive_threshold: 10_000,
+    }) as PushConsumerImpl;
+
+    const seen: number[] = new Array(3).fill(0);
+    const iter = await oc.consume({
+      callback: (m: JsMsg) => {
+        const idx = m.seq - 1;
+        seen[idx]++;
+        // mess with the internals so we see these again, forcing resets
+        if (seen[idx] === 1) {
+          iter.cursor.deliver_seq--;
+          iter.cursor.stream_seq--;
+        }
+        if (m.info.pending === 0) {
+          iter.stop();
+        }
+      },
+    }) as PushConsumerMessagesImpl;
+    await iter.closed();
+
+    // two resets happened, the recreated consumer keeps the threshold
+    assertEquals(oc.serial, 3);
+    const ci = await jsm.consumers.info("test", `${oc.opts.name_prefix}_3`);
+    assertEquals(ci.config.inactive_threshold, nanos(10_000));
 
     await cleanup(ns, nc);
   }),

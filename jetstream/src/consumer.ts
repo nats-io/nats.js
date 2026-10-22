@@ -1012,12 +1012,12 @@ export class PullConsumerImpl implements Consumer {
     this.serial++;
     this.name = `${ocs.namePrefix}_${this.serial}`;
 
+    // inactive_threshold is carried over from the current consumer config
     const conf = Object.assign({}, this._info.config, {
       name: this.name,
       deliver_policy: DeliverPolicy.StartSequence,
       opt_start_seq: ocs.cursor.stream_seq + 1,
       ack_policy: AckPolicy.None,
-      inactive_threshold: nanos(5 * 60 * 1000),
       num_replicas: 1,
     });
 
