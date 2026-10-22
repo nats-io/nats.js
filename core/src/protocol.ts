@@ -506,14 +506,28 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       pong.reject(err);
     };
 
-    this.transport = newTransport();
-    this.transport.closed()
+    const t = newTransport();
+    this.transport = t;
+    t.closed()
       .then(async (_err?) => {
+        // transports that were replaced (discarded) may close late - ignore
+        if (t !== this.transport) {
+          return;
+        }
+        // closed during the handshake - fail the pending dial, the dial
+        // loop handles retries. only a connected transport is a disconnect
+        if (!this.connected) {
+          this.connectError?.(
+            t.closeError || this.lastError ||
+              new errors.ConnectionError("connection closed"),
+          );
+          return;
+        }
         this.connected = false;
         if (!this.isClosed()) {
           // if the transport gave an error use that, otherwise
           // we may have received a protocol error
-          await this.disconnected(this.transport.closeError || this.lastError);
+          await this.disconnected(t.closeError || this.lastError);
           return;
         }
       });
