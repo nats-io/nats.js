@@ -953,9 +953,9 @@ export class ObjectStoreImpl implements ObjectStore {
       iter.stop();
     }
 
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       qi.push(() => {
-        qi.stop();
+        qi.stop(err ? err : undefined);
       });
     });
     qi.iterClosed.then(() => {
