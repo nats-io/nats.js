@@ -635,3 +635,39 @@ Deno.test("setServers - replaces pool and reconnect dials new pool", async () =>
   assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
   await nc.close();
 });
+
+Deno.test("reconnect - outage emits one disconnect and one reconnect", async () => {
+  let ns = await NatsServer.start();
+  const nc = await connect({
+    port: ns.port,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+
+  const events: string[] = [];
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push(s.type);
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  await ns.stop();
+  // let a number of dial attempts fail
+  await delay(2000);
+  ns = await ns.restart();
+  await reconnected;
+  // allow any stray status from failed attempts to arrive
+  await delay(1000);
+
+  const count = (t: string) => events.filter((e) => e === t).length;
+  assertEquals(count("disconnect"), 1, events.join(","));
+  assertEquals(count("reconnect"), 1, events.join(","));
+  assert(count("reconnecting") > 1, events.join(","));
+
+  await nc.close();
+  await ns.stop();
+});

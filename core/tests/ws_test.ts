@@ -24,11 +24,15 @@ import {
 import {
   createInbox,
   deferred,
+  delay,
   errors,
+  setTransportFactory,
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
+import type { Transport } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
+import { WsTransport } from "../src/ws_transport.ts";
 import { assertBetween, cleanup, Lock, NatsServer, wsServerConf } from "nst";
 
 Deno.test("ws - connect", async () => {
@@ -268,4 +272,112 @@ Deno.test("ws - setServers replaces pool and reconnect dials new", async () => {
   await nc.close();
   await ns0.stop();
   await ns1.stop();
+});
+
+Deno.test("ws - outage emits one disconnect and one reconnect", async () => {
+  let ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+
+  const events: string[] = [];
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push(s.type);
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  await ns.stop();
+  // let a number of dial attempts fail
+  await delay(2000);
+  ns = await ns.restart();
+  await reconnected;
+  // allow any stray status from failed attempts to arrive
+  await delay(1000);
+
+  const count = (t: string) => events.filter((e) => e === t).length;
+  assertEquals(count("disconnect"), 1, events.join(","));
+  assertEquals(count("reconnect"), 1, events.join(","));
+  assert(count("reconnecting") > 1, events.join(","));
+
+  await nc.close();
+  await ns.stop();
+});
+
+Deno.test("ws - late close of a stale transport is ignored", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+    timeout: 500,
+  }) as NatsConnectionImpl;
+
+  // the next dial gets a transport whose connect hangs (dial times out)
+  // and whose closed() only resolves when the test says so - simulating
+  // an abandoned handshake that closes after the client reconnected
+  const staleClosed = deferred<void | Error>();
+  let dials = 0;
+  setTransportFactory({
+    defaultPort: 443,
+    urlParseFn: wsUrlParseFn,
+    factory: (): Transport => {
+      dials++;
+      if (dials > 1) {
+        return new WsTransport();
+      }
+      return {
+        isClosed: false,
+        lang: "nats.ws",
+        version: "test",
+        closeError: undefined,
+        connect: () => new Promise<void>(() => {}),
+        [Symbol.asyncIterator]: () => {
+          throw new Error("not connected");
+        },
+        isEncrypted: () => false,
+        send: () => {},
+        close: () => Promise.resolve(),
+        disconnect: () => {},
+        closed: () => staleClosed,
+        discard: () => {},
+      } as unknown as Transport;
+    },
+  });
+
+  const events: string[] = [];
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push(s.type);
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  await nc.reconnect();
+  await reconnected;
+  assert(dials >= 2);
+  const current = nc.protocol.transport;
+
+  // the stale transport closes late
+  staleClosed.resolve();
+  await delay(1000);
+
+  const count = (t: string) => events.filter((e) => e === t).length;
+  assertEquals(count("disconnect"), 1, events.join(","));
+  assertEquals(count("reconnect"), 1, events.join(","));
+  assertEquals(nc.protocol.transport, current);
+  assertFalse(current.isClosed);
+  await nc.flush();
+
+  await nc.close();
+  await ns.stop();
 });
