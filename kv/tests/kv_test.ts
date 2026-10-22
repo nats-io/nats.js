@@ -19,6 +19,7 @@ import {
   deferred,
   delay,
   Empty,
+  errors,
   nanos,
   nuid,
   parseSemVer,
@@ -2759,6 +2760,130 @@ Deno.test("kv - watcherPrefix", async () => {
   assertEquals(deliver_subject?.split(".")[0], "hello");
 
   iter.stop();
+
+  await cleanup(ns, nc);
+});
+
+// reader can use the JS API but cannot respond to flow control ($JS.FC.>)
+async function deniedFlowControlKv(): Promise<
+  { ns: NatsServer; w: NatsConnection; r: NatsConnection; kv: KV }
+> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+    authorization: {
+      users: [
+        { user: "writer", password: "writer" },
+        {
+          user: "reader",
+          password: "reader",
+          permissions: {
+            publish: { allow: ["$JS.API.>"] },
+            subscribe: { allow: ["_INBOX.>"] },
+          },
+        },
+      ],
+    },
+  }));
+  const w = await ns.connect({ user: "writer", pass: "writer" });
+  const kvw = await new Kvm(w).create("K", { history: 1 });
+  const v = new Uint8Array(64 * 1024);
+  for (let i = 0; i < 200; i++) {
+    await kvw.put(`k${i}`, v);
+  }
+  const r = await ns.connect({ user: "reader", pass: "reader" });
+  const kv = await new Kvm(r).open("K");
+  return { ns, w, r, kv };
+}
+
+async function iterateExpectingError(
+  iter: AsyncIterable<unknown>,
+): Promise<Error | null> {
+  try {
+    await deadline(
+      (async () => {
+        for await (const _e of iter) {
+          // nothing
+        }
+      })(),
+      10_000,
+    );
+  } catch (err) {
+    return err as Error;
+  }
+  return null;
+}
+
+Deno.test("kv - history fails if flow control is denied", async () => {
+  const { ns, w, r, kv } = await deniedFlowControlKv();
+  const err = await iterateExpectingError(await kv.history());
+  assertIsError(err, errors.PermissionViolationError);
+  assert(err.subject.startsWith("$JS.FC.KV_K."));
+  await cleanup(ns, w, r);
+});
+
+Deno.test("kv - watch fails if flow control is denied", async () => {
+  const { ns, w, r, kv } = await deniedFlowControlKv();
+  const err = await iterateExpectingError(await kv.watch());
+  assertIsError(err, errors.PermissionViolationError);
+  assert(err.subject.startsWith("$JS.FC.KV_K."));
+  await cleanup(ns, w, r);
+});
+
+Deno.test("kv - history doesn't leak status listeners", async () => {
+  const { ns, w, r, kv } = await deniedFlowControlKv();
+  const listeners = (nc: NatsConnection) =>
+    (nc as NatsConnectionImpl).protocol.listeners.length;
+  const wbase = listeners(w);
+  const rbase = listeners(r);
+
+  // successful read
+  const kvw = await new Kvm(w).open("K");
+  const entries = await collect(await kvw.history());
+  assertEquals(entries.length, 200);
+  await delay(100);
+  assertEquals(listeners(w), wbase);
+
+  // failed read
+  const err = await iterateExpectingError(await kv.history());
+  assertIsError(err, errors.PermissionViolationError);
+  await delay(100);
+  assertEquals(listeners(r), rbase);
+
+  await cleanup(ns, w, r);
+});
+
+Deno.test("kv - watch ends cleanly on stop, close and drain", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const kv = await new Kvm(nc).create("K");
+  await kv.put("a", "a");
+
+  async function run(
+    nc: NatsConnection,
+    fn: (w: QueuedIterator<KvWatchEntry>) => Promise<void> | void,
+  ): Promise<void> {
+    const kv = await new Kvm(nc).open("K");
+    const w = await kv.watch();
+    const done = (async () => {
+      for await (const _e of w) {
+        // nothing
+      }
+    })();
+    await delay(250);
+    await fn(w);
+    // iteration must end without an error
+    await deadline(done, 5_000);
+  }
+
+  await run(nc, (w) => w.stop());
+
+  const nc2 = await ns.connect();
+  await run(nc2, () => nc2.close());
+
+  const nc3 = await ns.connect();
+  await run(nc3, () => nc3.drain());
 
   await cleanup(ns, nc);
 });

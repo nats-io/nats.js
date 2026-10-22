@@ -25,18 +25,25 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertIsError,
   assertRejects,
   equal,
 } from "@std/assert";
 import {
   DataBuffer,
+  deadline,
+  delay,
   Empty,
+  errors,
   headers,
   nanos,
   nuid,
   type QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
-import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import type {
+  NatsConnection,
+  NatsConnectionImpl,
+} from "@nats-io/nats-core/internal";
 import type {
   ObjectInfo,
   ObjectStoreMeta,
@@ -1641,4 +1648,85 @@ Deno.test("objectstore - put/get on plain bucket", async () => {
   assert(equals(read, blob));
 
   await cleanup(ns, nc);
+});
+
+// reader can use the JS API but cannot respond to flow control ($JS.FC.>)
+async function deniedFlowControlOs(): Promise<
+  { ns: NatsServer; w: NatsConnection; r: NatsConnection }
+> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+    authorization: {
+      users: [
+        { user: "writer", password: "writer" },
+        {
+          user: "reader",
+          password: "reader",
+          permissions: {
+            publish: { allow: ["$JS.API.>"] },
+            subscribe: { allow: ["_INBOX.>"] },
+          },
+        },
+      ],
+    },
+  }));
+  const w = await ns.connect({ user: "writer", pass: "writer" });
+  const os = await new Objm(w).create("B");
+  await os.putBlob({ name: "big" }, new Uint8Array(5 * 1024 * 1024));
+  const r = await ns.connect({ user: "reader", pass: "reader" });
+  return { ns, w, r };
+}
+
+Deno.test("os - getBlob fails if flow control is denied", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const os = await new Objm(r).open("B");
+  const err = await deadline(os.getBlob("big"), 10_000)
+    .then(() => null, (err) => err as Error);
+  assertIsError(err, errors.PermissionViolationError);
+  assert(err.subject.startsWith("$JS.FC.OBJ_B."));
+  await cleanup(ns, w, r);
+});
+
+Deno.test("os - get fails if flow control is denied", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const os = await new Objm(r).open("B");
+  const result = await os.get("big");
+  assertExists(result);
+  const err = await deadline(fromReadableStream(result.data), 10_000)
+    .then(() => null, (err) => err as Error);
+  assertIsError(err, errors.PermissionViolationError);
+  const rerr = await result.error.then((err) => err, (err) => err);
+  assertIsError(rerr, errors.PermissionViolationError);
+  await cleanup(ns, w, r);
+});
+
+function statusListeners(nc: NatsConnection): number {
+  return (nc as NatsConnectionImpl).protocol.listeners.length;
+}
+
+Deno.test("os - get doesn't leak status listeners", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const wbase = statusListeners(w);
+  const rbase = statusListeners(r);
+
+  // successful read
+  const wos = await new Objm(w).open("B");
+  const data = await wos.getBlob("big");
+  assertEquals(data?.length, 5 * 1024 * 1024);
+  await delay(100);
+  assertEquals(statusListeners(w), wbase);
+
+  // failed read
+  const ros = await new Objm(r).open("B");
+  await assertRejects(
+    () => ros.getBlob("big"),
+    errors.PermissionViolationError,
+  );
+  await delay(100);
+  assertEquals(statusListeners(r), rbase);
+
+  await cleanup(ns, w, r);
 });

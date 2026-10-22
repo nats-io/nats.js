@@ -66,6 +66,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   createFails!: number;
   statusIterator!: QueuedIteratorImpl<Status>;
   cancelables: Delay[];
+  lastFlowControlSubject: string | null;
 
   constructor(
     c: PushConsumerImpl,
@@ -77,6 +78,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.monitor = null;
     this.listeners = [];
     this.cancelables = [];
+    this.lastFlowControlSubject = null;
     this.abortOnMissingResource =
       userOptions.abort_on_missing_resource === true;
     this.callback = userOptions.callback || null;
@@ -261,24 +263,31 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         },
         { maxOut: 2 },
       );
-
-      (async () => {
-        this.statusIterator = this.consumer.api.nc
-          .status() as QueuedIteratorImpl<Status>;
-        for await (const s of this.statusIterator) {
-          switch (s.type) {
-            case "disconnect":
-              this.monitor?.cancel();
-              break;
-            case "reconnect":
-              this.monitor?.restart();
-              break;
-            default:
-              // ignored
-          }
-        }
-      })();
     }
+
+    this.statusIterator = this.consumer.api.nc
+      .status() as QueuedIteratorImpl<Status>;
+    (async () => {
+      for await (const s of this.statusIterator) {
+        switch (s.type) {
+          case "disconnect":
+            this.monitor?.cancel();
+            break;
+          case "reconnect":
+            this.monitor?.restart();
+            break;
+          case "error":
+            // if the client cannot respond to flow control or stalled
+            // notifications the consumer will never resume - fail it
+            if (this.isFlowControlViolation(s.error)) {
+              this.stop(s.error);
+            }
+            break;
+          default:
+            // ignored
+        }
+      }
+    })();
 
     this.sub = this.consumer.api.nc.subscribe(subject, {
       queue,
@@ -303,6 +312,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const status = new JetStreamStatus(msg);
           if (status.isFlowControlRequest()) {
             this._push(() => {
+              this.lastFlowControlSubject = msg.reply || null;
               msg.respond();
               this.notify({ type: "flow_control" });
             });
@@ -325,6 +335,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             // FIX for https://github.com/nats-io/nats.js/issues/374
             const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
             if (typeof maybeStuck === "string" && maybeStuck !== "") {
+              this.lastFlowControlSubject = maybeStuck;
               (msg as MsgImpl).publisher.publish(maybeStuck, Empty);
             }
             return;
@@ -368,6 +379,23 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.closed().then(() => {
       this.sub?.unsubscribe();
     });
+  }
+
+  // returns true if the error is a publish permissions violation
+  // for a flow control response or stalled notification for this consumer
+  isFlowControlViolation(err: Error): boolean {
+    if (!(err instanceof errors.PermissionViolationError)) {
+      return false;
+    }
+    if (err.operation !== "publish" || !err.subject) {
+      return false;
+    }
+    // the server reports the subject the client published. flow control and
+    // stalled subjects are server provided (msg.reply / the stalled header)
+    // and may be remapped, so match on exactly what was last published. a
+    // denied flow control response stalls the consumer, and the server keeps
+    // sending the same subject in the stalled header with each heartbeat
+    return err.subject === this.lastFlowControlSubject;
   }
 
   notify(n: ConsumerNotification) {

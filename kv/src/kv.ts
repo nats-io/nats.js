@@ -858,8 +858,10 @@ export class Bucket implements KV {
       },
     });
 
-    iter.closed().then(() => {
-      qi.push(fn);
+    iter.closed().then((err) => {
+      qi.push(() => {
+        qi.stop(err ? err : undefined);
+      });
     });
 
     (async () => {
@@ -940,9 +942,9 @@ export class Bucket implements KV {
     qi.iterClosed.then(() => {
       iter.stop();
     });
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       qi.push(() => {
-        qi.stop();
+        qi.stop(err ? err : undefined);
       });
     });
 
@@ -990,9 +992,9 @@ export class Bucket implements KV {
       }
     })().then();
 
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       keys.push(() => {
-        keys.stop();
+        keys.stop(err ? err : undefined);
       });
     });
     keys.iterClosed.then(() => {
