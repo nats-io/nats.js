@@ -50,6 +50,8 @@ export class NodeTransport implements Transport {
   tlsName = "";
   done = false;
   closeError?: Error;
+  // socket of a dial or tls handshake in progress
+  pending?: Socket;
 
   constructor() {
     this.lang = LANG;
@@ -70,11 +72,10 @@ export class NodeTransport implements Transport {
         this.socket = await this.dial(hp);
       }
       // protocol could have terminated
-      if (this.done) {
-        this.socket?.destroy();
-      }
+      this.checkAbandoned();
 
       const info = await this.peekInfo();
+      this.checkAbandoned();
       checkOptions(info, options);
       const { tls_required: tlsRequired, tls_available: tlsAvailable } = info;
       const desired = tlsAvailable === true && options.tls !== null;
@@ -82,9 +83,7 @@ export class NodeTransport implements Transport {
         this.socket = await this.startTLS();
       }
 
-      if (this.done) {
-        this.socket?.destroy();
-      }
+      this.checkAbandoned();
 
       //@ts-ignore: this is possibly a TlsSocket
       if (tlsRequired && this.socket.encrypted !== true) {
@@ -94,6 +93,7 @@ export class NodeTransport implements Transport {
         );
       }
 
+      this.pending = undefined;
       this.connected = true;
       this.setupHandlers();
       this.signal.resolve();
@@ -113,8 +113,17 @@ export class NodeTransport implements Transport {
       const perr = code === "ECONNREFUSED"
         ? new errors.ConnectionError("connection refused", { cause: err })
         : err;
+      this.pending?.destroy();
       this.socket?.destroy();
       throw perr;
+    }
+  }
+
+  // the protocol may have closed or discarded the transport while
+  // the connect was in progress - stop the connect
+  private checkAbandoned(): void {
+    if (this.done) {
+      throw new errors.ConnectionError("connection closed");
     }
   }
 
@@ -125,6 +134,7 @@ export class NodeTransport implements Transport {
       d.resolve(socket);
       socket.removeAllListeners();
     });
+    this.pending = socket;
     socket.on("error", (err) => {
       dialError = err;
     });
@@ -262,6 +272,7 @@ export class NodeTransport implements Transport {
         tlsSocket.removeAllListeners();
         d.resolve(tlsSocket);
       });
+      this.pending = tlsSocket;
 
       tlsSocket.on("error", (err) => {
         tlsError = err;
@@ -314,6 +325,7 @@ export class NodeTransport implements Transport {
         tlsSocket.removeAllListeners();
         d.resolve(tlsSocket);
       });
+      this.pending = tlsSocket;
       tlsSocket.on("error", (err) => {
         tlsError = err;
       });
@@ -396,6 +408,7 @@ export class NodeTransport implements Transport {
 
   discard() {
     this.done = true;
+    this.pending?.destroy();
     if (this.socket) {
       try {
         this.socket.removeAllListeners();
@@ -451,8 +464,14 @@ export class NodeTransport implements Transport {
   }
 
   private async _closed(err?: Error, internal = true): Promise<void> {
-    // if this connection didn't succeed, then ignore it.
-    if (!this.connected) return;
+    // if this connection didn't succeed, abandon it - the connect
+    // could still be in progress (dial timeout), so drop the socket
+    if (!this.connected) {
+      this.done = true;
+      this.pending?.destroy();
+      this.socket?.destroy();
+      return;
+    }
     if (this.done) {
       this.socket?.destroy();
       return;
