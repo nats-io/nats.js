@@ -30,7 +30,48 @@ const { Lock } = require("@nats-io/nst");
 const { NatsServer } = require("@nats-io/nst");
 const { jetstreamServerConf } = require("@nats-io/nst");
 
+const net = require("node:net");
+
 const u = "demo.nats.io:4222";
+
+// a listener that accepts connections and then goes silent,
+// optionally after sending the specified INFO
+async function silentServer(info) {
+  const sockets = [];
+  const server = net.createServer((s) => {
+    const r = { socket: s, closed: false };
+    s.on("close", () => {
+      r.closed = true;
+    });
+    s.on("error", () => {});
+    // consume what the client sends, otherwise the close is never seen
+    s.resume();
+    sockets.push(r);
+    if (info) {
+      s.write(`INFO ${JSON.stringify(info)}\r\n`);
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    port: server.address().port,
+    sockets,
+    stop() {
+      sockets.forEach((r) => r.socket.destroy());
+      server.close();
+    },
+  };
+}
+
+async function waitClosed(sockets, ms) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (sockets.every((r) => r.closed)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return sockets.every((r) => r.closed);
+}
 
 describe(
   "basics",
@@ -172,6 +213,46 @@ describe(
       await lock;
       await nc.close();
       await ns.stop();
+    });
+    it("basics - dial timeout closes the socket", async () => {
+      const info = {
+        server_id: "x",
+        version: "2.10.0",
+        proto: 1,
+        max_payload: 1048576,
+        tls_required: true,
+      };
+      const cases = [
+        { name: "no info" },
+        {
+          name: "tls handshake first",
+          opts: { tls: { handshakeFirst: true } },
+        },
+        { name: "tls upgrade", info, opts: { tls: {} } },
+      ];
+      for (const c of cases) {
+        const srv = await silentServer(c.info);
+        try {
+          await assert.rejects(
+            () => {
+              return connect({
+                port: srv.port,
+                timeout: 500,
+                reconnect: false,
+                ...c.opts,
+              });
+            },
+            errors.TimeoutError,
+          );
+          assert.ok(srv.sockets.length > 0);
+          assert.ok(
+            await waitClosed(srv.sockets, 1000),
+            `socket left open: ${c.name}`,
+          );
+        } finally {
+          srv.stop();
+        }
+      }
     });
   },
   it("basics - ws urls fail", async () => {
