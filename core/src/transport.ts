@@ -29,6 +29,10 @@ export function setTransportFactory(config: TransportFactory): void {
   transportConfig = config;
 }
 
+export function getTransportFactory(): TransportFactory {
+  return transportConfig;
+}
+
 export function defaultPort(): number {
   return transportConfig !== undefined &&
       transportConfig.defaultPort !== undefined

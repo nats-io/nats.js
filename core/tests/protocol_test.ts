@@ -13,19 +13,30 @@
  * limitations under the License.
  */
 import {
+  deadline,
   defaultOptions,
   deferred,
+  delay,
   Empty,
   extractProtocolMessage,
+  getTransportFactory,
   MuxSubscription,
   ProtocolHandler,
   protoLen,
+  QueuedIteratorImpl,
   RequestOne,
   setTransportFactory,
   SubscriptionImpl,
   Subscriptions,
 } from "../src/internal_mod.ts";
-import type { Msg, Publisher, Transport } from "../src/internal_mod.ts";
+import type {
+  ConnectionOptions,
+  Msg,
+  Publisher,
+  Status,
+  Transport,
+  TransportFactory,
+} from "../src/internal_mod.ts";
 import {
   assert,
   assertEquals,
@@ -100,61 +111,217 @@ Deno.test("protocol - protolen -1 on empty", () => {
   assertEquals(extractProtocolMessage(Empty), "");
 });
 
-Deno.test("protocol - dial rejects a transport closed after handshake", async () => {
+const handshake = new TextEncoder().encode(
+  'INFO {"server_id":"test","version":"2.12.0","proto":1,"host":"127.0.0.1","port":4222,"max_payload":1048576}\r\nPONG\r\n',
+);
+
+type FakeTransport = Transport & {
+  // resolves when the transport closes
+  done: Promise<void>;
+  dialed: boolean;
+  // closes from the transport side
+  kill: (err?: Error) => void;
+};
+
+// a transport that yields the handshake, then runs afterHandshake
+// and the frames it returns, and stays open until closed
+function fakeTransport(
+  afterHandshake?: (t: FakeTransport) => Promise<Uint8Array[]> | void,
+): FakeTransport {
   const transportClosed = deferred<void | Error>();
+  let closeError: Error | undefined;
   let isClosed = false;
-  const frame = new TextEncoder().encode(
-    'INFO {"server_id":"test","version":"2.12.0","proto":1,"host":"127.0.0.1","port":4222,"max_payload":1048576}\r\nPONG\r\n',
-  );
-  const transport: Transport = {
+  const close = (err?: Error) => {
+    if (!isClosed) {
+      isClosed = true;
+      closeError = err;
+      transportClosed.resolve(err);
+    }
+  };
+  const t: FakeTransport = {
     get isClosed(): boolean {
       return isClosed;
     },
+    get closeError(): Error | undefined {
+      return closeError;
+    },
     lang: "test",
     version: "test",
-    async connect(): Promise<void> {},
+    done: transportClosed.then(() => {}),
+    dialed: false,
+    kill: close,
+    connect(): Promise<void> {
+      t.dialed = true;
+      return Promise.resolve();
+    },
     async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
-      yield frame;
-      isClosed = true;
-      transportClosed.resolve();
+      yield handshake;
+      const frames = await afterHandshake?.(t) || [];
+      for (const f of frames) {
+        yield f;
+      }
+      await transportClosed;
     },
     isEncrypted: () => false,
     send: () => {},
-    close(): Promise<void> {
-      isClosed = true;
-      transportClosed.resolve();
+    close(err?: Error): Promise<void> {
+      close(err);
       return Promise.resolve();
     },
     disconnect: () => {},
     closed: () => transportClosed,
     discard: () => {},
   };
+  return t;
+}
+
+async function withTransports(
+  transports: FakeTransport[],
+  fn: (protocol: ProtocolHandler) => Promise<void>,
+  opts: Partial<ConnectionOptions> = {},
+  factory: Partial<TransportFactory> = {},
+): Promise<void> {
+  const prev = getTransportFactory();
+  const queue = [...transports];
   setTransportFactory({
     defaultPort: 4222,
     urlParseFn: (url) => url,
-    factory: () => transport,
+    factory: () => {
+      const t = queue.shift();
+      assert(t, "no more transports");
+      return t;
+    },
+    ...factory,
   });
-
   const protocol = new ProtocolHandler(
-    { ...defaultOptions(), servers: ["127.0.0.1:4222"], timeout: 100 },
+    {
+      ...defaultOptions(),
+      servers: ["127.0.0.1:4222"],
+      timeout: 100,
+      ...opts,
+    },
     { publish: () => {} } as Publisher,
   );
   const server = protocol.servers.selectServer();
   assert(server);
   protocol.server = server;
-
-  let dialError: unknown;
   try {
-    await protocol.dial(server);
-  } catch (err) {
-    dialError = err;
+    await fn(protocol);
   } finally {
     await protocol.close();
+    setTransportFactory(prev);
   }
+}
 
-  assert(
-    dialError instanceof errors.ConnectionError,
-    `expected a connection error, got ${String(dialError)}`,
+Deno.test("protocol - dial rejects a transport closed after handshake", async () => {
+  const boom = new Error("boom");
+  const dead = fakeTransport((t) => t.kill(boom));
+  const ok = fakeTransport();
+  await withTransports([dead, ok], async (protocol) => {
+    // the close reason is preserved
+    const err = await assertRejects(() => protocol.dial(protocol.server));
+    assertEquals(err, boom);
+    assertFalse(protocol.connected);
+
+    // and the dial loop recovers on the next transport
+    await protocol.dialLoop();
+    assert(protocol.connected);
+  }, { waitOnFirstConnect: true, reconnectDelayHandler: () => 10 });
+});
+
+Deno.test("protocol - close while the handshake completes rejects the dial", async () => {
+  let protocol: ProtocolHandler | undefined;
+  let closing: Promise<void> | undefined;
+  const t = fakeTransport(() => {
+    closing = protocol!.close();
+  });
+  await withTransports([t], async (p) => {
+    protocol = p;
+    // a status listener makes close() await before closing the transport
+    const listener = new QueuedIteratorImpl<Status>();
+    p.listeners.push(listener);
+    (async () => {
+      for await (const _ of listener) {
+        // drain
+      }
+    })().then();
+
+    await assertRejects(
+      () => p.dial(p.server),
+      errors.ClosedConnectionError,
+    );
+    await closing;
+    assertFalse(p.connected);
+    assert(p.isClosed());
+    assertEquals(p.heartbeats.timer, undefined);
+  });
+});
+
+Deno.test("protocol - a replaced transport doesn't feed the new parser", async () => {
+  const release = deferred<void>();
+  const stale = fakeTransport(async () => {
+    await release;
+    return [new TextEncoder().encode("-ERR 'stale'\r\n")];
+  });
+  const current = fakeTransport();
+  await withTransports([stale, current], async (protocol) => {
+    await protocol.dial(protocol.server);
+    await protocol.dial(protocol.server);
+
+    let parsed = 0;
+    protocol.parser.parse = () => {
+      parsed++;
+    };
+    release.resolve();
+    await delay(10);
+    assertEquals(parsed, 0);
+    stale.kill();
+  });
+});
+
+Deno.test("protocol - close while the handshake completes skips other addresses", async () => {
+  let protocol: ProtocolHandler | undefined;
+  let closing: Promise<void> | undefined;
+  const first = fakeTransport(() => {
+    closing = protocol!.close();
+  });
+  const second = fakeTransport();
+  await withTransports(
+    [first, second],
+    async (p) => {
+      protocol = p;
+      const listener = new QueuedIteratorImpl<Status>();
+      p.listeners.push(listener);
+      (async () => {
+        for await (const _ of listener) {
+          // drain
+        }
+      })().then();
+
+      await assertRejects(
+        () => p._doDial(p.server),
+        errors.ClosedConnectionError,
+      );
+      await closing;
+      assert(first.dialed);
+      assertFalse(second.dialed);
+    },
+    { servers: ["nats.test:4222"], noRandomize: true },
+    { dnsResolveFn: () => Promise.resolve(["127.0.0.1", "127.0.0.2"]) },
   );
-  assertFalse(protocol.connected);
+});
+
+Deno.test("protocol - concurrent close settles if the transport close throws", async () => {
+  const t = fakeTransport();
+  const boom = new Error("boom");
+  t.close = () => Promise.reject(boom);
+  await withTransports([t], async (p) => {
+    await p.dial(p.server);
+    const first = p.close();
+    const second = p.close();
+    const err = await assertRejects(() => first);
+    assertEquals(err, boom);
+    await deadline(second, 1000);
+    assert(p.isClosed());
+  });
 });

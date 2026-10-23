@@ -404,6 +404,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   connectError?: (err?: Error) => void;
   publisher: Publisher;
   _closed: boolean;
+  _closing: boolean;
   closed: Deferred<Error | void>;
   listeners: QueuedIteratorImpl<Status>[];
   heartbeats: Heartbeat;
@@ -426,6 +427,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
+    this._closing = false;
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
@@ -587,11 +589,17 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     const pong = this.prepare();
     try {
       this.raceTimer = timeout(this.options.timeout || 20000);
-      const cp = this.transport.connect(srv, this.options);
+      const t = this.transport;
+      const cp = t.connect(srv, this.options);
       await Promise.race([cp, this.raceTimer]);
       (async () => {
         try {
-          for await (const b of this.transport) {
+          for await (const b of t) {
+            // stop reading if this transport was replaced, so its late data
+            // never reaches the new connection's parser
+            if (t !== this.transport) {
+              break;
+            }
             this.parser.parse(b);
           }
         } catch (err) {
@@ -604,8 +612,13 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
     try {
       await Promise.race([this.raceTimer, pong]);
+      // close() was called while the handshake completed
+      if (this._closing) {
+        throw new errors.ClosedConnectionError();
+      }
       if (this.transport.isClosed) {
-        throw new errors.ConnectionError("connection closed");
+        throw this.transport.closeError || this.lastError ||
+          new errors.ConnectionError("connection closed");
       }
       this.raceTimer?.cancel();
       this.connected = true;
@@ -644,6 +657,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         return;
       } catch (err) {
         lastErr = err as Error;
+        // closing - stop dialing
+        if (this._closing) {
+          break;
+        }
       }
     }
     // if we are here, we failed, and we have no additional
@@ -667,7 +684,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   async dodialLoop(): Promise<void> {
     let lastError: Error | undefined;
     while (true) {
-      if (this._closed) {
+      if (this._closed || this._closing) {
         // if we are disconnected, and close is called, the client
         // still tries to reconnect - to match the reconnect policy
         // in the case of close, want to stop.
@@ -1106,34 +1123,41 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   }
 
   async close(err?: Error): Promise<void> {
-    if (this._closed) {
+    if (this._closed || this._closing) {
+      await this.closed;
       return;
     }
-    this.whyClosed = new Error("close trace").stack || "";
-    this.heartbeats.cancel();
-    if (this.connectError) {
-      this.connectError(err);
-      this.connectError = undefined;
-    }
-    this.muxSubscriptions.close();
-    this.subscriptions.close();
-    const proms = [];
-    for (let i = 0; i < this.listeners.length; i++) {
-      const qi = this.listeners[i];
-      if (qi) {
-        qi.push({ type: "close" });
-        qi.stop();
-        proms.push(qi.iterClosed);
+    this._closing = true;
+    // concurrent close() calls wait on closed - always resolve it
+    try {
+      this.whyClosed = new Error("close trace").stack || "";
+      this.heartbeats.cancel();
+      if (this.connectError) {
+        this.connectError(err);
+        this.connectError = undefined;
       }
+      this.muxSubscriptions.close();
+      this.subscriptions.close();
+      const proms = [];
+      for (let i = 0; i < this.listeners.length; i++) {
+        const qi = this.listeners[i];
+        if (qi) {
+          qi.push({ type: "close" });
+          qi.stop();
+          proms.push(qi.iterClosed);
+        }
+      }
+      if (proms.length) {
+        await Promise.all(proms);
+      }
+      this._closed = true;
+      await this.transport.close(err);
+    } finally {
+      this._closed = true;
+      this.raceTimer?.cancel();
+      this.dialDelay?.cancel();
+      this.closed.resolve(err);
     }
-    if (proms.length) {
-      await Promise.all(proms);
-    }
-    this._closed = true;
-    await this.transport.close(err);
-    this.raceTimer?.cancel();
-    this.dialDelay?.cancel();
-    this.closed.resolve(err);
   }
 
   isClosed(): boolean {
