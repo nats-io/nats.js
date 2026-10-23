@@ -65,10 +65,33 @@ export interface Pending {
   done: boolean;
 }
 
+function redactFrame(frame: string): string {
+  const m = /^CONNECT\s+([^\r\n]*)([\s\S]*)$/.exec(frame);
+  if (m === null) {
+    return frame;
+  }
+
+  try {
+    const connect = JSON.parse(m[1]) as Record<string, unknown>;
+    if (connect === null || typeof connect !== "object") {
+      return frame;
+    }
+
+    ["pass", "auth_token", "jwt", "sig"].forEach((k) => {
+      if (Object.prototype.hasOwnProperty.call(connect, k)) {
+        connect[k] = "<redacted>";
+      }
+    });
+    return `CONNECT ${JSON.stringify(connect)}${m[2]}`;
+  } catch {
+    return frame;
+  }
+}
+
 export function render(frame: Uint8Array): string {
   const cr = "␍";
   const lf = "␊";
-  return TD.decode(frame)
+  return redactFrame(TD.decode(frame))
     .replace(/\n/g, lf)
     .replace(/\r/g, cr);
 }
