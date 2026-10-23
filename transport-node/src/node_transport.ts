@@ -50,6 +50,7 @@ export class NodeTransport implements Transport {
   tlsName = "";
   done = false;
   closeError?: Error;
+  stale?: boolean;
   // socket of a dial or tls handshake in progress
   pending?: Socket;
 
@@ -477,9 +478,11 @@ export class NodeTransport implements Transport {
       return;
     }
     this.closeError = err;
-    // only try to flush the outbound buffer if we got no error and
-    // the close is internal, if the transport closed, we are done.
-    if (!err && this.socket && internal) {
+    // a client close() flushes pending data, unless the connection failed.
+    // a disconnect (stale, forced reconnect, errors) doesn't - callers that
+    // care can flush first. a stale connection may never drain, so don't
+    // wait on it
+    if (!err && this.socket && !internal && !this.stale) {
       try {
         await this._send(new TextEncoder().encode(""));
       } catch (err) {
