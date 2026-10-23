@@ -99,6 +99,7 @@ export type {
   ConnectionOptions,
   DisconnectStatus,
   Dispatcher,
+  FirstConnectFn,
   ForceReconnectStatus,
   JwtAuth,
   LDMStatus,
