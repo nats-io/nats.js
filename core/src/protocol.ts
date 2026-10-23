@@ -539,6 +539,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   public disconnect(): void {
     this.dispatchStatus({ type: "staleConnection" });
+    this.transport.stale = true;
     this.transport.disconnect();
   }
 
@@ -1150,13 +1151,40 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       if (proms.length) {
         await Promise.all(proms);
       }
+      // hand anything still buffered to the transport, which flushes it
+      // before closing
+      this.flushPending();
+      // set before closing the transport, so its closed handler
+      // doesn't treat this as a disconnect and reconnect
       this._closed = true;
-      await this.transport.close(err);
+      await this.closeTransport(err);
     } finally {
+      // in case something above threw before the transport was closed
       this._closed = true;
       this.raceTimer?.cancel();
       this.dialDelay?.cancel();
       this.closed.resolve(err);
+    }
+  }
+
+  // a transport may wait for pending data to drain before closing, which
+  // never happens if the server stopped reading. give it a bounded time,
+  // then mark it stale so it closes without waiting
+  async closeTransport(err?: Error): Promise<void> {
+    const t = this.transport;
+    const wait = delay(this.options.timeout || 20000);
+    let closed: boolean;
+    try {
+      closed = await Promise.race([
+        t.close(err).then(() => true),
+        wait.then(() => false),
+      ]);
+    } finally {
+      wait.cancel();
+    }
+    if (!closed) {
+      t.stale = true;
+      await t.close(err);
     }
   }
 
