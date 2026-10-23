@@ -20,6 +20,7 @@ import {
   delay,
   Empty,
   errors,
+  headers,
   nanos,
   nuid,
   parseSemVer,
@@ -42,6 +43,7 @@ import {
 } from "@nats-io/jetstream";
 
 import type {
+  ConsumerInfo,
   JetStreamOptions,
   PushConsumer,
   StoredMsg,
@@ -2885,5 +2887,161 @@ Deno.test("kv - watch ends cleanly on stop, close and drain", async () => {
   const nc3 = await ns.connect();
   await run(nc3, () => nc3.drain());
 
+  await cleanup(ns, nc);
+});
+
+async function bigKv(
+  n: number,
+  size: number,
+): Promise<{ ns: NatsServer; nc: NatsConnection; kv: KV }> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+  }));
+  const nc = await ns.connect({ reconnect: false });
+  const kv = await new Kvm(nc).create("K", { history: 1 });
+  const v = new Uint8Array(size);
+  for (let i = 0; i < n; i += 100) {
+    await Promise.all(
+      Array.from({ length: Math.min(100, n - i) }, (_, j) => {
+        return kv.put(`k${i + j}`, v);
+      }),
+    );
+  }
+  return { ns, nc, kv };
+}
+
+Deno.test("kv - history fails if the connection closes mid-read", async () => {
+  const N = 1500;
+  const { ns, nc, kv } = await bigKv(N, 32 * 1024);
+  let n = 0;
+  const err = await iterateExpectingError(
+    (async function* () {
+      for await (const e of await kv.history()) {
+        n++;
+        if (n === 5) {
+          ns.process.kill("SIGKILL");
+        }
+        await delay(0);
+        yield e;
+      }
+    })(),
+  );
+  assert(n < N, `expected a partial read: ${n}`);
+  assertIsError(err, Error, "history incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("kv - keys fails if the connection closes mid-read", async () => {
+  const N = 10_000;
+  const { ns, nc, kv } = await bigKv(N, 0);
+  const iter = await kv.keys();
+  ns.process.kill("SIGKILL");
+  let n = 0;
+  const err = await iterateExpectingError(
+    (async function* () {
+      for await (const k of iter) {
+        n++;
+        yield k;
+      }
+    })(),
+  );
+  assert(n < N, `expected a partial read: ${n}`);
+  assertIsError(err, Error, "keys incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("kv - history and keys complete", async () => {
+  const N = 500;
+  const { ns, nc, kv } = await bigKv(N, 1024);
+  await kv.put("k0", "a");
+  await kv.delete("k1");
+  const entries = await collect(await kv.history());
+  assertEquals(entries.length, N);
+  assertEquals(entries[N - 1].operation, "DEL");
+  const keys = await collect(await kv.keys());
+  assertEquals(keys.length, N - 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - history completes if the stream is purged mid-read", async () => {
+  const N = 1500;
+  const { ns, nc, kv } = await bigKv(N, 32 * 1024);
+  const jsm = await jetstreamManager(nc);
+  let n = 0;
+  const done = (async () => {
+    for await (const _e of await kv.history()) {
+      n++;
+      if (n === 5) {
+        await jsm.streams.purge("KV_K");
+      }
+      await delay(0);
+    }
+  })();
+  // a partial read completes on the ordered consumer's 30s idle heartbeat.
+  // the server may deliver everything before the purge lands (its flow
+  // control window grows to 64MB), so only completion is asserted
+  await deadline(done, 45_000);
+  assert(n > 0 && n <= N, `unexpected read count: ${n}`);
+  await cleanup(ns, nc);
+});
+
+// reads all history, injecting a fake idle heartbeat on the consumer's
+// deliver subject as soon as the read starts (while the server is still
+// delivering)
+async function historyWithFakeHeartbeat(
+  nc: NatsConnection,
+  kv: KV,
+  hdrs: (received: number) => Record<string, string>,
+): Promise<{ n: number; name: string }> {
+  const iter = await kv.history() as QueuedIteratorImpl<KvWatchEntry>;
+  const oc = iter._data as { _info: ConsumerInfo; name: string };
+  const h = headers(100, "Idle Heartbeat");
+  for (const [k, v] of Object.entries(hdrs(iter.received))) {
+    h.set(k, v);
+  }
+  nc.publish(oc._info.config.deliver_subject!, Empty, { headers: h });
+  let n = 0;
+  for await (const _e of iter) {
+    n++;
+    await delay(0);
+  }
+  return { n, name: oc.name };
+}
+
+Deno.test("kv - history ignores stalled heartbeats", async () => {
+  const N = 1500;
+  const { ns, nc, kv } = await bigKv(N, 32 * 1024);
+  const { n, name } = await deadline(
+    historyWithFakeHeartbeat(nc, kv, (received) => ({
+      "Nats-Last-Consumer": `${received}`,
+      "Nats-Last-Stream": `${received}`,
+      "Nats-Consumer-Stalled": "junk",
+    })),
+    20_000,
+  );
+  assertEquals(n, N);
+  // no reset
+  assert(name.endsWith("_1"), name);
+  await cleanup(ns, nc);
+});
+
+Deno.test("kv - history recovers from heartbeat sequence mismatch", async () => {
+  const N = 1500;
+  const { ns, nc, kv } = await bigKv(N, 32 * 1024);
+  const { n, name } = await deadline(
+    historyWithFakeHeartbeat(nc, kv, () => ({
+      "Nats-Last-Consumer": "999999",
+      "Nats-Last-Stream": "999999",
+    })),
+    20_000,
+  );
+  assertEquals(n, N);
+  // the ordered consumer was reset
+  assert(!name.endsWith("_1"), name);
   await cleanup(ns, nc);
 });

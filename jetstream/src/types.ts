@@ -857,6 +857,10 @@ export type Heartbeat = {
   type: "heartbeat";
   lastConsumerSequence: number;
   lastStreamSequence: number;
+  /**
+   * True if the server reported the consumer as stalled waiting on flow control
+   */
+  stalled?: boolean;
 };
 /**
  * Notifies that the client received a server-side flow control message.
