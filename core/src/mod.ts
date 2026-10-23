@@ -69,6 +69,7 @@ export type {
   Deferred,
   Delay,
   DisconnectStatus,
+  FirstConnectFn,
   ForceReconnectStatus,
   JwtAuth,
   LDMStatus,

@@ -28,6 +28,7 @@ import {
   deadline,
   deferred,
   delay,
+  errors,
   tokenAuthenticator,
 } from "../src/internal_mod.ts";
 import type { Server } from "../src/internal_mod.ts";
@@ -281,6 +282,102 @@ Deno.test("reconnect - wait on first connect", async () => {
   // no re will quit the client
   const err = await nc.closed();
   assertInstanceOf(err, ConnectionError, "connection refused");
+});
+
+function freePort(): number {
+  const l = Deno.listen({ port: 0 });
+  const { port } = l.addr as Deno.NetAddr;
+  l.close();
+  return port;
+}
+
+Deno.test("reconnect - wait on first connect fn stops", async () => {
+  const port = freePort();
+  const failures: { server: string; error: Error; attempts: number }[] = [];
+  const err = await assertRejects(() =>
+    connect({
+      port,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: (f) => {
+        failures.push(f);
+        return f.attempts < 3;
+      },
+    })
+  );
+  assertEquals(failures.length, 3);
+  assertEquals(failures.map((f) => f.attempts), [1, 2, 3]);
+  assertEquals(failures[0].server, `127.0.0.1:${port}`);
+  assert(failures.every((f) => f.error instanceof Error));
+  // rejects with the error the function saw last
+  assertEquals(err, failures[2].error);
+});
+
+Deno.test("reconnect - wait on first connect fn throw stops", async () => {
+  const port = freePort();
+  const stop = new Error("stop");
+  let calls = 0;
+  const err = await assertRejects(() =>
+    connect({
+      port,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: () => {
+        calls++;
+        throw stop;
+      },
+    })
+  );
+  assertEquals(calls, 1);
+  assertEquals(err, stop);
+});
+
+Deno.test("reconnect - wait on first connect fn sees auth errors", async () => {
+  const ns = await NatsServer.start({
+    authorization: { user: "a", password: "a" },
+  });
+  const errs: Error[] = [];
+  const err = await assertRejects(() =>
+    connect({
+      port: ns.port,
+      user: "a",
+      pass: "b",
+      ignoreAuthErrorAbort: true,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: (f) => {
+        errs.push(f.error);
+        return errs.length < 2;
+      },
+    })
+  );
+  await ns.stop();
+  assertEquals(errs.length, 2);
+  assertInstanceOf(errs[0], errors.AuthorizationError);
+  assertEquals(err, errs[1]);
+});
+
+Deno.test("reconnect - wait on first connect fn only runs before connecting", async () => {
+  let srv = await NatsServer.start({});
+  const port = srv.port;
+  await srv.stop();
+  let calls = 0;
+  const pnc = connect({
+    port,
+    reconnectTimeWait: 50,
+    maxReconnectAttempts: 1,
+    waitOnFirstConnect: () => {
+      calls++;
+      return true;
+    },
+  });
+  await delay(500);
+  srv = await srv.restart();
+  const nc = await pnc;
+  assert(calls > 0);
+  const before = calls;
+
+  // reconnects after the first connection don't call it
+  await srv.stop();
+  await nc.closed();
+  assertEquals(calls, before);
 });
 
 Deno.test("reconnect - close stops reconnects", async () => {

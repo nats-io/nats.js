@@ -32,6 +32,7 @@ import { Features, parseSemVer } from "./semver.ts";
 import type {
   ConnectionOptions,
   Dispatcher,
+  FirstConnectFn,
   Msg,
   Payload,
   Publisher,
@@ -416,6 +417,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   pendingLimit: number;
   lastError?: Error;
   abortReconnect: boolean;
+  waitOnFirstConnect?: FirstConnectFn;
+  firstConnectFailures: number;
   whyClosed: string;
 
   servers: Servers;
@@ -433,6 +436,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.infoReceived = false;
     this.noMorePublishing = false;
     this.abortReconnect = false;
+    // true keeps trying, a function decides after every failed dial
+    const w = options.waitOnFirstConnect;
+    this.waitOnFirstConnect = w === true
+      ? () => true
+      : typeof w === "function"
+      ? w
+      : undefined;
+    this.firstConnectFailures = 0;
     this.listeners = [];
     this.pendingLimit = FLUSH_THRESHOLD;
     this.outMsgs = 0;
@@ -661,6 +672,23 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         if (this._closing) {
           break;
         }
+        if (!this.connectedOnce && this.waitOnFirstConnect) {
+          let keepTrying: boolean;
+          try {
+            keepTrying = this.waitOnFirstConnect({
+              server: a.toString(),
+              error: lastErr,
+              attempts: ++this.firstConnectFailures,
+            });
+          } catch (err) {
+            keepTrying = false;
+            lastErr = err as Error;
+          }
+          if (!keepTrying) {
+            this.abortReconnect = true;
+            break;
+          }
+        }
       }
     }
     // if we are here, we failed, and we have no additional
@@ -754,7 +782,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         } catch (err) {
           lastError = err as Error;
           if (!this.connectedOnce) {
-            if (this.options.waitOnFirstConnect) {
+            if (this.waitOnFirstConnect) {
               continue;
             }
             this.servers.removeCurrentServer();

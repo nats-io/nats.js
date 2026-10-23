@@ -278,6 +278,22 @@ export type ReconnectToServerHandler = (
 ) => Server | { server: Server; delay: number } | null;
 
 /**
+ * Called by the client after every failed dial while establishing its first
+ * connection (see {@link ConnectionOptions.waitOnFirstConnect}). `server` is
+ * the address dialed (host:port), `error` why the dial failed, and `attempts`
+ * the number of failed dials so far. Return true to keep trying, or false to
+ * stop - the connect then rejects with `error`. Throwing also stops, and the
+ * connect rejects with the thrown error.
+ *
+ * The function is synchronous: retries are paced by
+ * {@link ConnectionOptions.reconnectTimeWait} and
+ * {@link ConnectionOptions.reconnectDelayHandler}.
+ */
+export type FirstConnectFn = (
+  failure: { server: string; error: Error; attempts: number },
+) => boolean;
+
+/**
  * ServerChanged records servers in the cluster that were added or deleted.
  */
 export interface ServersChanged {
@@ -1006,9 +1022,11 @@ export interface ConnectionOptions {
   verbose?: boolean;
   /**
    * When set to true {@link maxReconnectAttempts} will not trigger until the client
-   * has established one connection.
+   * has established one connection - the client keeps trying to connect.
+   * A {@link FirstConnectFn} is called after every failed dial, and decides
+   * whether the client keeps trying.
    */
-  waitOnFirstConnect?: boolean;
+  waitOnFirstConnect?: boolean | FirstConnectFn;
   /**
    * When set to true, cluster information gossiped by the nats-server will
    * not augment the lists of server(s) known by the client.
