@@ -13,16 +13,26 @@
  * limitations under the License.
  */
 import {
+  defaultOptions,
+  deferred,
   Empty,
   extractProtocolMessage,
   MuxSubscription,
+  ProtocolHandler,
   protoLen,
   RequestOne,
+  setTransportFactory,
   SubscriptionImpl,
   Subscriptions,
 } from "../src/internal_mod.ts";
-import type { Msg, ProtocolHandler } from "../src/internal_mod.ts";
-import { assertEquals, assertRejects, equal } from "@std/assert";
+import type { Msg, Publisher, Transport } from "../src/internal_mod.ts";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertRejects,
+  equal,
+} from "@std/assert";
 import { errors } from "../src/errors.ts";
 
 Deno.test("protocol - mux subscription cancel", async () => {
@@ -88,4 +98,63 @@ Deno.test("protocol - cancel unknown sub", () => {
 Deno.test("protocol - protolen -1 on empty", () => {
   assertEquals(protoLen(Empty), 0);
   assertEquals(extractProtocolMessage(Empty), "");
+});
+
+Deno.test("protocol - dial rejects a transport closed after handshake", async () => {
+  const transportClosed = deferred<void | Error>();
+  let isClosed = false;
+  const frame = new TextEncoder().encode(
+    'INFO {"server_id":"test","version":"2.12.0","proto":1,"host":"127.0.0.1","port":4222,"max_payload":1048576}\r\nPONG\r\n',
+  );
+  const transport: Transport = {
+    get isClosed(): boolean {
+      return isClosed;
+    },
+    lang: "test",
+    version: "test",
+    async connect(): Promise<void> {},
+    async *[Symbol.asyncIterator](): AsyncIterableIterator<Uint8Array> {
+      yield frame;
+      isClosed = true;
+      transportClosed.resolve();
+    },
+    isEncrypted: () => false,
+    send: () => {},
+    close(): Promise<void> {
+      isClosed = true;
+      transportClosed.resolve();
+      return Promise.resolve();
+    },
+    disconnect: () => {},
+    closed: () => transportClosed,
+    discard: () => {},
+  };
+  setTransportFactory({
+    defaultPort: 4222,
+    urlParseFn: (url) => url,
+    factory: () => transport,
+  });
+
+  const protocol = new ProtocolHandler(
+    { ...defaultOptions(), servers: ["127.0.0.1:4222"], timeout: 100 },
+    { publish: () => {} } as Publisher,
+  );
+  const server = protocol.servers.selectServer();
+  assert(server);
+  protocol.server = server;
+
+  let dialError: unknown;
+  try {
+    await protocol.dial(server);
+  } catch (err) {
+    dialError = err;
+  } finally {
+    await protocol.close();
+  }
+
+  assert(
+    dialError instanceof errors.ConnectionError,
+    `expected a connection error, got ${String(dialError)}`,
+  );
+  assertFalse(protocol.connected);
 });
