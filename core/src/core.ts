@@ -869,6 +869,42 @@ export interface Authenticator {
   (nonce?: string): Auth;
 }
 
+/**
+ * AsyncAuthenticator is like {@link Authenticator}, but for credential
+ * schemes that cannot compute their result synchronously — for example,
+ * signing the connection nonce with a non-extractable WebCrypto key, which
+ * is asynchronous on every browser by specification.
+ *
+ * If your key is a WebCrypto Ed25519 key pair, do not implement this yourself:
+ * use `webCryptoJwtAuthenticator()`, which returns an AsyncAuthenticator and
+ * does the signing, the nkey encoding and the reconnect handling for you.
+ * Implement this interface directly only for other kinds of signer, such as a
+ * hardware token or a remote signing service.
+ *
+ * @see webCryptoJwtAuthenticator Mutually exclusive
+ * with {@link Authenticator} in practice: if set, it takes precedence for
+ * the initial CONNECT, and the existing synchronous {@link Authenticator}
+ * path is otherwise unaffected by its presence.
+ *
+ * Unlike a synchronous authenticator, this one is not guaranteed to finish
+ * inside the server's default 2-second Authentication Timeout. Possible
+ * causes (see core/README.md's "AsyncAuthenticator" section):
+ * - a user-presence or biometric gate on the key
+ * - a backgrounded or throttled tab
+ * - a non-local (network-backed) signer
+ * - main-thread contention delaying the continuation
+ * - sleep/wake during the await
+ *
+ * If yours can plausibly take that long, one candidate workaround today is
+ * raising the server's own `authorization { timeout: <seconds> }` — this
+ * interface itself cannot extend that deadline on the client's behalf.
+ *
+ * @type function(nonce?: string) => Promise<Auth>
+ */
+export interface AsyncAuthenticator {
+  (nonce?: string): Promise<Auth>;
+}
+
 export interface ConnectionOptions {
   /**
    * When the server requires authentication, set an {@link Authenticator}.
@@ -877,6 +913,18 @@ export interface ConnectionOptions {
    * if {@link user} and {@link pass} or the {@link token} options are set.
    */
   authenticator?: Authenticator | Authenticator[];
+  /**
+   * Like {@link authenticator}, but for a credential scheme that can only
+   * compute its result asynchronously (e.g. signing with a non-extractable
+   * WebCrypto key). When set, this is used instead of {@link authenticator}
+   * for the initial CONNECT; while it is resolving, any protocol messages
+   * the server sends are deliberately ignored, since this connection has
+   * not yet sent its own CONNECT and nothing arriving in that window should
+   * be acted on. The one exception is a server PING, which is answered with
+   * a single PONG right after CONNECT, so that a slow authenticator does not
+   * leave the server counting unanswered PINGs against the connection.
+   */
+  asyncAuthenticator?: AsyncAuthenticator;
   /**
    * When set to `true` the client will print protocol messages that it receives
    * or sends to the server.

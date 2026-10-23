@@ -30,6 +30,7 @@ import { Kind, Parser } from "./parser.ts";
 import { MsgImpl } from "./msg.ts";
 import { Features, parseSemVer } from "./semver.ts";
 import type {
+  Auth,
   ConnectionOptions,
   Dispatcher,
   Msg,
@@ -393,6 +394,25 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   connected: boolean;
   connectedOnce: boolean;
   infoReceived: boolean;
+  // True only between kicking off options.asyncAuthenticator and this
+  // connection's own CONNECT actually being sent. While true, push() drops
+  // every event except the INFO that set it and any -ERR (which also ends
+  // the attempt, see push()) — this connection hasn't authenticated yet, so
+  // nothing else the server sends in that window should be acted on. See
+  // ASYNC-AUTHENTICATOR-SCOPE.md.
+  awaitingAsyncConnect: boolean;
+  // Set when the server's PING arrived while awaitingAsyncConnect. The server
+  // rejects a PONG sent before CONNECT, so it is answered right after CONNECT
+  // instead. The server counts unanswered PINGs against ping_max across the
+  // CONNECT, and any one PONG clears the count, so one PONG covers however
+  // many PINGs arrived.
+  pongOwed: boolean;
+  // Bumped every time resetOutbound() runs (a fresh dial/reconnect attempt).
+  // An in-flight asyncAuthenticator resolution captures the generation it
+  // started in and checks it before acting, so a disconnect/reconnect that
+  // happens while it's still pending doesn't send a CONNECT (or close the
+  // connection) on behalf of an attempt that's no longer current.
+  connectGeneration: number;
   info?: ServerInfo;
   muxSubscriptions: MuxSubscription;
   options: ConnectionOptions;
@@ -431,6 +451,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
+    this.awaitingAsyncConnect = false;
+    this.pongOwed = false;
+    this.connectGeneration = 0;
     this.noMorePublishing = false;
     this.abortReconnect = false;
     this.listeners = [];
@@ -483,6 +506,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     });
     this.parser = new Parser(this);
     this.infoReceived = false;
+    this.awaitingAsyncConnect = false;
+    this.pongOwed = false;
+    this.connectGeneration++;
   }
 
   dispatchStatus(status: Status): void {
@@ -877,11 +903,51 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.transport.send(PONG_CMD);
   }
 
+  // Sends the PONG owed for PINGs that arrived while an asyncAuthenticator
+  // was resolving; must run after CONNECT is sent. One PONG is enough: the
+  // server clears its count of unanswered PINGs on any PONG.
+  private answerHeldPing(): void {
+    if (this.pongOwed) {
+      this.pongOwed = false;
+      this.transport.send(PONG_CMD);
+    }
+  }
+
   processPong() {
     const cb = this.pongs.shift();
     if (cb) {
       cb.resolve();
     }
+  }
+
+  // Builds and sends the CONNECT frame. Shared by both the synchronous
+  // options.authenticator path and the asyncAuthenticator path below — the
+  // Connect class itself is unmodified; a pre-resolved creds object (when
+  // supplied) is merged onto the already-constructed instance rather than
+  // computed inside the constructor, since constructors can't be async.
+  private sendConnect(
+    nonce: string | undefined,
+    headersEnabled: boolean,
+    creds?: Auth,
+  ): void {
+    const { version, lang } = this.transport;
+    const c = new Connect(
+      { version, lang },
+      this.options,
+      nonce,
+    );
+    if (creds) {
+      extend(c, creds);
+    }
+    if (headersEnabled) {
+      c.headers = true;
+      c.no_responders = true;
+    }
+    const cs = JSON.stringify(c);
+    this.transport.send(
+      encode(`CONNECT ${cs}${CR_LF}`),
+    );
+    this.transport.send(PING_CMD);
   }
 
   processInfo(m: Uint8Array) {
@@ -897,26 +963,38 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         this.servers.updateTLSName();
       }
       // send connect
-      const { version, lang } = this.transport;
-      try {
-        const c = new Connect(
-          { version, lang },
-          this.options,
-          info.nonce,
-        );
-
-        if (info.headers) {
-          c.headers = true;
-          c.no_responders = true;
+      if (this.options.asyncAuthenticator) {
+        // Fire-and-forget: processInfo stays synchronous (it's called
+        // from Parser.parse(), which is not awaited by its caller), so
+        // there's no way to await the authenticator here. The resolution
+        // itself, and sending CONNECT, happens in the .then() below,
+        // decoupled from this call stack. awaitingAsyncConnect gates
+        // push() (see below) so nothing arriving before CONNECT is
+        // actually sent gets acted on. generation guards against a
+        // disconnect/reconnect racing this resolution — see
+        // resetOutbound().
+        this.awaitingAsyncConnect = true;
+        const generation = this.connectGeneration;
+        Promise.resolve()
+          .then(() => this.options.asyncAuthenticator!(info.nonce))
+          .then((creds) => {
+            if (generation !== this.connectGeneration) return;
+            this.awaitingAsyncConnect = false;
+            this.sendConnect(info.nonce, !!info.headers, creds);
+            this.answerHeldPing();
+          })
+          .catch((err) => {
+            if (generation !== this.connectGeneration) return;
+            this.awaitingAsyncConnect = false;
+            this.close(err as Error).catch();
+          });
+      } else {
+        try {
+          this.sendConnect(info.nonce, !!info.headers);
+        } catch (err) {
+          // if we are dying here, this is likely some an authenticator blowing up
+          this.close(err as Error).catch();
         }
-        const cs = JSON.stringify(c);
-        this.transport.send(
-          encode(`CONNECT ${cs}${CR_LF}`),
-        );
-        this.transport.send(PING_CMD);
-      } catch (err) {
-        // if we are dying here, this is likely some an authenticator blowing up
-        this.close(err as Error).catch();
       }
     }
     if (updates) {
@@ -936,6 +1014,41 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   }
 
   push(e: ParserEvent): void {
+    // We haven't sent our own CONNECT yet — an asyncAuthenticator is still
+    // resolving. Nothing the server sends in this window should be acted
+    // on; the INFO that set this flag is the one exception, since that's
+    // what's already driving processInfo/resolution in the first place.
+    // Bytes are still parsed upstream in Parser.parse() regardless (parser
+    // framing state stays correct) — this only drops the resulting event.
+    //
+    // -ERR is the other exception, and it preempts the pending
+    // authenticator rather than waiting for it. Every -ERR the server can
+    // send before it has seen a CONNECT (Authorization Violation,
+    // Authentication Timeout, Stale Connection, ...) is terminal, and
+    // handling one only records the error and rejects the pending connect —
+    // it writes nothing to the transport — so it is safe to handle at once.
+    // It has to be: dropped, the client couldn't say why the server gave up
+    // until the dial timeout fired. It also ends this attempt: clearing
+    // awaitingAsyncConnect and bumping the generation makes the authenticator's
+    // eventual resolution (or rejection) see it is stale, so it neither sends
+    // a CONNECT nor closes the connection. The authenticator itself is not
+    // cancelled; its result is simply discarded.
+    //
+    // A PING is dropped too, but remembered: the server sends them before it
+    // has seen a CONNECT, rejects a PONG sent before one, and keeps counting
+    // the unanswered ones afterwards, so a client slow enough to miss
+    // ping_max of them would be closed as a stale connection right after
+    // it connected. The PONG is sent right after CONNECT (answerHeldPing()).
+    if (this.awaitingAsyncConnect && e.kind === Kind.ERR) {
+      this.awaitingAsyncConnect = false;
+      this.connectGeneration++;
+    }
+    if (this.awaitingAsyncConnect && e.kind === Kind.PING) {
+      this.pongOwed = true;
+    }
+    if (this.awaitingAsyncConnect && e.kind !== Kind.INFO) {
+      return;
+    }
     switch (e.kind) {
       case Kind.MSG: {
         const { msg, data } = e;
