@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 import {
+  deadline,
   defaultOptions,
   deferred,
   delay,
@@ -308,4 +309,19 @@ Deno.test("protocol - close while the handshake completes skips other addresses"
     { servers: ["nats.test:4222"], noRandomize: true },
     { dnsResolveFn: () => Promise.resolve(["127.0.0.1", "127.0.0.2"]) },
   );
+});
+
+Deno.test("protocol - concurrent close settles if the transport close throws", async () => {
+  const t = fakeTransport();
+  const boom = new Error("boom");
+  t.close = () => Promise.reject(boom);
+  await withTransports([t], async (p) => {
+    await p.dial(p.server);
+    const first = p.close();
+    const second = p.close();
+    const err = await assertRejects(() => first);
+    assertEquals(err, boom);
+    await deadline(second, 1000);
+    assert(p.isClosed());
+  });
 });

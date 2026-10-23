@@ -1128,31 +1128,36 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       return;
     }
     this._closing = true;
-    this.whyClosed = new Error("close trace").stack || "";
-    this.heartbeats.cancel();
-    if (this.connectError) {
-      this.connectError(err);
-      this.connectError = undefined;
-    }
-    this.muxSubscriptions.close();
-    this.subscriptions.close();
-    const proms = [];
-    for (let i = 0; i < this.listeners.length; i++) {
-      const qi = this.listeners[i];
-      if (qi) {
-        qi.push({ type: "close" });
-        qi.stop();
-        proms.push(qi.iterClosed);
+    // concurrent close() calls wait on closed - always resolve it
+    try {
+      this.whyClosed = new Error("close trace").stack || "";
+      this.heartbeats.cancel();
+      if (this.connectError) {
+        this.connectError(err);
+        this.connectError = undefined;
       }
+      this.muxSubscriptions.close();
+      this.subscriptions.close();
+      const proms = [];
+      for (let i = 0; i < this.listeners.length; i++) {
+        const qi = this.listeners[i];
+        if (qi) {
+          qi.push({ type: "close" });
+          qi.stop();
+          proms.push(qi.iterClosed);
+        }
+      }
+      if (proms.length) {
+        await Promise.all(proms);
+      }
+      this._closed = true;
+      await this.transport.close(err);
+    } finally {
+      this._closed = true;
+      this.raceTimer?.cancel();
+      this.dialDelay?.cancel();
+      this.closed.resolve(err);
     }
-    if (proms.length) {
-      await Promise.all(proms);
-    }
-    this._closed = true;
-    await this.transport.close(err);
-    this.raceTimer?.cancel();
-    this.dialDelay?.cancel();
-    this.closed.resolve(err);
   }
 
   isClosed(): boolean {
