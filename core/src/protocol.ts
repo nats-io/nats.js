@@ -604,6 +604,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
     try {
       await Promise.race([this.raceTimer, pong]);
+      if (this.transport.isClosed) {
+        throw new errors.ConnectionError("connection closed");
+      }
       this.raceTimer?.cancel();
       this.connected = true;
       this.connectError = undefined;
