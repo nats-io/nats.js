@@ -2982,9 +2982,11 @@ Deno.test("kv - history completes if the stream is purged mid-read", async () =>
       await delay(0);
     }
   })();
-  // completion relies on the ordered consumer's 30s idle heartbeat
+  // a partial read completes on the ordered consumer's 30s idle heartbeat.
+  // the server may deliver everything before the purge lands (its flow
+  // control window grows to 64MB), so only completion is asserted
   await deadline(done, 45_000);
-  assert(n > 0 && n < N, `expected a partial read: ${n}`);
+  assert(n > 0 && n <= N, `unexpected read count: ${n}`);
   await cleanup(ns, nc);
 });
 
