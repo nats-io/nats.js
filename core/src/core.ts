@@ -805,7 +805,8 @@ export type DebugFn = (
   direction: ">" | "<",
   frame: Uint8Array,
   err?: Error,
-) => void;
+  // void | undefined, unlike void, rejects async functions
+) => void | undefined;
 
 export interface Dispatcher<T> {
   push(v: T | CallbackFn): void;
