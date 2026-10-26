@@ -39,6 +39,7 @@ import {
   AckPolicy,
   DeliverPolicy,
   DiscardPolicy,
+  jetstream,
   JetStreamApiCodes,
   JetStreamApiError,
   JsHeaders,
@@ -249,11 +250,15 @@ export class Kvm {
         new Error(`kv is only supported on servers ${min} or better`),
       );
     }
+    const js = opts.timeout === undefined ? this.js : jetstream(this.js.nc, {
+      ...this.js.getOptions(),
+      timeout: opts.timeout,
+    });
     if (opts.bindOnly) {
-      return Bucket.bind(this.js, name, opts);
+      return Bucket.bind(js, name, opts);
     }
 
-    return Bucket.create(this.js, name, opts);
+    return Bucket.create(js, name, opts);
   }
 
   /**
