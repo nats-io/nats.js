@@ -14,7 +14,7 @@
  */
 // deno-lint-ignore-file no-explicit-any
 import { TD } from "./encoders.ts";
-import type { Nanos } from "./core.ts";
+import type { DebugFn, Nanos } from "./core.ts";
 import { TimeoutError } from "./errors.ts";
 
 /**
@@ -71,6 +71,42 @@ export function render(frame: Uint8Array): string {
   return TD.decode(frame)
     .replace(/\n/g, lf)
     .replace(/\r/g, cr);
+}
+
+// handles a frame for the debug option. a custom function gets a copy, so it
+// can't change what is sent or processed, and if it throws the error is
+// reported as its own rather than as a client failure
+export function debugFrame(
+  opts: { debug?: boolean | DebugFn },
+  direction: ">" | "<",
+  frame: Uint8Array,
+  err?: unknown,
+): void {
+  const fn = opts.debug;
+  if (!fn) {
+    return;
+  }
+  if (typeof fn !== "function") {
+    if (err) {
+      console.error(`!!! ${render(frame)}: ${err}`);
+    } else {
+      console.info(`${direction} ${render(frame)}`);
+    }
+    return;
+  }
+  try {
+    // new Uint8Array() copies - node's Buffer.slice() would share the memory
+    const copy = new Uint8Array(frame);
+    if (err !== undefined && !(err instanceof Error)) {
+      err = new Error(String(err));
+    }
+    fn(direction, copy, err as Error | undefined);
+  } catch (e) {
+    opts.debug = false;
+    console.error(
+      new Error("the debug function threw - debug is now off", { cause: e }),
+    );
+  }
 }
 
 export interface Timeout<T> extends Promise<T> {

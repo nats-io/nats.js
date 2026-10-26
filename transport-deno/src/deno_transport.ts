@@ -17,12 +17,12 @@ import {
   checkOptions,
   checkUnsupportedOption,
   DataBuffer,
+  debugFrame,
   deferred,
   Empty,
   errors,
   extractProtocolMessage,
   INFO,
-  render,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -121,9 +121,7 @@ export class DenoTransport implements Transport {
         throw new Error("socket closed while expecting INFO");
       } else if (c) {
         const frame = this.buf.subarray(0, c);
-        if (this.options.debug) {
-          console.info(`> ${render(frame)}`);
-        }
+        debugFrame(this.options, ">", frame);
         inbound.fill(frame);
         const raw = inbound.peek();
         pm = extractProtocolMessage(raw);
@@ -191,9 +189,7 @@ export class DenoTransport implements Transport {
         }
         if (c) {
           const frame = this.buf.subarray(0, c);
-          if (this.options.debug) {
-            console.info(`> ${render(frame)}`);
-          }
+          debugFrame(this.options, ">", frame);
           yield frame;
         }
       } catch (err) {
@@ -217,13 +213,9 @@ export class DenoTransport implements Transport {
       this.pendingWrite = null;
       this.maybeWriteFrame();
     }).then(() => {
-      if (this.options.debug) {
-        console.info(`< ${render(frame)}`);
-      }
+      debugFrame(this.options, "<", frame);
     }).catch((err) => {
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
     });
   }
 
@@ -288,7 +280,7 @@ export class DenoTransport implements Transport {
           p = this.pendingWrite;
         }
       } catch (err) {
-        if (this.options.debug) {
+        if (this.options.debug === true) {
           console.log("transport close terminated with an error", err);
         }
       }

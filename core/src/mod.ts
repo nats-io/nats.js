@@ -78,6 +78,7 @@ export type {
   ClusterUpdateStatus,
   Codec,
   ConnectionOptions,
+  DebugFn,
   Deferred,
   Delay,
   DisconnectStatus,

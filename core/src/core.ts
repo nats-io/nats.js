@@ -778,6 +778,36 @@ export type Nanos = number;
 
 export type CallbackFn = () => void;
 
+/**
+ * A `debug` option function. Called with each frame the client reads (`">"`)
+ * or writes (`"<"`); `err` is set if the frame failed. A frame is one socket
+ * read or write, so it can hold several protocol messages or part of one.
+ *
+ * Using it assumes an understanding of the NATS protocol the client sends and
+ * receives. That protocol is not an API: what is sent can change with the
+ * client or server version.
+ *
+ * The function gets a copy of the frame, so it can't change what the client
+ * sends or processes, but copying every frame costs memory and throughput.
+ * `debug: true` doesn't copy. If the function throws, debug is turned off.
+ * Set or remove it on a running connection through `options.debug`.
+ *
+ * ```ts
+ * const nc = await connect({
+ *   debug: (direction, frame) => {
+ *     const s = new TextDecoder().decode(frame);
+ *     console.log(direction, s.replace(/"pass":"[^"]*"/, '"pass":"***"'));
+ *   },
+ * });
+ * ```
+ */
+export type DebugFn = (
+  direction: ">" | "<",
+  frame: Uint8Array,
+  err?: Error,
+  // void | undefined, unlike void, rejects async functions
+) => void | undefined;
+
 export interface Dispatcher<T> {
   push(v: T | CallbackFn): void;
 }
@@ -894,10 +924,11 @@ export interface ConnectionOptions {
    */
   authenticator?: Authenticator | Authenticator[];
   /**
-   * When set to `true` the client will print protocol messages that it receives
-   * or sends to the server.
+   * When `true` the client prints the raw protocol frames it reads (`>`) and
+   * writes (`<`), credentials and payloads included. Set a {@link DebugFn} to
+   * filter or redact them.
    */
-  debug?: boolean;
+  debug?: boolean | DebugFn;
   /**
    * Sets the maximum count of ping commands that can be awaiting a response
    * before raising a stale connection status {@link StaleConnectionStatus }
