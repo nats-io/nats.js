@@ -657,7 +657,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     const { resolve } = this.options;
     const alts = await srv.resolve({
       fn: getResolveFn(),
-      debug: this.options.debug,
+      debug: this.options.debug === true,
       randomize: !this.options.noRandomize,
       resolve,
     });

@@ -20,7 +20,7 @@ import type {
   ServerInfo,
 } from "./core.ts";
 import type { Deferred } from "./util.ts";
-import { deferred, delay, render } from "./util.ts";
+import { debugFrame, deferred, delay } from "./util.ts";
 import type { Transport, TransportFactory } from "./transport.ts";
 import { extractProtocolMessage, setTransportFactory } from "./transport.ts";
 import { checkOptions } from "./options.ts";
@@ -130,9 +130,7 @@ export class WsTransport implements Transport {
       if (pm !== "") {
         const m = INFO.exec(pm);
         if (!m) {
-          if (options.debug) {
-            console.error("!!!", render(t));
-          }
+          debugFrame(options, ">", t);
           ok.reject(new Error("unexpected response from server"));
           return;
         }
@@ -254,9 +252,7 @@ export class WsTransport implements Transport {
       const yields = this.yields;
       this.yields = [];
       for (let i = 0; i < yields.length; i++) {
-        if (this.options.debug) {
-          console.info(`> ${render(yields[i])}`);
-        }
+        debugFrame(this.options, ">", yields[i]);
         yield yields[i];
       }
       // yielding could have paused and microtask
@@ -282,17 +278,13 @@ export class WsTransport implements Transport {
     }
     try {
       this.socket.send(frame.buffer);
-      if (this.options.debug) {
-        console.info(`< ${render(frame)}`);
-      }
+      debugFrame(this.options, "<", frame);
       return;
     } catch (err) {
       // we ignore write errors because client will
       // fail on a read or when the heartbeat timer
       // detects a stale connection
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
     }
   }
 
