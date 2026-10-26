@@ -486,7 +486,7 @@ export class NatsServer implements PortInfo {
             if (debug) {
               console.log(`leader consensus ${n}`);
             }
-            return servers;
+            break;
           } else {
             if (debug) {
               console.log(
@@ -508,6 +508,65 @@ export class NatsServer implements PortInfo {
         }
       }
       await delay(250);
+    }
+    await NatsServer.placementReady(servers);
+    return servers;
+  }
+
+  // a meta leader is elected before it has heard from every peer, and until
+  // it has, placing a replica on that peer fails with "no suitable peers for
+  // placement, peer offline". retry a replicated stream until it can be
+  // placed. skipped if no connect was registered
+  static async placementReady(servers: NatsServer[]): Promise<void> {
+    let connect;
+    try {
+      connect = getConnect();
+    } catch {
+      return;
+    }
+    const nc = await connect({ port: servers[0].port });
+    const name = `nst_${nuid.next()}`;
+    const cfg = JSON.stringify({
+      name,
+      subjects: [name],
+      // tests replicate to at most 3 servers - placement picks any ready
+      // ones, so placing 3 means any R3 stream can be placed
+      num_replicas: Math.min(servers.length, 3),
+      storage: "memory",
+    });
+    const deadline = Date.now() + 10_000;
+    try {
+      while (true) {
+        let err: string;
+        try {
+          const r = await nc.request(`$JS.API.STREAM.CREATE.${name}`, cfg, {
+            timeout: 2000,
+          });
+          type Resp = { error?: { description: string } };
+          let { error } = r.json<Resp>();
+          if (!error) {
+            // create is idempotent, so a failed delete is retried with it
+            const d = await nc.request(
+              `$JS.API.STREAM.DELETE.${name}`,
+              undefined,
+              { timeout: 2000 },
+            );
+            error = d.json<Resp>().error;
+            if (!error) {
+              return;
+            }
+          }
+          err = error.description;
+        } catch (e) {
+          err = (e as Error).message;
+        }
+        if (Date.now() > deadline) {
+          throw new Error(`cluster can't place replicas: ${err}`);
+        }
+        await delay(250);
+      }
+    } finally {
+      await nc.close();
     }
   }
 
