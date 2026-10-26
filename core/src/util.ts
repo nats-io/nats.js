@@ -97,6 +97,9 @@ export function debugFrame(
   try {
     // new Uint8Array() copies - node's Buffer.slice() would share the memory
     const copy = new Uint8Array(frame);
+    if (err !== undefined && !(err instanceof Error)) {
+      err = new Error(String(err));
+    }
     fn(direction, copy, err as Error | undefined);
   } catch (e) {
     opts.debug = false;

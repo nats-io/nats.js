@@ -130,8 +130,9 @@ export class WsTransport implements Transport {
       if (pm !== "") {
         const m = INFO.exec(pm);
         if (!m) {
-          debugFrame(options, ">", t);
-          ok.reject(new Error("unexpected response from server"));
+          const err = new Error("unexpected response from server");
+          debugFrame(options, ">", t, err);
+          ok.reject(err);
           return;
         }
         try {

@@ -780,7 +780,7 @@ export type CallbackFn = () => void;
 
 /**
  * A `debug` option function. Called with each frame the client reads (`">"`)
- * or writes (`"<"`); `err` is set if the write failed. A frame is one socket
+ * or writes (`"<"`); `err` is set if the frame failed. A frame is one socket
  * read or write, so it can hold several protocol messages or part of one.
  *
  * Using it assumes an understanding of the NATS protocol the client sends and
