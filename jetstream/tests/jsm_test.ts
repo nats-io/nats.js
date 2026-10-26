@@ -906,9 +906,10 @@ Deno.test("jsm - cross account streams", async () => {
   // cannot publish to the stream from the client account
   // publish from the js account
   const admin = await connect({ port: ns.port, user: "js", pass: "js" });
-  admin.publish(subj);
-  admin.publish(subj);
-  await admin.flush();
+  // wait for the acks - a plain publish may not be stored when info runs
+  const ajs = jetstream(admin);
+  await ajs.publish(subj);
+  await ajs.publish(subj);
 
   // info
   let si = await jsm.streams.info(stream);
@@ -987,9 +988,10 @@ Deno.test(
     // cannot publish to the stream from the client account
     // publish from the js account
     const admin = await connect({ port: ns.port, user: "js", pass: "js" });
-    admin.publish(subj);
-    admin.publish(subj);
-    await admin.flush();
+    // wait for the acks - a plain publish may not be stored when info runs
+    const ajs = jetstream(admin);
+    await ajs.publish(subj);
+    await ajs.publish(subj);
 
     consumers = await jsm.consumers.list(stream).next();
     assertEquals(consumers.length, 1);
