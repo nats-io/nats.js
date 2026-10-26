@@ -30,7 +30,6 @@ import {
   Empty,
   InvalidArgumentError,
   type MsgHdrs,
-  MsgHdrsImpl,
   nanos,
   nuid,
   syncIterator,
@@ -50,6 +49,7 @@ import type {
   PushConsumerImpl,
   PushConsumerMessagesImpl,
 } from "../src/pushconsumer.ts";
+import { MsgHdrsImpl } from "@nats-io/nats-core/internal";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 
 Deno.test("jetstream - durable", async () => {
