@@ -113,6 +113,7 @@ export type {
 } from "./types.ts";
 
 export type { PushConsumerMessagesImpl } from "./pushconsumer.ts";
+export { DeliveryTracker } from "./pushconsumer.ts";
 
 export { BaseApiClientImpl, type StreamNames } from "./jsbaseclient_api.ts";
 

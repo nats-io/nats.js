@@ -352,3 +352,30 @@ Deno.test("push consumers - flow control", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("ordered push consumers - stop while recreating doesn't retry", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const js = jetstream(nc);
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "test", subjects: ["test"] });
+  await js.publish("test");
+
+  const oc = await js.consumers.getPushConsumer("test") as PushConsumerImpl;
+  // iterator not read, so the stop stays queued and done isn't set
+  const iter = await oc.consume() as PushConsumerMessagesImpl;
+
+  // fail the consumer create after a stop
+  let adds = 0;
+  oc.api.add = async () => {
+    adds++;
+    await delay(50);
+    throw new Error("create failed");
+  };
+  iter.reset();
+  iter.stop();
+  await delay(250);
+
+  assertEquals(adds, 1);
+  assertEquals(iter.cancelables.length, 0);
+  await cleanup(ns, nc);
+});

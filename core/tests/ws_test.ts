@@ -503,7 +503,9 @@ Deno.test("ws - close on a server that stopped reading", async () => {
   const srv = stalledWsServer();
   const nc = await wsconnect({
     servers: `ws://127.0.0.1:${srv.port}`,
-    closeTimeout: 500,
+    // between two of the drain checks (every 100ms), so the close times out
+    // while one is pending - it must not outlive the close
+    closeTimeout: 450,
   } as ConnectionOptions);
   // fill the socket so the close can't drain
   const payload = new Uint8Array(1024 * 1024);
