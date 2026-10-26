@@ -325,3 +325,43 @@ Deno.test("protocol - concurrent close settles if the transport close throws", a
     assert(p.isClosed());
   });
 });
+
+Deno.test("protocol - close gives up on a transport that doesn't drain", async () => {
+  const t = fakeTransport();
+  let closes = 0;
+  // never finishes closing unless it is stale, like a flush to a server
+  // that stopped reading
+  t.close = (): Promise<void> => {
+    closes++;
+    if (t.stale) {
+      t.kill();
+      return Promise.resolve();
+    }
+    return new Promise(() => {});
+  };
+  await withTransports([t], async (p) => {
+    await p.dial(p.server);
+    const start = Date.now();
+    await deadline(p.close(), 2000);
+    const elapsed = Date.now() - start;
+    assert(t.stale);
+    assertEquals(closes, 2);
+    assert(elapsed >= 200 && elapsed < 1000, `elapsed ${elapsed}`);
+  }, { closeTimeout: 200 } as Partial<ConnectionOptions>);
+});
+
+Deno.test("protocol - close doesn't mark a closing transport stale", async () => {
+  const t = fakeTransport();
+  let closes = 0;
+  const close = t.close.bind(t);
+  t.close = (err?: Error): Promise<void> => {
+    closes++;
+    return close(err);
+  };
+  await withTransports([t], async (p) => {
+    await p.dial(p.server);
+    await p.close();
+    assertFalse(t.stale);
+    assertEquals(closes, 1);
+  }, { timeout: 200 });
+});

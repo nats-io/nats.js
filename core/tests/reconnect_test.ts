@@ -508,6 +508,103 @@ Deno.test("reconnect - stale connections don't close", async () => {
   await delay(2000);
 });
 
+Deno.test("reconnect - close flushes pending data", async () => {
+  const ns = await NatsServer.start();
+  const sub = await connect({ port: ns.port });
+  // large messages are written as they are published, the small
+  // last one is still in the client's outbound buffer when close() runs
+  const N = 129;
+  let received = 0;
+  const all = deferred<void>();
+  sub.subscribe("x", {
+    callback: () => {
+      if (++received === N) {
+        all.resolve();
+      }
+    },
+  });
+  await sub.flush();
+
+  const pub = await connect({ port: ns.port });
+  const payload = new Uint8Array(512 * 1024);
+  for (let i = 0; i < N - 1; i++) {
+    pub.publish("x", payload);
+  }
+  pub.publish("x");
+  await pub.close();
+
+  try {
+    await deadline(all, 10_000);
+  } finally {
+    await sub.close();
+    await ns.stop();
+  }
+  assertEquals(received, N);
+});
+
+Deno.test("reconnect - stale connection to a server that stopped reading", async () => {
+  // completes the handshake, then never reads or answers pings
+  const listener = Deno.listen({ port: 0, transport: "tcp" });
+  const { port } = listener.addr as Deno.NetAddr;
+  const connections: Deno.Conn[] = [];
+  const TE = new TextEncoder();
+  (async () => {
+    for await (const conn of listener) {
+      connections.push(conn);
+      (async () => {
+        await conn.write(TE.encode(
+          `INFO {"server_id":"stall","version":"2.12.0","proto":1,"max_payload":1048576}\r\n`,
+        ));
+        const buf = new Uint8Array(1024);
+        let lines = "";
+        while (!lines.includes("PING\r\n")) {
+          const n = await conn.read(buf);
+          if (n === null) {
+            return;
+          }
+          lines += new TextDecoder().decode(buf.subarray(0, n));
+        }
+        await conn.write(TE.encode("PONG\r\n"));
+      })().catch(() => {});
+    }
+  })().catch(() => {});
+
+  const nc = await connect({
+    port,
+    pingInterval: 250,
+    maxPingOut: 2,
+    reconnectTimeWait: 100,
+  });
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  // fill the socket so a flush on close never completes
+  const payload = new Uint8Array(1024 * 1024);
+  for (let i = 0; i < 64; i++) {
+    nc.publish("x", payload);
+  }
+
+  try {
+    await deadline(reconnected, 5000);
+  } finally {
+    await nc.close();
+    listener.close();
+    connections.forEach((c) => {
+      try {
+        c.close();
+      } catch (_) {
+        // already closed
+      }
+    });
+  }
+});
+
 Deno.test("reconnect - protocol errors don't close client", async () => {
   const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,

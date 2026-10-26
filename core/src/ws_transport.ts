@@ -60,6 +60,7 @@ export class WsTransport implements Transport {
   version: string;
   lang: string;
   closeError?: Error;
+  stale?: boolean;
   connected: boolean;
   private done: boolean;
   // @ts-ignore: expecting global WebSocket
@@ -193,18 +194,29 @@ export class WsTransport implements Transport {
     this._closed(undefined, true);
   }
 
-  private async _closed(err?: Error, _internal = true): Promise<void> {
+  private async _closed(err?: Error, internal = true): Promise<void> {
     if (this.done) {
       try {
         this.socket.close();
       } catch (_) {
         // nothing
       }
+      // an earlier close may still be waiting on a close event that a
+      // stale connection never delivers
+      if (this.stale) {
+        this._cleanup();
+      }
       return;
     }
     this.closeError = err;
-    if (!err) {
-      while (!this.socketClosed && this.socket.bufferedAmount > 0) {
+    // a client close() flushes pending data, unless the connection failed.
+    // a disconnect (stale, forced reconnect, errors) doesn't - callers that
+    // care can flush first. a stale connection may never drain, so don't
+    // wait on it
+    if (!err && !internal && !this.stale) {
+      while (
+        !this.stale && !this.socketClosed && this.socket.bufferedAmount > 0
+      ) {
         await delay(100);
       }
     }
@@ -213,6 +225,11 @@ export class WsTransport implements Transport {
       this.socket.close();
     } catch (_) {
       // ignore this
+    }
+    // the close handshake can't complete on a stale connection, so the
+    // close event may never come - don't wait for it
+    if (this.stale) {
+      this._cleanup();
     }
 
     return this.closedNotification as Promise<void>;

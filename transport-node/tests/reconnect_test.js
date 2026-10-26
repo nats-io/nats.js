@@ -25,6 +25,7 @@ const {
   delay,
 } = require("@nats-io/nats-core/internal");
 const { Lock } = require("@nats-io/nst");
+const net = require("node:net");
 
 describe("websocket reconnect", { timeout: 20_000, forceExit: true }, () => {
   it("reconnect websocket - disconnect reconnects", async () => {
@@ -288,6 +289,101 @@ describe(
 
       await nc.close();
       await srv.stop();
+    });
+
+    it("reconnect - close flushes pending data", async () => {
+      const srv = await NatsServer.start();
+      const sub = await connect({ port: srv.port });
+      // large messages are written as they are published, the small
+      // last one is still in the client's outbound buffer when close() runs
+      const N = 129;
+      let received = 0;
+      const all = deferred();
+      sub.subscribe("x", {
+        callback: () => {
+          if (++received === N) {
+            all.resolve();
+          }
+        },
+      });
+      await sub.flush();
+
+      const pub = await connect({ port: srv.port });
+      const payload = new Uint8Array(512 * 1024);
+      for (let i = 0; i < N - 1; i++) {
+        pub.publish("x", payload);
+      }
+      pub.publish("x");
+      await pub.close();
+
+      try {
+        await Promise.race([
+          all,
+          delay(10_000).then(() => {
+            throw new Error(`received ${received} of ${N}`);
+          }),
+        ]);
+      } finally {
+        await sub.close();
+        await srv.stop();
+      }
+    });
+
+    it("reconnect - stale connection to a server that stopped reading", async () => {
+      // completes the handshake, then never reads or answers pings
+      const sockets = [];
+      const server = net.createServer((s) => {
+        sockets.push(s);
+        s.on("error", () => {});
+        s.write(
+          `INFO {"server_id":"stall","version":"2.12.0","proto":1,"max_payload":1048576}\r\n`,
+        );
+        let buf = "";
+        const onData = (d) => {
+          buf += d.toString();
+          if (buf.includes("PING\r\n")) {
+            s.write("PONG\r\n");
+            s.off("data", onData);
+            s.pause();
+          }
+        };
+        s.on("data", onData);
+      });
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+      const nc = await connect({
+        port: server.address().port,
+        pingInterval: 250,
+        maxPingOut: 2,
+        reconnectTimeWait: 100,
+      });
+      const reconnected = deferred();
+      (async () => {
+        for await (const e of nc.status()) {
+          if (e.type === "reconnect") {
+            reconnected.resolve();
+          }
+        }
+      })().then();
+
+      // fill the socket so a flush on close never completes
+      const payload = new Uint8Array(1024 * 1024);
+      for (let i = 0; i < 64; i++) {
+        nc.publish("x", payload);
+      }
+
+      try {
+        await Promise.race([
+          reconnected,
+          delay(5000).then(() => {
+            throw new Error("stale connection never reconnected");
+          }),
+        ]);
+      } finally {
+        await nc.close();
+        sockets.forEach((s) => s.destroy());
+        server.close();
+      }
     });
   },
 );

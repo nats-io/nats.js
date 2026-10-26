@@ -64,6 +64,8 @@ export const INFO = /^INFO\s+([^\r\n]+)\r\n/i;
 
 const PONG_CMD = encode("PONG\r\n");
 const PING_CMD = encode("PING\r\n");
+// how long close() waits for pending data to flush
+const DEFAULT_CLOSE_TIMEOUT = 2000;
 
 const ERR_RECONNECT_HANDLER_FAILED =
   "client option reconnectToServer handler failed";
@@ -415,6 +417,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   outBytes: number;
   inBytes: number;
   pendingLimit: number;
+  closeTimeout: number;
   lastError?: Error;
   abortReconnect: boolean;
   waitOnFirstConnect?: FirstConnectFn;
@@ -459,6 +462,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.whyClosed = "";
     //@ts-ignore: options.pendingLimit is hidden
     this.pendingLimit = options.pendingLimit || this.pendingLimit;
+    //@ts-ignore: options.closeTimeout is hidden
+    this.closeTimeout = options.closeTimeout || DEFAULT_CLOSE_TIMEOUT;
     this.features = new Features({ major: 0, minor: 0, micro: 0 });
     this.connectPromise = null;
     this.dialDelay = null;
@@ -550,6 +555,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   public disconnect(): void {
     this.dispatchStatus({ type: "staleConnection" });
+    this.transport.stale = true;
     this.transport.disconnect();
   }
 
@@ -1178,13 +1184,40 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       if (proms.length) {
         await Promise.all(proms);
       }
+      // hand anything still buffered to the transport, which flushes it
+      // before closing
+      this.flushPending();
+      // set before closing the transport, so its closed handler
+      // doesn't treat this as a disconnect and reconnect
       this._closed = true;
-      await this.transport.close(err);
+      await this.closeTransport(err);
     } finally {
+      // in case something above threw before the transport was closed
       this._closed = true;
       this.raceTimer?.cancel();
       this.dialDelay?.cancel();
       this.closed.resolve(err);
+    }
+  }
+
+  // a transport may wait for pending data to drain before closing, which
+  // never happens if the server stopped reading. give it a bounded time,
+  // then mark it stale so it closes without waiting
+  async closeTransport(err?: Error): Promise<void> {
+    const t = this.transport;
+    const wait = delay(this.closeTimeout);
+    let closed: boolean;
+    try {
+      closed = await Promise.race([
+        t.close(err).then(() => true),
+        wait.then(() => false),
+      ]);
+    } finally {
+      wait.cancel();
+    }
+    if (!closed) {
+      t.stale = true;
+      await t.close(err);
     }
   }
 

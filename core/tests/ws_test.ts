@@ -23,6 +23,7 @@ import {
 
 import {
   createInbox,
+  deadline,
   deferred,
   delay,
   errors,
@@ -30,7 +31,7 @@ import {
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
-import type { Transport } from "../src/internal_mod.ts";
+import type { ConnectionOptions, Transport } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
 import { WsTransport } from "../src/ws_transport.ts";
 import { assertBetween, cleanup, Lock, NatsServer, wsServerConf } from "nst";
@@ -380,4 +381,199 @@ Deno.test("ws - late close of a stale transport is ignored", async () => {
 
   await nc.close();
   await ns.stop();
+});
+
+// a websocket server that completes the nats handshake, then never reads
+// or answers pings
+function stalledWsServer(): { port: number; stop: () => void } {
+  const listener = Deno.listen({ port: 0, transport: "tcp" });
+  const { port } = listener.addr as Deno.NetAddr;
+  const connections: Deno.Conn[] = [];
+  const TE = new TextEncoder();
+  const TD = new TextDecoder();
+  const frame = (s: string): Uint8Array => {
+    const payload = TE.encode(s);
+    // unmasked binary frame, payloads here are < 126 bytes
+    return new Uint8Array([0x82, payload.length, ...payload]);
+  };
+  const unmask = (data: Uint8Array): string => {
+    // decodes the masked client frames in data
+    let out = "";
+    let i = 0;
+    while (i + 2 <= data.length) {
+      let len = data[i + 1] & 0x7f;
+      let off = i + 2;
+      if (len === 126) {
+        len = (data[off] << 8) | data[off + 1];
+        off += 2;
+      } else if (len === 127) {
+        return out;
+      }
+      const mask = data.subarray(off, off + 4);
+      off += 4;
+      const p = data.subarray(off, off + len);
+      out += TD.decode(p.map((b, j) => b ^ mask[j % 4]));
+      i = off + len;
+    }
+    return out;
+  };
+  (async () => {
+    for await (const conn of listener) {
+      connections.push(conn);
+      (async () => {
+        const buf = new Uint8Array(4096);
+        let req = "";
+        while (!req.includes("\r\n\r\n")) {
+          const n = await conn.read(buf);
+          if (n === null) return;
+          req += TD.decode(buf.subarray(0, n));
+        }
+        const key = /Sec-WebSocket-Key: (.+)\r\n/i.exec(req)![1].trim();
+        const digest = await crypto.subtle.digest(
+          "SHA-1",
+          TE.encode(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"),
+        );
+        const accept = btoa(String.fromCharCode(...new Uint8Array(digest)));
+        await conn.write(TE.encode(
+          "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+            `Connection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+        ));
+        await conn.write(frame(
+          `INFO {"server_id":"stall","version":"2.12.0","proto":1,"max_payload":1048576}\r\n`,
+        ));
+        let lines = "";
+        while (!lines.includes("PING\r\n")) {
+          const n = await conn.read(buf);
+          if (n === null) return;
+          lines += unmask(buf.subarray(0, n));
+        }
+        await conn.write(frame("PONG\r\n"));
+      })().catch(() => {});
+    }
+  })().catch(() => {});
+  return {
+    port,
+    stop: () => {
+      listener.close();
+      connections.forEach((c) => {
+        try {
+          c.close();
+        } catch (_) {
+          // already closed
+        }
+      });
+    },
+  };
+}
+
+Deno.test("ws - stale connection to a server that stopped reading", async () => {
+  const srv = stalledWsServer();
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${srv.port}`,
+    pingInterval: 250,
+    maxPingOut: 2,
+    reconnectTimeWait: 100,
+  });
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  // fill the socket so a flush on close never completes
+  const payload = new Uint8Array(1024 * 1024);
+  for (let i = 0; i < 64; i++) {
+    nc.publish("x", payload);
+  }
+
+  try {
+    await deadline(reconnected, 5000);
+  } finally {
+    // the reconnected server doesn't read either, so the websocket close
+    // handshake can't complete until the server goes away
+    srv.stop();
+    await nc.close();
+  }
+});
+
+Deno.test("ws - close on a server that stopped reading", async () => {
+  const srv = stalledWsServer();
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${srv.port}`,
+    closeTimeout: 500,
+  } as ConnectionOptions);
+  // fill the socket so the close can't drain
+  const payload = new Uint8Array(1024 * 1024);
+  for (let i = 0; i < 64; i++) {
+    nc.publish("x", payload);
+  }
+  try {
+    await deadline(nc.close(), 1500);
+  } finally {
+    srv.stop();
+  }
+});
+
+Deno.test("ws - close flushes pending data", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const sub = await wsconnect({ servers: `ws://127.0.0.1:${ns.websocket}` });
+  // large messages are written as they are published, the small
+  // last one is still in the client's outbound buffer when close() runs
+  const N = 129;
+  let received = 0;
+  const all = deferred<void>();
+  sub.subscribe("x", {
+    callback: () => {
+      if (++received === N) {
+        all.resolve();
+      }
+    },
+  });
+  await sub.flush();
+
+  const pub = await wsconnect({ servers: `ws://127.0.0.1:${ns.websocket}` });
+  const payload = new Uint8Array(512 * 1024);
+  for (let i = 0; i < N - 1; i++) {
+    pub.publish("x", payload);
+  }
+  pub.publish("x");
+  await pub.close();
+
+  try {
+    await deadline(all, 10_000);
+  } finally {
+    await sub.close();
+    await ns.stop();
+  }
+});
+
+Deno.test("ws - forced reconnect on a server that stopped reading", async () => {
+  const srv = stalledWsServer();
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${srv.port}`,
+    pingInterval: 250,
+    maxPingOut: 2,
+    reconnectTimeWait: 100,
+  });
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  // the close handshake can't complete, the stale connection detected
+  // by the heartbeats has to release it
+  await nc.reconnect();
+  try {
+    await deadline(reconnected, 5000);
+  } finally {
+    srv.stop();
+    await nc.close();
+  }
 });
