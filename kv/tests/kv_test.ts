@@ -2916,15 +2916,15 @@ async function bigKv(
 Deno.test("kv - history fails if the connection closes mid-read", async () => {
   const N = 1500;
   const { ns, nc, kv } = await bigKv(N, 32 * 1024);
+  // kill the server as soon as the read starts - waiting for entries to be
+  // consumed first gives the client time to buffer the whole history
+  const iter = await kv.history();
+  ns.process.kill("SIGKILL");
   let n = 0;
   const err = await iterateExpectingError(
     (async function* () {
-      for await (const e of await kv.history()) {
+      for await (const e of iter) {
         n++;
-        if (n === 5) {
-          ns.process.kill("SIGKILL");
-        }
-        await delay(0);
         yield e;
       }
     })(),
