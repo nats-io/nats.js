@@ -16,13 +16,13 @@ import type { ConnectionOptions } from "./nats-base-client";
 import {
   checkOptions,
   DataBuffer,
+  debugFrame,
   Deferred,
   deferred,
   errors,
   extend,
   extractProtocolMessage,
   INFO,
-  render,
   ServerInfo,
   Transport,
 } from "./nats-base-client";
@@ -389,9 +389,7 @@ export class NodeTransport implements Transport {
       this.yields = [];
 
       for (let i = 0; i < yields.length; i++) {
-        if (this.options.debug) {
-          console.info(`> ${render(yields[i])}`);
-        }
+        debugFrame(this.options, ">", yields[i]);
         yield yields[i];
       }
       // yielding could have paused and microtask
@@ -432,24 +430,18 @@ export class NodeTransport implements Transport {
     if (this.isClosed || this.socket === undefined) {
       return Promise.resolve();
     }
-    if (this.options.debug) {
-      console.info(`< ${render(frame)}`);
-    }
+    debugFrame(this.options, "<", frame);
     const d = deferred<void>();
     try {
       this.socket.write(frame, (err: Error | undefined) => {
         if (err) {
-          if (this.options.debug) {
-            console.error(`!!! ${render(frame)}: ${err}`);
-          }
+          debugFrame(this.options, "<", frame, err);
           return d.reject(err);
         }
         return d.resolve();
       });
     } catch (err) {
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
       d.reject(err);
     }
     return d;
@@ -486,7 +478,7 @@ export class NodeTransport implements Transport {
       try {
         await this._send(new TextEncoder().encode(""));
       } catch (err) {
-        if (this.options.debug) {
+        if (this.options.debug === true) {
           console.log("transport close terminated with an error", err);
         }
       }
