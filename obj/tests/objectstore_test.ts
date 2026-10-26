@@ -1360,6 +1360,12 @@ Deno.test("objectstore - get detects corrupt digest", async () => {
     "digests do not match",
   );
 
+  // the error promise resolves to the error
+  const r = await os.get("corrupt");
+  assertExists(r);
+  await fromReadableStream(r.data).catch(() => {});
+  assertIsError(await r.error, Error, "digests do not match");
+
   await cleanup(ns, nc);
 });
 
@@ -1729,4 +1735,113 @@ Deno.test("os - get doesn't leak status listeners", async () => {
   assertEquals(statusListeners(r), rbase);
 
   await cleanup(ns, w, r);
+});
+
+async function bigOs(): Promise<
+  { ns: NatsServer; nc: NatsConnection; os: ObjectStoreImpl }
+> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+  }));
+  const nc = await ns.connect({ reconnect: false });
+  const os = await new Objm(nc).create("OS") as ObjectStoreImpl;
+  return { ns, nc, os };
+}
+
+Deno.test("os - list fails if the connection closes mid-read", async () => {
+  const N = 1500;
+  const { ns, nc, os } = await bigOs();
+  // write the metadata entries directly - padded so the client can't
+  // buffer them all before the server goes away
+  const js = jetstream(nc);
+  const pad = "x".repeat(32 * 1024);
+  for (let i = 0; i < N; i += 100) {
+    await Promise.all(
+      Array.from({ length: Math.min(100, N - i) }, (_, j) => {
+        const name = `o${i + j}`;
+        return js.publish(
+          os._metaSubject(name),
+          JSON.stringify({ name, bucket: "OS", pad }),
+        );
+      }),
+    );
+  }
+  // list() is a history only watch
+  const iter = await os.watch({
+    ignoreDeletes: true,
+    includeHistory: true,
+    //@ts-ignore: hidden
+    historyOnly: true,
+  });
+  ns.process.kill("SIGKILL");
+  let n = 0;
+  const err = await (async () => {
+    try {
+      for await (const _ of iter) {
+        n++;
+      }
+    } catch (err) {
+      return err;
+    }
+  })();
+  assert(n < N, `expected a partial read: ${n}`);
+  assertIsError(err, Error, "list incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("os - get fails if the connection closes mid-read", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(64 * 1024 * 1024);
+  await os.put({ name: "big" }, readableStreamFrom(data));
+  const r = await os.get("big");
+  assertExists(r);
+  ns.process.kill("SIGKILL");
+  let n = 0;
+  const err = await (async () => {
+    try {
+      for await (const c of r.data) {
+        n += c.length;
+      }
+    } catch (err) {
+      return err;
+    }
+  })();
+  assert(n < data.length, `expected a partial read: ${n}`);
+  assertIsError(err, Error);
+  assertIsError(await r.error, Error, "object read incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("os - list and get complete", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(4 * 1024 * 1024);
+  for (let i = 0; i < 5; i++) {
+    await os.put({ name: `o${i}` }, readableStreamFrom(data));
+  }
+  const list = await os.list();
+  assertEquals(list.length, 5);
+  const r = await os.get("o0");
+  assertExists(r);
+  const got = await fromReadableStream(r.data);
+  assertEquals(got.length, data.length);
+  assertEquals(await r.error, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("os - get cancelled by the reader", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(16 * 1024 * 1024);
+  await os.put({ name: "big" }, readableStreamFrom(data));
+  const r = await os.get("big");
+  assertExists(r);
+  const reader = r.data.getReader();
+  await reader.read();
+  await reader.cancel();
+  assertIsError(await r.error, Error, "object read cancelled");
+  await cleanup(ns, nc);
 });

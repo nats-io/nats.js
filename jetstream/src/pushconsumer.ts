@@ -523,3 +523,51 @@ export class PushConsumerImpl implements PushConsumer {
     return true;
   }
 }
+
+// tracks the last message delivered by an ordered push consumer, so that an
+// idle heartbeat can confirm that everything the server sent was received.
+// the server only sends idle heartbeats when it has nothing to deliver, and
+// reports the last delivery sequence it sent.
+export class DeliveryTracker {
+  // consumer that is currently delivering - changes when the ordered
+  // consumer is recreated (delivery sequences restart)
+  current: string;
+  // consumer and delivery sequence of the last received message
+  consumer: string;
+  seq: number;
+  done: boolean;
+
+  constructor(name: string) {
+    this.current = name;
+    this.consumer = name;
+    this.seq = 0;
+    this.done = false;
+  }
+
+  received(m: JsMsg) {
+    this.consumer = m.info.consumer;
+    this.seq = m.info.deliverySequence;
+  }
+
+  // returns true if the notification confirms all messages were received
+  isComplete(s: ConsumerNotification): boolean {
+    if (s.type === "ordered_consumer_recreated") {
+      this.current = s.name;
+      return false;
+    }
+    if (s.type === "heartbeat" && !s.stalled) {
+      const seq = this.consumer === this.current ? this.seq : 0;
+      return s.lastConsumerSequence === seq;
+    }
+    return false;
+  }
+
+  // the consumer can close without an error (ie the connection closed) -
+  // if that happens before all messages were received, that is an error
+  closeError(err: Error | void, msg: string): Error | undefined {
+    if (err) {
+      return err;
+    }
+    return this.done ? undefined : new Error(msg);
+  }
+}
