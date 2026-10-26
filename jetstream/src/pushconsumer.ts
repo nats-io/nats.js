@@ -67,6 +67,9 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   statusIterator!: QueuedIteratorImpl<Status>;
   cancelables: Delay[];
   lastFlowControlSubject: string | null;
+  // set as soon as stop() is called - done is only set once the iterator
+  // processes the stop
+  stopping: boolean;
 
   constructor(
     c: PushConsumerImpl,
@@ -78,6 +81,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.monitor = null;
     this.listeners = [];
     this.cancelables = [];
+    this.stopping = false;
     this.lastFlowControlSubject = null;
     this.abortOnMissingResource =
       userOptions.abort_on_missing_resource === true;
@@ -128,6 +132,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.consumer._info = ci;
       this.notify({ type: "ordered_consumer_recreated", name: ci.name });
     }).catch((err) => {
+      // stopped while the consumer was being created - don't retry
+      if (this.stopping) {
+        return;
+      }
       this.createFails++;
       if (err.message === "stream not found") {
         this.notify({
@@ -143,19 +151,21 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       // we have attempted to create 30 times, never succeeded
       if (this.createFails >= 30 && this.received === 0) {
         this.stop(err);
+        return;
       }
       const bo = backoff();
 
       const c = delay(bo.backoff(this.createFails));
       c.then(() => {
-        if (!this.done) {
+        // cancelling the delay resolves it
+        if (!this.stopping) {
           this.reset();
         }
       }).catch(() => {})
         .finally(() => {
           const idx = this.cancelables.indexOf(c);
           if (idx !== -1) {
-            this.cancelables = this.cancelables.splice(idx, idx);
+            this.cancelables.splice(idx, 1);
           }
         });
       this.cancelables.push(c);
@@ -189,9 +199,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   override stop(err?: Error) {
-    if (this.done) {
+    if (this.done || this.stopping) {
       return;
     }
+    this.stopping = true;
     this.statusIterator?.stop();
     this.monitor?.cancel();
     this.monitor = null;

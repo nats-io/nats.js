@@ -19,7 +19,7 @@ import type {
   Server,
   ServerInfo,
 } from "./core.ts";
-import type { Deferred } from "./util.ts";
+import type { Deferred, Delay } from "./util.ts";
 import { debugFrame, deferred, delay } from "./util.ts";
 import type { Transport, TransportFactory } from "./transport.ts";
 import { extractProtocolMessage, setTransportFactory } from "./transport.ts";
@@ -67,6 +67,8 @@ export class WsTransport implements Transport {
   private socket: WebSocket;
   private options!: WsConnectionOptions;
   socketClosed: boolean;
+  // the wait between checks while close() drains the socket
+  drainWait?: Delay;
   encrypted: boolean;
   peeked: boolean;
 
@@ -177,6 +179,8 @@ export class WsTransport implements Transport {
   }
 
   _cleanup() {
+    // a close that is still draining would otherwise leave its timer behind
+    this.drainWait?.cancel();
     if (this.socketClosed === false) {
       // node seems to not emit closed if there's an error
       // all other runtimes do.
@@ -216,8 +220,10 @@ export class WsTransport implements Transport {
       while (
         !this.stale && !this.socketClosed && this.socket.bufferedAmount > 0
       ) {
-        await delay(100);
+        this.drainWait = delay(100);
+        await this.drainWait;
       }
+      this.drainWait = undefined;
     }
     this.done = true;
     try {
