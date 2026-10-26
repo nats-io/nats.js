@@ -29,7 +29,7 @@ import {
   wsconnect,
 } from "@nats-io/nats-core/internal";
 import { Certs } from "./certs.ts";
-import { getConnect } from "./connect.ts";
+import { type ConnectFn, getConnect } from "./connect.ts";
 
 export const ServerSignals = {
   QUIT: "SIGQUIT",
@@ -518,7 +518,7 @@ export class NatsServer implements PortInfo {
   // placement, peer offline". retry a replicated stream until it can be
   // placed. skipped if no connect was registered
   static async placementReady(servers: NatsServer[]): Promise<void> {
-    let connect;
+    let connect: ConnectFn;
     try {
       connect = getConnect();
     } catch {
