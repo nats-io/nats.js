@@ -158,6 +158,15 @@ function parsePorts(ports: Ports): PortInfo {
   return p;
 }
 
+// distinct ports below the ephemeral range of linux and macos
+function clusterPorts(count: number): number[] {
+  const ports = new Set<number>();
+  while (ports.size < count) {
+    ports.add(10_000 + Math.floor(Math.random() * 20_000));
+  }
+  return [...ports];
+}
+
 function rgb24(s: string, c: { r: number; g: number; b: number }): string {
   return `\x1b[38;2;${c.r};${c.g};${c.b}m${s}\x1b[0m`;
 }
@@ -373,15 +382,11 @@ export class NatsServer implements PortInfo {
     if (count < 4) {
       return Promise.reject(new Error("data cluster must be 4 or greater"));
     }
-    let servers = await NatsServer.jetstreamCluster(count, {}, debug);
-    await NatsServer.stopAll(servers);
-    await Promise.all(servers.map((s) => s.rmDataDir()));
-    servers[0].config.jetstream = "disabled";
-    const proms = servers.map((s) => {
-      return s.restart();
-    });
-    servers = await Promise.all(proms);
-    await NatsServer.dataClusterFormed(proms.slice(1));
+    const servers = await NatsServer.startJetStreamCluster(count, {}, debug, 1);
+    await NatsServer.dataClusterFormed(
+      servers.slice(1).map((s) => Promise.resolve(s)),
+      debug,
+    );
     return servers;
   }
 
@@ -390,64 +395,80 @@ export class NatsServer implements PortInfo {
     serverConf?: Record<string, unknown>,
     debug = false,
   ): Promise<NatsServer[]> {
-    serverConf = serverConf || {};
-    const js = serverConf.jetstream as {
-      max_file_store?: number;
-      max_mem_store?: number;
+    const servers = await NatsServer.startJetStreamCluster(
+      count,
+      serverConf,
+      debug,
+    );
+    return NatsServer.dataClusterFormed(
+      servers.map((s) => Promise.resolve(s)),
+      debug,
+    );
+  }
+
+  // jetstream sizes its meta group from the configured routes, so every server
+  // starts with routes to all the others, which means the cluster ports have
+  // to be known up front. they are picked below the OS ephemeral range (linux
+  // 32768+, macos 49152+), so servers listening on -1 can't take them. if one
+  // is taken anyway (another cluster picked it), start over with new ports.
+  // the first `noJetStream` servers run without jetstream
+  static async startJetStreamCluster(
+    count: number,
+    serverConf: Record<string, unknown> = {},
+    debug = false,
+    noJetStream = 0,
+  ): Promise<NatsServer[]> {
+    const { jetstream: js, ...base } = serverConf as {
+      jetstream?: { max_file_store?: number; max_mem_store?: number };
     };
-    if (js) {
-      delete serverConf.jetstream;
-    }
-    const servers = await NatsServer.cluster(count, serverConf, debug);
-
-    const configs = servers.map((s) => {
-      const { port, cluster, monitoring, websocket, config } = s;
-      return { port, cluster, monitoring, websocket, config };
-    });
-
-    const proms = servers.map((s) => {
-      return s.stop();
-    });
-    await Promise.all(proms);
-
-    servers.forEach((s) => {
-      s.debug = debug;
-    });
-
-    const routes: string[] = [];
-    configs.forEach((conf) => {
-      const { cluster, config } = conf;
-
-      const { jetstream } = jsopts() as { jetstream: any };
-      if (js) {
-        if (js.max_file_store !== undefined) {
-          jetstream.max_file_store = js.max_file_store;
+    const name = `C_${nuid.next()}`;
+    let err: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const ports = clusterPorts(count);
+      const routes = ports.map((p) => `nats://127.0.0.1:${p}`);
+      const results = await Promise.allSettled(ports.map((port, idx) => {
+        const conf = structuredClone(base) as any;
+        // only the first server keeps any fixed ports it was given
+        if (idx > 0) {
+          conf.port = -1;
+          conf.http = "127.0.0.1:-1";
+          if (conf.websocket) {
+            conf.websocket.port = -1;
+          }
         }
-        if (js.max_mem_store !== undefined) {
-          jetstream.max_mem_store = js.max_mem_store;
+        conf.server_name = nuid.next();
+        conf.cluster = Object.assign({}, conf.cluster, {
+          name,
+          listen: `127.0.0.1:${port}`,
+          routes: routes.filter((_, i) => i !== idx),
+        });
+        if (idx < noJetStream) {
+          conf.jetstream = "disabled";
+        } else {
+          const { jetstream } = jsopts() as { jetstream: any };
+          if (js?.max_file_store !== undefined) {
+            jetstream.max_file_store = js.max_file_store;
+          }
+          if (js?.max_mem_store !== undefined) {
+            jetstream.max_mem_store = js.max_mem_store;
+          }
+          conf.jetstream = jetstream;
         }
+        return NatsServer.start(conf, debug);
+      }));
+      const servers = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : []
+      );
+      if (servers.length === count) {
+        return servers;
       }
-      Object.assign(config, { jetstream, server_name: nuid.next() });
-
-      config.cluster.listen = config.cluster.listen.replace("-1", `${cluster}`);
-      routes.push(`nats://${config.cluster.listen}`);
-    });
-
-    configs.forEach((c) => {
-      c.config.cluster.routes = routes.filter((v) => {
-        return v.indexOf(c.config.cluster.listen) === -1;
-      });
-    });
-    servers.forEach((s, idx) => {
-      s.config = configs[idx].config;
-    });
-
-    const buf: Promise<NatsServer>[] = [];
-    servers.map((s) => {
-      buf.push(s.restart());
-    });
-
-    return NatsServer.dataClusterFormed(buf, debug);
+      await NatsServer.stopAll(servers, true);
+      err = results.find((r) => r.status === "rejected")?.reason;
+      if (debug) {
+        console.log(`cluster start failed, retrying: ${err}`);
+      }
+    }
+    throw err;
   }
 
   static async dataClusterFormed(
