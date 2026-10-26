@@ -276,7 +276,9 @@ export class DenoTransport implements Transport {
         this.frames.push(Empty);
         this.maybeWriteFrame();
         // each write starts the next frame's write when it completes, so
-        // wait until no new write follows (a failed write leaves it set)
+        // wait until no new write follows (a failed write leaves it set).
+        // this relies on maybeWriteFrame() clearing pendingWrite only on
+        // success and replacing it with the next write in the same callback
         let p = this.pendingWrite;
         while (p) {
           await p;

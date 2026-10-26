@@ -214,7 +214,9 @@ export class WsTransport implements Transport {
     // care can flush first. a stale connection may never drain, so don't
     // wait on it
     if (!err && !internal && !this.stale) {
-      while (!this.socketClosed && this.socket.bufferedAmount > 0) {
+      while (
+        !this.stale && !this.socketClosed && this.socket.bufferedAmount > 0
+      ) {
         await delay(100);
       }
     }

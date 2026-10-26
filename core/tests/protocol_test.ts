@@ -347,7 +347,7 @@ Deno.test("protocol - close gives up on a transport that doesn't drain", async (
     assert(t.stale);
     assertEquals(closes, 2);
     assert(elapsed >= 200 && elapsed < 1000, `elapsed ${elapsed}`);
-  }, { timeout: 200 });
+  }, { closeTimeout: 200 } as Partial<ConnectionOptions>);
 });
 
 Deno.test("protocol - close doesn't mark a closing transport stale", async () => {

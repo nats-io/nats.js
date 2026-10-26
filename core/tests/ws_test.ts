@@ -31,7 +31,7 @@ import {
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
-import type { Transport } from "../src/internal_mod.ts";
+import type { ConnectionOptions, Transport } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
 import { WsTransport } from "../src/ws_transport.ts";
 import { assertBetween, cleanup, Lock, NatsServer, wsServerConf } from "nst";
@@ -503,15 +503,15 @@ Deno.test("ws - close on a server that stopped reading", async () => {
   const srv = stalledWsServer();
   const nc = await wsconnect({
     servers: `ws://127.0.0.1:${srv.port}`,
-    timeout: 500,
-  });
+    closeTimeout: 500,
+  } as ConnectionOptions);
   // fill the socket so the close can't drain
   const payload = new Uint8Array(1024 * 1024);
   for (let i = 0; i < 64; i++) {
     nc.publish("x", payload);
   }
   try {
-    await deadline(nc.close(), 3000);
+    await deadline(nc.close(), 1500);
   } finally {
     srv.stop();
   }

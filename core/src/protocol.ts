@@ -63,6 +63,8 @@ export const INFO = /^INFO\s+([^\r\n]+)\r\n/i;
 
 const PONG_CMD = encode("PONG\r\n");
 const PING_CMD = encode("PING\r\n");
+// how long close() waits for pending data to flush
+const DEFAULT_CLOSE_TIMEOUT = 2000;
 
 const ERR_RECONNECT_HANDLER_FAILED =
   "client option reconnectToServer handler failed";
@@ -414,6 +416,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   outBytes: number;
   inBytes: number;
   pendingLimit: number;
+  closeTimeout: number;
   lastError?: Error;
   abortReconnect: boolean;
   whyClosed: string;
@@ -448,6 +451,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.whyClosed = "";
     //@ts-ignore: options.pendingLimit is hidden
     this.pendingLimit = options.pendingLimit || this.pendingLimit;
+    //@ts-ignore: options.closeTimeout is hidden
+    this.closeTimeout = options.closeTimeout || DEFAULT_CLOSE_TIMEOUT;
     this.features = new Features({ major: 0, minor: 0, micro: 0 });
     this.connectPromise = null;
     this.dialDelay = null;
@@ -1172,7 +1177,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   // then mark it stale so it closes without waiting
   async closeTransport(err?: Error): Promise<void> {
     const t = this.transport;
-    const wait = delay(this.options.timeout || 20000);
+    const wait = delay(this.closeTimeout);
     let closed: boolean;
     try {
       closed = await Promise.race([
