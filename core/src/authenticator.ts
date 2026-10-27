@@ -24,14 +24,37 @@ import type {
   UserPass,
 } from "./core.ts";
 
-export function multiAuthenticator(authenticators: Authenticator[]) {
-  return (nonce?: string): Auth => {
-    let auth: Partial<NoAuth & TokenAuth & UserPass & NKeyAuth & JwtAuth> = {};
-    authenticators.forEach((a) => {
-      const args = a(nonce) || {};
-      auth = Object.assign(auth, args);
-    });
-    return auth as Auth;
+// true if the authenticator returned a promise
+export function isAsyncAuth(
+  a: Auth | Promise<Auth>,
+): a is Promise<Auth> {
+  return typeof (a as Promise<Auth>)?.then === "function";
+}
+
+export function multiAuthenticator(
+  authenticators: Authenticator[],
+): Authenticator {
+  return (nonce?: string, signal?: AbortSignal): Auth | Promise<Auth> => {
+    const results: (Auth | Promise<Auth>)[] = [];
+    try {
+      authenticators.forEach((a) => results.push(a(nonce, signal)));
+    } catch (err) {
+      // don't leave an async authenticator that already started unhandled
+      results.filter(isAsyncAuth).forEach((p) => p.catch(() => {}));
+      throw err;
+    }
+    const merge = (all: Auth[]): Auth => {
+      let auth: Partial<NoAuth & TokenAuth & UserPass & NKeyAuth & JwtAuth> =
+        {};
+      all.forEach((args) => {
+        auth = Object.assign(auth, args || {});
+      });
+      return auth as Auth;
+    };
+    // only async if one of the authenticators is
+    return results.some(isAsyncAuth)
+      ? Promise.all(results).then(merge)
+      : merge(results as Auth[]);
   };
 }
 

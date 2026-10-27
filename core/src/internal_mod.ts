@@ -91,6 +91,7 @@ export { extractProtocolMessage, protoLen } from "./transport.ts";
 export type {
   Auth,
   Authenticator,
+  AuthenticatorPendingStatus,
   CallbackFn,
   CallbackOptionalErrorFn,
   ClientPingStatus,
