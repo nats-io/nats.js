@@ -17,12 +17,12 @@ import {
   checkOptions,
   checkUnsupportedOption,
   DataBuffer,
+  debugFrame,
   deferred,
   Empty,
   errors,
   extractProtocolMessage,
   INFO,
-  render,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -45,6 +45,7 @@ export class DenoTransport implements Transport {
   version: string = VERSION;
   lang: string = LANG;
   closeError?: Error;
+  stale?: boolean;
   private options!: ConnectionOptions;
   private buf: Uint8Array;
   private encrypted = false;
@@ -120,9 +121,7 @@ export class DenoTransport implements Transport {
         throw new Error("socket closed while expecting INFO");
       } else if (c) {
         const frame = this.buf.subarray(0, c);
-        if (this.options.debug) {
-          console.info(`> ${render(frame)}`);
-        }
+        debugFrame(this.options, ">", frame);
         inbound.fill(frame);
         const raw = inbound.peek();
         pm = extractProtocolMessage(raw);
@@ -190,9 +189,7 @@ export class DenoTransport implements Transport {
         }
         if (c) {
           const frame = this.buf.subarray(0, c);
-          if (this.options.debug) {
-            console.info(`> ${render(frame)}`);
-          }
+          debugFrame(this.options, ">", frame);
           yield frame;
         }
       } catch (err) {
@@ -216,13 +213,9 @@ export class DenoTransport implements Transport {
       this.pendingWrite = null;
       this.maybeWriteFrame();
     }).then(() => {
-      if (this.options.debug) {
-        console.info(`< ${render(frame)}`);
-      }
+      debugFrame(this.options, "<", frame);
     }).catch((err) => {
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
     });
   }
 
@@ -263,18 +256,31 @@ export class DenoTransport implements Transport {
     }
     this.done = true;
     this.closeError = err;
-    if (!err && internal) {
+    // a client close() flushes pending data, unless the connection failed.
+    // a disconnect (stale, forced reconnect, errors) doesn't - callers that
+    // care can flush first. a stale connection may never drain, so don't
+    // wait on it
+    if (!err && !internal && !this.stale) {
       try {
         // this is a noop but gives us a place to hang
         // a close and ensure that we sent all before closing
         // we wait for the operation to fail or succeed
         this.frames.push(Empty);
         this.maybeWriteFrame();
-        if (this.pendingWrite) {
-          await this.pendingWrite;
+        // each write starts the next frame's write when it completes, so
+        // wait until no new write follows (a failed write leaves it set).
+        // this relies on maybeWriteFrame() clearing pendingWrite only on
+        // success and replacing it with the next write in the same callback
+        let p = this.pendingWrite;
+        while (p) {
+          await p;
+          if (p === this.pendingWrite) {
+            break;
+          }
+          p = this.pendingWrite;
         }
       } catch (err) {
-        if (this.options.debug) {
+        if (this.options.debug === true) {
           console.log("transport close terminated with an error", err);
         }
       }

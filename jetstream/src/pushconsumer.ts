@@ -66,6 +66,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   createFails!: number;
   statusIterator!: QueuedIteratorImpl<Status>;
   cancelables: Delay[];
+  lastFlowControlSubject: string | null;
+  // set as soon as stop() is called - done is only set once the iterator
+  // processes the stop
+  stopping: boolean;
 
   constructor(
     c: PushConsumerImpl,
@@ -77,6 +81,8 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.monitor = null;
     this.listeners = [];
     this.cancelables = [];
+    this.stopping = false;
+    this.lastFlowControlSubject = null;
     this.abortOnMissingResource =
       userOptions.abort_on_missing_resource === true;
     this.callback = userOptions.callback || null;
@@ -126,6 +132,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.consumer._info = ci;
       this.notify({ type: "ordered_consumer_recreated", name: ci.name });
     }).catch((err) => {
+      // stopped while the consumer was being created - don't retry
+      if (this.stopping) {
+        return;
+      }
       this.createFails++;
       if (err.message === "stream not found") {
         this.notify({
@@ -141,19 +151,21 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       // we have attempted to create 30 times, never succeeded
       if (this.createFails >= 30 && this.received === 0) {
         this.stop(err);
+        return;
       }
       const bo = backoff();
 
       const c = delay(bo.backoff(this.createFails));
       c.then(() => {
-        if (!this.done) {
+        // cancelling the delay resolves it
+        if (!this.stopping) {
           this.reset();
         }
       }).catch(() => {})
         .finally(() => {
           const idx = this.cancelables.indexOf(c);
           if (idx !== -1) {
-            this.cancelables = this.cancelables.splice(idx, idx);
+            this.cancelables.splice(idx, 1);
           }
         });
       this.cancelables.push(c);
@@ -161,6 +173,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   getConsumerOpts(): ConsumerConfig {
+    // inactive_threshold is carried over from the current consumer config
     const src = Object.assign({}, this.consumer._info.config);
     this.serial++;
     const name = `${this.namePrefix}_${this.serial}`;
@@ -170,7 +183,6 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       deliver_policy: DeliverPolicy.StartSequence,
       opt_start_seq: this.cursor.stream_seq + 1,
       ack_policy: AckPolicy.None,
-      inactive_threshold: nanos(5 * 60 * 1000),
       num_replicas: 1,
       flow_control: true,
       idle_heartbeat: nanos(30 * 1000),
@@ -187,9 +199,10 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   override stop(err?: Error) {
-    if (this.done) {
+    if (this.done || this.stopping) {
       return;
     }
+    this.stopping = true;
     this.statusIterator?.stop();
     this.monitor?.cancel();
     this.monitor = null;
@@ -261,24 +274,31 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         },
         { maxOut: 2 },
       );
-
-      (async () => {
-        this.statusIterator = this.consumer.api.nc
-          .status() as QueuedIteratorImpl<Status>;
-        for await (const s of this.statusIterator) {
-          switch (s.type) {
-            case "disconnect":
-              this.monitor?.cancel();
-              break;
-            case "reconnect":
-              this.monitor?.restart();
-              break;
-            default:
-              // ignored
-          }
-        }
-      })();
     }
+
+    this.statusIterator = this.consumer.api.nc
+      .status() as QueuedIteratorImpl<Status>;
+    (async () => {
+      for await (const s of this.statusIterator) {
+        switch (s.type) {
+          case "disconnect":
+            this.monitor?.cancel();
+            break;
+          case "reconnect":
+            this.monitor?.restart();
+            break;
+          case "error":
+            // if the client cannot respond to flow control or stalled
+            // notifications the consumer will never resume - fail it
+            if (this.isFlowControlViolation(s.error)) {
+              this.stop(s.error);
+            }
+            break;
+          default:
+            // ignored
+        }
+      }
+    })();
 
     this.sub = this.consumer.api.nc.subscribe(subject, {
       queue,
@@ -303,6 +323,7 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const status = new JetStreamStatus(msg);
           if (status.isFlowControlRequest()) {
             this._push(() => {
+              this.lastFlowControlSubject = msg.reply || null;
               msg.respond();
               this.notify({ type: "flow_control" });
             });
@@ -316,16 +337,28 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             const lastStreamSequence = parseInt(
               msg.headers?.get(JsHeaders.LastStreamSeqHdr) ?? "0",
             );
+            // the server is waiting on a flow control response
+            const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
+            const stalled = typeof maybeStuck === "string" && maybeStuck !== "";
             this.notify({
               type: "heartbeat",
               lastStreamSequence,
               lastConsumerSequence,
+              stalled,
             });
 
-            // FIX for https://github.com/nats-io/nats.js/issues/374
-            const maybeStuck = msg.headers?.get(JsHeaders.ConsumerStalledHdr);
-            if (typeof maybeStuck === "string" && maybeStuck !== "") {
+            if (stalled) {
+              // FIX for https://github.com/nats-io/nats.js/issues/374
+              // respond on the stalled subject so the consumer resumes
+              this.lastFlowControlSubject = maybeStuck;
               (msg as MsgImpl).publisher.publish(maybeStuck, Empty);
+            } else if (
+              this.ordered && lastConsumerSequence !== this.cursor.deliver_seq
+            ) {
+              // FIX for https://github.com/nats-io/nats.js/issues/426
+              // the server sent messages we didn't get (ie the tail of the
+              // stream was lost) - no message will reveal the gap, so reset
+              this.reset();
             }
             return;
           }
@@ -368,6 +401,23 @@ export class PushConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.closed().then(() => {
       this.sub?.unsubscribe();
     });
+  }
+
+  // returns true if the error is a publish permissions violation
+  // for a flow control response or stalled notification for this consumer
+  isFlowControlViolation(err: Error): boolean {
+    if (!(err instanceof errors.PermissionViolationError)) {
+      return false;
+    }
+    if (err.operation !== "publish" || !err.subject) {
+      return false;
+    }
+    // the server reports the subject the client published. flow control and
+    // stalled subjects are server provided (msg.reply / the stalled header)
+    // and may be remapped, so match on exactly what was last published. a
+    // denied flow control response stalls the consumer, and the server keeps
+    // sending the same subject in the stalled header with each heartbeat
+    return err.subject === this.lastFlowControlSubject;
   }
 
   notify(n: ConsumerNotification) {
@@ -482,5 +532,53 @@ export class PushConsumerImpl implements PushConsumer {
 
   isPushConsumer(): boolean {
     return true;
+  }
+}
+
+// tracks the last message delivered by an ordered push consumer, so that an
+// idle heartbeat can confirm that everything the server sent was received.
+// the server only sends idle heartbeats when it has nothing to deliver, and
+// reports the last delivery sequence it sent.
+export class DeliveryTracker {
+  // consumer that is currently delivering - changes when the ordered
+  // consumer is recreated (delivery sequences restart)
+  current: string;
+  // consumer and delivery sequence of the last received message
+  consumer: string;
+  seq: number;
+  done: boolean;
+
+  constructor(name: string) {
+    this.current = name;
+    this.consumer = name;
+    this.seq = 0;
+    this.done = false;
+  }
+
+  received(m: JsMsg) {
+    this.consumer = m.info.consumer;
+    this.seq = m.info.deliverySequence;
+  }
+
+  // returns true if the notification confirms all messages were received
+  isComplete(s: ConsumerNotification): boolean {
+    if (s.type === "ordered_consumer_recreated") {
+      this.current = s.name;
+      return false;
+    }
+    if (s.type === "heartbeat" && !s.stalled) {
+      const seq = this.consumer === this.current ? this.seq : 0;
+      return s.lastConsumerSequence === seq;
+    }
+    return false;
+  }
+
+  // the consumer can close without an error (ie the connection closed) -
+  // if that happens before all messages were received, that is an error
+  closeError(err: Error | void, msg: string): Error | undefined {
+    if (err) {
+      return err;
+    }
+    return this.done ? undefined : new Error(msg);
   }
 }

@@ -49,6 +49,7 @@ import type {
 } from "@nats-io/jetstream/internal";
 import {
   DeliverPolicy,
+  DeliveryTracker,
   DiscardPolicy,
   isMessageNotFound,
   JetStreamApiCodes,
@@ -728,9 +729,15 @@ export class ObjectStoreImpl implements ObjectStore {
     cc.flow_control = true;
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
     const iter = await oc.consume() as PushConsumerMessagesImpl;
+    let done = false;
+    let cancelled = false;
 
     (async () => {
       for await (const jm of iter) {
+        // the reader cancelled - queued chunks can't be enqueued anymore
+        if (cancelled) {
+          break;
+        }
         if (jm.data.length > 0) {
           sha.update(jm.data);
           controller!.enqueue(jm.data);
@@ -740,24 +747,32 @@ export class ObjectStoreImpl implements ObjectStore {
           if (!checkSha256(digest, computedDigest)) {
             const hex = Array.from(computedDigest)
               .map((b) => b.toString(16).padStart(2, "0")).join("");
-            controller!.error(
-              new Error(
-                `received a corrupt object, digests do not match\n  expected: ${info.digest}\n  computed: SHA-256 ${hex}`,
-              ),
+            throw new Error(
+              `received a corrupt object, digests do not match\n  expected: ${info.digest}\n  computed: SHA-256 ${hex}`,
             );
-          } else {
-            controller!.close();
           }
+          controller!.close();
+          done = true;
           break;
         }
       }
+      if (cancelled) {
+        throw new Error("object read cancelled");
+      }
+      // the consumer can stop without an error (ie the connection closed)
+      // before all the chunks were received
+      if (!done) {
+        throw new Error("object read incomplete");
+      }
     })()
       .then(() => {
-        d.resolve();
+        d.resolve(null);
       })
       .catch((err) => {
         controller!.error(err);
-        d.reject(err);
+        // error resolves to the error, rejecting it would be unhandled
+        // for callers that only read the data
+        d.resolve(err);
       });
 
     r.data = new ReadableStream({
@@ -765,6 +780,7 @@ export class ObjectStoreImpl implements ObjectStore {
         controller = c;
       },
       cancel() {
+        cancelled = true;
         iter.stop();
       },
     });
@@ -916,8 +932,10 @@ export class ObjectStoreImpl implements ObjectStore {
     let isUpdate = cc.deliver_policy === DeliverPolicy.New || count === 0;
     qi._data = oc;
     let i = 0;
+    const tracker = new DeliveryTracker(info.name);
     const iter = await oc.consume({
       callback: (jm: JsMsg) => {
+        tracker.received(jm);
         if (!isUpdate) {
           i++;
           isUpdate = i >= count;
@@ -930,32 +948,39 @@ export class ObjectStoreImpl implements ObjectStore {
           qi.push(oi);
         }
         if (historyOnly && i === count) {
+          tracker.done = true;
           iter.stop();
         }
       },
     });
 
-    (async () => {
-      for await (const s of iter.status()) {
-        switch (s.type) {
-          case "heartbeat":
-            if (historyOnly) {
-              // we got all the keys...
-              qi.push(() => {
-                qi.stop();
-              });
-            }
+    if (historyOnly) {
+      (async () => {
+        for await (const s of iter.status()) {
+          // a heartbeat only means we got all the entries if it reports
+          // the last one we received
+          if (tracker.isComplete(s)) {
+            tracker.done = true;
+            iter.stop();
+          }
         }
-      }
-    })().then();
+      })().then();
 
-    if (historyOnly && count === 0) {
-      iter.stop();
+      if (count === 0) {
+        tracker.done = true;
+        iter.stop();
+      }
     }
 
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       qi.push(() => {
-        qi.stop();
+        qi.stop(
+          historyOnly
+            ? tracker.closeError(err, "list incomplete")
+            : err
+            ? err
+            : undefined,
+        );
       });
     });
     qi.iterClosed.then(() => {

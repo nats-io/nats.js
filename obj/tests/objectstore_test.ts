@@ -25,18 +25,25 @@ import {
   assert,
   assertEquals,
   assertExists,
+  assertIsError,
   assertRejects,
   equal,
 } from "@std/assert";
 import {
   DataBuffer,
+  deadline,
+  delay,
   Empty,
+  errors,
   headers,
   nanos,
   nuid,
   type QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
-import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import type {
+  NatsConnection,
+  NatsConnectionImpl,
+} from "@nats-io/nats-core/internal";
 import type {
   ObjectInfo,
   ObjectStoreMeta,
@@ -1353,6 +1360,12 @@ Deno.test("objectstore - get detects corrupt digest", async () => {
     "digests do not match",
   );
 
+  // the error promise resolves to the error
+  const r = await os.get("corrupt");
+  assertExists(r);
+  await fromReadableStream(r.data).catch(() => {});
+  assertIsError(await r.error, Error, "digests do not match");
+
   await cleanup(ns, nc);
 });
 
@@ -1640,5 +1653,195 @@ Deno.test("objectstore - put/get on plain bucket", async () => {
   const read = await fromReadableStream(or!.data);
   assert(equals(read, blob));
 
+  await cleanup(ns, nc);
+});
+
+// reader can use the JS API but cannot respond to flow control ($JS.FC.>)
+async function deniedFlowControlOs(): Promise<
+  { ns: NatsServer; w: NatsConnection; r: NatsConnection }
+> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+    authorization: {
+      users: [
+        { user: "writer", password: "writer" },
+        {
+          user: "reader",
+          password: "reader",
+          permissions: {
+            publish: { allow: ["$JS.API.>"] },
+            subscribe: { allow: ["_INBOX.>"] },
+          },
+        },
+      ],
+    },
+  }));
+  const w = await ns.connect({ user: "writer", pass: "writer" });
+  const os = await new Objm(w).create("B");
+  await os.putBlob({ name: "big" }, new Uint8Array(5 * 1024 * 1024));
+  const r = await ns.connect({ user: "reader", pass: "reader" });
+  return { ns, w, r };
+}
+
+Deno.test("os - getBlob fails if flow control is denied", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const os = await new Objm(r).open("B");
+  const err = await deadline(os.getBlob("big"), 10_000)
+    .then(() => null, (err) => err as Error);
+  assertIsError(err, errors.PermissionViolationError);
+  assert(err.subject.startsWith("$JS.FC.OBJ_B."));
+  await cleanup(ns, w, r);
+});
+
+Deno.test("os - get fails if flow control is denied", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const os = await new Objm(r).open("B");
+  const result = await os.get("big");
+  assertExists(result);
+  const err = await deadline(fromReadableStream(result.data), 10_000)
+    .then(() => null, (err) => err as Error);
+  assertIsError(err, errors.PermissionViolationError);
+  const rerr = await result.error.then((err) => err, (err) => err);
+  assertIsError(rerr, errors.PermissionViolationError);
+  await cleanup(ns, w, r);
+});
+
+function statusListeners(nc: NatsConnection): number {
+  return (nc as NatsConnectionImpl).protocol.listeners.length;
+}
+
+Deno.test("os - get doesn't leak status listeners", async () => {
+  const { ns, w, r } = await deniedFlowControlOs();
+  const wbase = statusListeners(w);
+  const rbase = statusListeners(r);
+
+  // successful read
+  const wos = await new Objm(w).open("B");
+  const data = await wos.getBlob("big");
+  assertEquals(data?.length, 5 * 1024 * 1024);
+  await delay(100);
+  assertEquals(statusListeners(w), wbase);
+
+  // failed read
+  const ros = await new Objm(r).open("B");
+  await assertRejects(
+    () => ros.getBlob("big"),
+    errors.PermissionViolationError,
+  );
+  await delay(100);
+  assertEquals(statusListeners(r), rbase);
+
+  await cleanup(ns, w, r);
+});
+
+async function bigOs(): Promise<
+  { ns: NatsServer; nc: NatsConnection; os: ObjectStoreImpl }
+> {
+  const ns = await NatsServer.start(jetstreamServerConf({
+    jetstream: {
+      max_file_store: 1024 * 1024 * 1024,
+      max_mem_store: 1024 * 1024 * 1024,
+    },
+  }));
+  const nc = await ns.connect({ reconnect: false });
+  const os = await new Objm(nc).create("OS") as ObjectStoreImpl;
+  return { ns, nc, os };
+}
+
+Deno.test("os - list fails if the connection closes mid-read", async () => {
+  const N = 1500;
+  const { ns, nc, os } = await bigOs();
+  // write the metadata entries directly - padded so the client can't
+  // buffer them all before the server goes away
+  const js = jetstream(nc);
+  const pad = "x".repeat(32 * 1024);
+  for (let i = 0; i < N; i += 100) {
+    await Promise.all(
+      Array.from({ length: Math.min(100, N - i) }, (_, j) => {
+        const name = `o${i + j}`;
+        return js.publish(
+          os._metaSubject(name),
+          JSON.stringify({ name, bucket: "OS", pad }),
+        );
+      }),
+    );
+  }
+  // list() is a history only watch
+  const iter = await os.watch({
+    ignoreDeletes: true,
+    includeHistory: true,
+    //@ts-ignore: hidden
+    historyOnly: true,
+  });
+  ns.process.kill("SIGKILL");
+  let n = 0;
+  const err = await (async () => {
+    try {
+      for await (const _ of iter) {
+        n++;
+      }
+    } catch (err) {
+      return err;
+    }
+  })();
+  assert(n < N, `expected a partial read: ${n}`);
+  assertIsError(err, Error, "list incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("os - get fails if the connection closes mid-read", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(64 * 1024 * 1024);
+  await os.put({ name: "big" }, readableStreamFrom(data));
+  const r = await os.get("big");
+  assertExists(r);
+  ns.process.kill("SIGKILL");
+  let n = 0;
+  const err = await (async () => {
+    try {
+      for await (const c of r.data) {
+        n += c.length;
+      }
+    } catch (err) {
+      return err;
+    }
+  })();
+  assert(n < data.length, `expected a partial read: ${n}`);
+  assertIsError(err, Error);
+  assertIsError(await r.error, Error, "object read incomplete");
+  await nc.close().catch(() => {});
+  await ns.stop().catch(() => {});
+});
+
+Deno.test("os - list and get complete", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(4 * 1024 * 1024);
+  for (let i = 0; i < 5; i++) {
+    await os.put({ name: `o${i}` }, readableStreamFrom(data));
+  }
+  const list = await os.list();
+  assertEquals(list.length, 5);
+  const r = await os.get("o0");
+  assertExists(r);
+  const got = await fromReadableStream(r.data);
+  assertEquals(got.length, data.length);
+  assertEquals(await r.error, null);
+  await cleanup(ns, nc);
+});
+
+Deno.test("os - get cancelled by the reader", async () => {
+  const { ns, nc, os } = await bigOs();
+  const data = makeData(16 * 1024 * 1024);
+  await os.put({ name: "big" }, readableStreamFrom(data));
+  const r = await os.get("big");
+  assertExists(r);
+  const reader = r.data.getReader();
+  await reader.read();
+  await reader.cancel();
+  assertIsError(await r.error, Error, "object read cancelled");
   await cleanup(ns, nc);
 });

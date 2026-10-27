@@ -38,7 +38,6 @@ export {
   Match,
   Metric,
   millis,
-  MsgHdrsImpl,
   nanos,
   nkeyAuthenticator,
   nkeyFromWebCryptoPublicKey,
@@ -58,6 +57,19 @@ export {
   wsconnect,
 } from "./internal_mod.ts";
 
+import { MsgHdrsImpl as _MsgHdrsImpl } from "./internal_mod.ts";
+
+/**
+ * @deprecated MsgHdrsImpl was exposed by mistake - the public APIs only use the
+ * {@link MsgHdrs} interface. Create headers with {@link headers}. It will be
+ * removed from the public API in a future major release.
+ */
+export const MsgHdrsImpl: typeof _MsgHdrsImpl = _MsgHdrsImpl;
+/**
+ * @deprecated MsgHdrsImpl was exposed by mistake - use {@link MsgHdrs}.
+ */
+export type MsgHdrsImpl = _MsgHdrsImpl;
+
 export type {
   AsyncAuthenticator,
   Auth,
@@ -69,9 +81,11 @@ export type {
   ClusterUpdateStatus,
   Codec,
   ConnectionOptions,
+  DebugFn,
   Deferred,
   Delay,
   DisconnectStatus,
+  FirstConnectFn,
   ForceReconnectStatus,
   JwtAuth,
   LDMStatus,

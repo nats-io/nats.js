@@ -33,6 +33,7 @@ import type {
   Auth,
   ConnectionOptions,
   Dispatcher,
+  FirstConnectFn,
   Msg,
   Payload,
   Publisher,
@@ -64,6 +65,8 @@ export const INFO = /^INFO\s+([^\r\n]+)\r\n/i;
 
 const PONG_CMD = encode("PONG\r\n");
 const PING_CMD = encode("PING\r\n");
+// how long close() waits for pending data to flush
+const DEFAULT_CLOSE_TIMEOUT = 2000;
 
 const ERR_RECONNECT_HANDLER_FAILED =
   "client option reconnectToServer handler failed";
@@ -424,6 +427,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   connectError?: (err?: Error) => void;
   publisher: Publisher;
   _closed: boolean;
+  _closing: boolean;
   closed: Deferred<Error | void>;
   listeners: QueuedIteratorImpl<Status>[];
   heartbeats: Heartbeat;
@@ -433,8 +437,11 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   outBytes: number;
   inBytes: number;
   pendingLimit: number;
+  closeTimeout: number;
   lastError?: Error;
   abortReconnect: boolean;
+  waitOnFirstConnect?: FirstConnectFn;
+  firstConnectFailures: number;
   whyClosed: string;
 
   servers: Servers;
@@ -446,6 +453,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
+    this._closing = false;
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
@@ -454,6 +462,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.connectGeneration = 0;
     this.noMorePublishing = false;
     this.abortReconnect = false;
+    // true keeps trying, a function decides after every failed dial
+    const w = options.waitOnFirstConnect;
+    this.waitOnFirstConnect = w === true
+      ? () => true
+      : typeof w === "function"
+      ? w
+      : undefined;
+    this.firstConnectFailures = 0;
     this.listeners = [];
     this.pendingLimit = FLUSH_THRESHOLD;
     this.outMsgs = 0;
@@ -469,6 +485,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.whyClosed = "";
     //@ts-ignore: options.pendingLimit is hidden
     this.pendingLimit = options.pendingLimit || this.pendingLimit;
+    //@ts-ignore: options.closeTimeout is hidden
+    this.closeTimeout = options.closeTimeout || DEFAULT_CLOSE_TIMEOUT;
     this.features = new Features({ major: 0, minor: 0, micro: 0 });
     this.connectPromise = null;
     this.dialDelay = null;
@@ -532,14 +550,28 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       pong.reject(err);
     };
 
-    this.transport = newTransport();
-    this.transport.closed()
+    const t = newTransport();
+    this.transport = t;
+    t.closed()
       .then(async (_err?) => {
+        // transports that were replaced (discarded) may close late - ignore
+        if (t !== this.transport) {
+          return;
+        }
+        // closed during the handshake - fail the pending dial, the dial
+        // loop handles retries. only a connected transport is a disconnect
+        if (!this.connected) {
+          this.connectError?.(
+            t.closeError || this.lastError ||
+              new errors.ConnectionError("connection closed"),
+          );
+          return;
+        }
         this.connected = false;
         if (!this.isClosed()) {
           // if the transport gave an error use that, otherwise
           // we may have received a protocol error
-          await this.disconnected(this.transport.closeError || this.lastError);
+          await this.disconnected(t.closeError || this.lastError);
           return;
         }
       });
@@ -549,6 +581,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
   public disconnect(): void {
     this.dispatchStatus({ type: "staleConnection" });
+    this.transport.stale = true;
     this.transport.disconnect();
   }
 
@@ -599,11 +632,17 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     const pong = this.prepare();
     try {
       this.raceTimer = timeout(this.options.timeout || 20000);
-      const cp = this.transport.connect(srv, this.options);
+      const t = this.transport;
+      const cp = t.connect(srv, this.options);
       await Promise.race([cp, this.raceTimer]);
       (async () => {
         try {
-          for await (const b of this.transport) {
+          for await (const b of t) {
+            // stop reading if this transport was replaced, so its late data
+            // never reaches the new connection's parser
+            if (t !== this.transport) {
+              break;
+            }
             this.parser.parse(b);
           }
         } catch (err) {
@@ -616,6 +655,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
 
     try {
       await Promise.race([this.raceTimer, pong]);
+      // close() was called while the handshake completed
+      if (this._closing) {
+        throw new errors.ClosedConnectionError();
+      }
+      if (this.transport.isClosed) {
+        throw this.transport.closeError || this.lastError ||
+          new errors.ConnectionError("connection closed");
+      }
       this.raceTimer?.cancel();
       this.connected = true;
       this.connectError = undefined;
@@ -636,7 +683,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     const { resolve } = this.options;
     const alts = await srv.resolve({
       fn: getResolveFn(),
-      debug: this.options.debug,
+      debug: this.options.debug === true,
       randomize: !this.options.noRandomize,
       resolve,
     });
@@ -653,6 +700,27 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         return;
       } catch (err) {
         lastErr = err as Error;
+        // closing - stop dialing
+        if (this._closing) {
+          break;
+        }
+        if (!this.connectedOnce && this.waitOnFirstConnect) {
+          let keepTrying: boolean;
+          try {
+            keepTrying = this.waitOnFirstConnect({
+              server: a.toString(),
+              error: lastErr,
+              attempts: ++this.firstConnectFailures,
+            });
+          } catch (err) {
+            keepTrying = false;
+            lastErr = err as Error;
+          }
+          if (!keepTrying) {
+            this.abortReconnect = true;
+            break;
+          }
+        }
       }
     }
     // if we are here, we failed, and we have no additional
@@ -676,7 +744,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   async dodialLoop(): Promise<void> {
     let lastError: Error | undefined;
     while (true) {
-      if (this._closed) {
+      if (this._closed || this._closing) {
         // if we are disconnected, and close is called, the client
         // still tries to reconnect - to match the reconnect policy
         // in the case of close, want to stop.
@@ -746,7 +814,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         } catch (err) {
           lastError = err as Error;
           if (!this.connectedOnce) {
-            if (this.options.waitOnFirstConnect) {
+            if (this.waitOnFirstConnect) {
               continue;
             }
             this.servers.removeCurrentServer();
@@ -1202,34 +1270,68 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   }
 
   async close(err?: Error): Promise<void> {
-    if (this._closed) {
+    if (this._closed || this._closing) {
+      await this.closed;
       return;
     }
-    this.whyClosed = new Error("close trace").stack || "";
-    this.heartbeats.cancel();
-    if (this.connectError) {
-      this.connectError(err);
-      this.connectError = undefined;
-    }
-    this.muxSubscriptions.close();
-    this.subscriptions.close();
-    const proms = [];
-    for (let i = 0; i < this.listeners.length; i++) {
-      const qi = this.listeners[i];
-      if (qi) {
-        qi.push({ type: "close" });
-        qi.stop();
-        proms.push(qi.iterClosed);
+    this._closing = true;
+    // concurrent close() calls wait on closed - always resolve it
+    try {
+      this.whyClosed = new Error("close trace").stack || "";
+      this.heartbeats.cancel();
+      if (this.connectError) {
+        this.connectError(err);
+        this.connectError = undefined;
       }
+      this.muxSubscriptions.close();
+      this.subscriptions.close();
+      const proms = [];
+      for (let i = 0; i < this.listeners.length; i++) {
+        const qi = this.listeners[i];
+        if (qi) {
+          qi.push({ type: "close" });
+          qi.stop();
+          proms.push(qi.iterClosed);
+        }
+      }
+      if (proms.length) {
+        await Promise.all(proms);
+      }
+      // hand anything still buffered to the transport, which flushes it
+      // before closing
+      this.flushPending();
+      // set before closing the transport, so its closed handler
+      // doesn't treat this as a disconnect and reconnect
+      this._closed = true;
+      await this.closeTransport(err);
+    } finally {
+      // in case something above threw before the transport was closed
+      this._closed = true;
+      this.raceTimer?.cancel();
+      this.dialDelay?.cancel();
+      this.closed.resolve(err);
     }
-    if (proms.length) {
-      await Promise.all(proms);
+  }
+
+  // a transport may wait for pending data to drain before closing, which
+  // never happens if the server stopped reading. give it a bounded time,
+  // then mark it stale so it closes without waiting
+  async closeTransport(err?: Error): Promise<void> {
+    const t = this.transport;
+    const wait = delay(this.closeTimeout);
+    let closed: boolean;
+    try {
+      closed = await Promise.race([
+        t.close(err).then(() => true),
+        wait.then(() => false),
+      ]);
+    } finally {
+      wait.cancel();
     }
-    this._closed = true;
-    await this.transport.close(err);
-    this.raceTimer?.cancel();
-    this.dialDelay?.cancel();
-    this.closed.resolve(err);
+    if (!closed) {
+      t.stale = true;
+      await t.close(err);
+    }
   }
 
   isClosed(): boolean {

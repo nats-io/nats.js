@@ -29,6 +29,10 @@ export function setTransportFactory(config: TransportFactory): void {
   transportConfig = config;
 }
 
+export function getTransportFactory(): TransportFactory {
+  return transportConfig;
+}
+
 export function defaultPort(): number {
   return transportConfig !== undefined &&
       transportConfig.defaultPort !== undefined
@@ -67,6 +71,9 @@ export interface Transport extends AsyncIterable<Uint8Array> {
   readonly lang: string;
   readonly version: string;
   readonly closeError?: Error;
+  // set when the connection is stale (the server stopped responding).
+  // closing a stale transport doesn't flush pending data, as it may never drain
+  stale?: boolean;
 
   connect(
     server: Server,

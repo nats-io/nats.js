@@ -29,6 +29,7 @@ import {
   collect,
   createInbox,
   deadline,
+  deferred,
   delay,
   errors,
 } from "@nats-io/nats-core/internal";
@@ -525,7 +526,7 @@ Deno.test("service - reset", async () => {
   assertEquals(stat.processing_time, 0);
   assertEquals(stat.average_processing_time, 0);
   assertEquals(stat.num_errors, 0);
-  assertEquals(stat.last_error, undefined);
+  assertEquals(stat.last_error, "");
 
   await cleanup(ns, nc);
 });
@@ -1172,4 +1173,601 @@ Deno.test("service - stop should stop iterators", async () => {
   await deadline(done, 5_000);
 
   await cleanup(ns, nc);
+});
+
+Deno.test("service - metadata is copied", async () => {
+  const { ns, nc } = await setup();
+
+  const svcMeta: Record<string, string> = { owner: "team-a" };
+  const epMeta: Record<string, string> = { owner: "team-a" };
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    metadata: svcMeta,
+  }) as ServiceImpl;
+  srv.addEndpoint("a", {
+    handler: (_err, msg) => msg.respond(),
+    metadata: epMeta,
+  });
+
+  // the caller's maps stay the caller's: not frozen, and changing them
+  // changes nothing the service reports
+  svcMeta.owner = "team-b";
+  epMeta.owner = "team-b";
+  const info = srv.info();
+  assertEquals(info.metadata, { owner: "team-a" });
+  assertEquals(info.endpoints[0].metadata, { owner: "team-a" });
+
+  // and what the service hands out cannot be changed either
+  assertThrows(() => {
+    info.endpoints[0].metadata!.owner = "team-c";
+  }, TypeError);
+  assertEquals(srv.info().endpoints[0].metadata, { owner: "team-a" });
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - last_error is empty until an error is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("fail", () => {
+    throw new Error("boom");
+  });
+
+  const endpoint = async () => (await srv.stats()).endpoints![0];
+
+  let stats = await endpoint();
+  assertEquals(stats.last_error, "");
+
+  await nc.request("fail").catch(() => {});
+  stats = await endpoint();
+  assertEquals(stats.num_errors, 1);
+  assertEquals(stats.last_error, "boom");
+
+  srv.reset();
+  stats = await endpoint();
+  assertEquals(stats.num_errors, 0);
+  assertEquals(stats.last_error, "");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - respondError counts as an error", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("bad", (_err, msg) => {
+    msg.respondError(400, "bad input");
+  });
+  srv.addEndpoint("later", (_err, msg) => {
+    // responded after the handler returned: not counted
+    setTimeout(() => msg.respondError(500, "too late"), 0);
+  });
+  srv.addEndpoint("both", (_err, msg) => {
+    msg.respondError(400, "bad input");
+    throw new Error("boom");
+  });
+
+  await nc.request("bad").catch(() => {});
+  await nc.request("later").catch(() => {});
+  await nc.request("both").catch(() => {});
+
+  const stats = await srv.stats();
+  const endpoint = (name: string) =>
+    stats.endpoints!.find((e) => e.name === name)!;
+
+  assertEquals(endpoint("bad").num_requests, 1);
+  assertEquals(endpoint("bad").num_errors, 1);
+  assertEquals(endpoint("bad").last_error, "400:bad input");
+
+  assertEquals(endpoint("later").num_requests, 1);
+  assertEquals(endpoint("later").num_errors, 0);
+  assertEquals(endpoint("later").last_error, "");
+
+  // one error per request: the throw, which came last
+  assertEquals(endpoint("both").num_errors, 1);
+  assertEquals(endpoint("both").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - respondError counts as an error in an iterator", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const iter = srv.addEndpoint("it");
+  (async () => {
+    for await (const m of iter) {
+      m.string() === "bad" ? m.respondError(400, "bad input") : m.respond();
+    }
+  })().then();
+
+  await nc.request("it", "ok");
+  await nc.request("it", "bad").catch(() => {});
+  await nc.request("it", "ok");
+
+  const stats = await srv.stats();
+  const ep = stats.endpoints![0];
+  assertEquals(ep.num_requests, 3);
+  assertEquals(ep.num_errors, 1);
+  assertEquals(ep.last_error, "400:bad input");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - reset keeps started", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("a", (_err, msg) => msg.respond());
+  await nc.request("a");
+
+  const before = (await srv.stats()).started;
+  await delay(10);
+  srv.reset();
+  const stats = await srv.stats();
+
+  assertEquals(stats.started, before);
+  assertEquals(stats.endpoints![0].num_requests, 0);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - client fills a missing last_error", async () => {
+  const { ns, nc } = await setup();
+
+  // a service from an older version, which omits last_error when there was
+  // no error
+  nc.subscribe("$SRV.STATS", {
+    callback: (_err, msg) => {
+      msg.respond(JSON.stringify({
+        type: ServiceResponseType.STATS,
+        name: "old",
+        id: "1",
+        version: "0.0.1",
+        started: new Date().toISOString(),
+        endpoints: [{
+          name: "a",
+          subject: "a",
+          queue_group: "q",
+          num_requests: 0,
+          num_errors: 0,
+          processing_time: 0,
+          average_processing_time: 0,
+        }],
+      }));
+    },
+  });
+
+  const stats = await collect(await new Svcm(nc).client().stats());
+  assertEquals(stats.length, 1);
+  assertEquals(stats[0].endpoints![0].last_error, "");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - empty queue is no queue at every level", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    queue: "svcq",
+  }) as ServiceImpl;
+
+  // an endpoint that sets no queue
+  srv.addEndpoint("a", { queue: "" });
+  checkQueueGroup(srv, "a", "");
+
+  // a group that sets no queue: its endpoints and subgroups have none
+  const g = srv.addGroup("g", "");
+  g.addEndpoint("a");
+  checkQueueGroup(srv, "g.a", "");
+  g.addGroup("h").addEndpoint("a");
+  checkQueueGroup(srv, "g.h.a", "");
+  // unless they set one
+  g.addEndpoint("b", { queue: "epq" });
+  checkQueueGroup(srv, "g.b", "epq");
+
+  // an endpoint that sets no queue under a group that has one
+  const q = srv.addGroup("q", "grpq");
+  q.addEndpoint("a", { queue: "" });
+  checkQueueGroup(srv, "q.a", "");
+
+  // a group that sets nothing still inherits the service queue
+  srv.addGroup("i").addEndpoint("a");
+  checkQueueGroup(srv, "i.a", "svcq");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - group and endpoint queues are validated like the service queue", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+  }) as ServiceImpl;
+
+  // the names the service queue accepts are accepted
+  srv.addEndpoint("ok", { handler: () => {}, queue: "work-ers_1" });
+  srv.addGroup("gok", "work-ers_1").addEndpoint("e", () => {});
+
+  // and the ones it refuses are refused
+  for (const bad of ["one two", " ", "a\tb", "a.b", "a*", "a>", "a:b"]) {
+    assertThrows(
+      () => srv.addEndpoint("e", { handler: () => {}, queue: bad }),
+      Error,
+      "invalid queue name",
+    );
+    assertThrows(
+      () => srv.addGroup("g", bad).addEndpoint("e", () => {}),
+      Error,
+      "invalid queue name",
+    );
+  }
+  // nothing was subscribed for a refused endpoint
+  assertEquals(getSubscriptionBySubject(nc, "e"), undefined);
+  assertEquals(getSubscriptionBySubject(nc, "g.e"), undefined);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - endpoints cannot use $SRV subjects", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "orders", version: "0.0.1" });
+
+  const refused: [string, () => unknown][] = [
+    ["$SRV.custom", () => srv.addEndpoint("a", { subject: "$SRV.custom" })],
+    [
+      "$SRV.PING.orders",
+      () => srv.addEndpoint("b", { subject: "$SRV.PING.orders" }),
+    ],
+    ["$SRV.c", () => srv.addGroup("$SRV").addEndpoint("c")],
+  ];
+  for (const [subject, add] of refused) {
+    assertThrows(add, Error, "$SRV is reserved", subject);
+  }
+  assertEquals(getSubscriptionBySubject(nc, "$SRV.custom"), undefined);
+  assertEquals(getSubscriptionBySubject(nc, "$SRV.c"), undefined);
+  // the internal handler is still the only one on $SRV.PING.orders
+  const nci = nc as NatsConnectionImpl;
+  assertEquals(
+    nci.protocol.subscriptions.all().filter((s) =>
+      s.subject === "$SRV.PING.orders"
+    ).length,
+    1,
+  );
+  // and still answers
+  const r = await nc.request("$SRV.PING.orders");
+  assertEquals(r.json<ServiceIdentity>().name, "orders");
+
+  // $SRV anywhere but the first token, and lookalikes, are allowed
+  srv.addEndpoint("d", { subject: "foo.$SRV" });
+  srv.addGroup("foo").addEndpoint("e", { subject: "$SRV.PING" });
+  srv.addEndpoint("f", { subject: "$SRVX.a" });
+  assertExists(getSubscriptionBySubject(nc, "foo.$SRV"));
+  assertExists(getSubscriptionBySubject(nc, "foo.$SRV.PING"));
+  assertExists(getSubscriptionBySubject(nc, "$SRVX.a"));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - prefix replaces $SRV", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "orders",
+    version: "0.0.1",
+    prefix: "AcMe",
+  }) as ServiceImpl;
+
+  // the nine discovery subjects move to the prefix, its case kept
+  const nci = nc as NatsConnectionImpl;
+  const subjects = nci.protocol.subscriptions.all().map((s) => s.subject)
+    .sort();
+  const want = ["PING", "STATS", "INFO"].flatMap((v) => [
+    `AcMe.${v}`,
+    `AcMe.${v}.orders`,
+    `AcMe.${v}.orders.${srv.id}`,
+  ]).sort();
+  assertEquals(subjects, want);
+
+  // and answer there
+  const r = await nc.request("AcMe.PING.orders");
+  assertEquals(r.json<ServiceIdentity>().id, srv.id);
+  const ids = await collect(await svc.client(undefined, "AcMe").ping("orders"));
+  assertEquals(ids.map((i) => i.id), [srv.id]);
+
+  // endpoints cannot be added under the prefix; $SRV is free again
+  assertThrows(
+    () => srv.addEndpoint("a", { subject: "AcMe.a" }),
+    Error,
+    "AcMe is reserved",
+  );
+  assertThrows(
+    () => srv.addGroup("AcMe").addEndpoint("b"),
+    Error,
+    "AcMe is reserved",
+  );
+  srv.addEndpoint("c", { subject: "$SRV.c" });
+  assertExists(getSubscriptionBySubject(nc, "$SRV.c"));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler is counted when it settles", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("slow", async (_err, msg) => {
+    await delay(100);
+    msg.respond();
+  });
+
+  await nc.request("slow");
+  await delay(10);
+
+  const ep = (await srv.stats()).endpoints![0];
+  assertEquals(ep.num_requests, 1);
+  // a lower bound only: timers may fire a little early
+  assert(
+    ep.processing_time >= 80_000_000,
+    `processing_time ${ep.processing_time}`,
+  );
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - prefix must be literal subject tokens", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  for (const bad of ["", "a b", "a.*", "a.>", "a..b", ".a"]) {
+    await assertRejects(
+      () => svc.add({ name: "orders", version: "0.0.1", prefix: bad }),
+      Error,
+      "invalid prefix",
+    );
+  }
+  // several tokens are fine, as with a JetStream API prefix
+  const srv = await svc.add({
+    name: "orders",
+    version: "0.0.1",
+    prefix: "acme.srv",
+  }) as ServiceImpl;
+  const r = await nc.request("acme.srv.PING.orders");
+  assertEquals(r.json<ServiceIdentity>().id, srv.id);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler rejection is counted and answered", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("bad", async () => {
+    await delay(10);
+    throw new ServiceError(400, "bad input");
+  });
+  srv.addEndpoint("boom", async () => {
+    await delay(10);
+    throw new Error("boom");
+  });
+
+  const r = await nc.request("bad");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "400");
+  assertEquals(r.headers?.get(ServiceErrorHeader), "bad input");
+  const r2 = await nc.request("boom");
+  assertEquals(r2.headers?.get(ServiceErrorCodeHeader), "500");
+  assertEquals(r2.headers?.get(ServiceErrorHeader), "boom");
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("bad").num_requests, 1);
+  assertEquals(ep("bad").num_errors, 1);
+  assertEquals(ep("bad").last_error, "bad input");
+  assertEquals(ep("boom").num_errors, 1);
+  assertEquals(ep("boom").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler respondError is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("after", async (_err, msg) => {
+    await delay(10);
+    msg.respondError(400, "bad input");
+  });
+  srv.addEndpoint("before", async (_err, msg) => {
+    msg.respondError(400, "bad input");
+    await delay(10);
+    throw new Error("boom");
+  });
+
+  await nc.request("after");
+  await nc.request("before");
+  // the reply to "before" arrives before its handler settles
+  await delay(50);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("after").num_errors, 1);
+  assertEquals(ep("after").last_error, "400:bad input");
+  // one request, one error: the rejection, which came last
+  assertEquals(ep("before").num_requests, 1);
+  assertEquals(ep("before").num_errors, 1);
+  assertEquals(ep("before").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - a request gets at most one error response", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const second: boolean[] = [];
+  // data responses then a throw: the data, then one error response
+  srv.addEndpoint("data-sync", (_err, msg) => {
+    msg.respond("a");
+    msg.respond("b");
+    throw new Error("boom");
+  });
+  srv.addEndpoint("data-async", async (_err, msg) => {
+    msg.respond("a");
+    msg.respond("b");
+    await delay(10);
+    throw new Error("boom");
+  });
+  // an error response then a throw: no second error response
+  srv.addEndpoint("error-sync", (_err, msg) => {
+    msg.respondError(400, "bad input");
+    throw new Error("boom");
+  });
+  srv.addEndpoint("error-async", async (_err, msg) => {
+    msg.respondError(400, "bad input");
+    await delay(10);
+    throw new Error("boom");
+  });
+  // respondError twice: the second is refused
+  srv.addEndpoint("twice", (_err, msg) => {
+    msg.respondError(400, "first");
+    second.push(msg.respondError(500, "second"));
+  });
+
+  const replies = async (subj: string): Promise<Msg[]> => {
+    const inbox = createInbox();
+    const sub = nc.subscribe(inbox);
+    nc.publish(subj, undefined, { reply: inbox });
+    await delay(100);
+    sub.unsubscribe();
+    return collect(sub);
+  };
+  const errorOf = (m: Msg) => m.headers?.get(ServiceErrorHeader) || "";
+
+  for (const subj of ["data-sync", "data-async"]) {
+    const r = await replies(subj);
+    assertEquals(r.map((m) => m.string()), ["a", "b", ""], subj);
+    assertEquals(r.map(errorOf), ["", "", "boom"], subj);
+  }
+  for (const subj of ["error-sync", "error-async"]) {
+    const r = await replies(subj);
+    assertEquals(r.map(errorOf), ["bad input"], subj);
+  }
+  const r = await replies("twice");
+  assertEquals(r.map(errorOf), ["first"]);
+  assertEquals(second, [false]);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  for (const name of ["data-sync", "data-async", "error-sync", "error-async"]) {
+    assertEquals(ep(name).num_requests, 1, name);
+    assertEquals(ep(name).num_errors, 1, name);
+    assertEquals(ep(name).last_error, "boom", name);
+  }
+  assertEquals(ep("twice").num_errors, 1);
+  assertEquals(ep("twice").last_error, "400:first");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async handler that never replies is counted", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  const stored = deferred<void>();
+  const failed = deferred<void>();
+  srv.addEndpoint("ingest", async () => {
+    // stands in for storing the data, with no reply
+    await delay(50);
+    stored.resolve();
+  });
+  srv.addEndpoint("fail", async () => {
+    await delay(10);
+    failed.resolve();
+    throw new Error("disk full");
+  });
+
+  nc.publish("ingest");
+  nc.publish("fail");
+  await stored;
+  await failed;
+  await delay(10);
+
+  const stats = await srv.stats();
+  const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
+  assertEquals(ep("ingest").num_requests, 1);
+  assertEquals(ep("ingest").num_errors, 0);
+  assert(ep("ingest").processing_time >= 40_000_000);
+  assertEquals(ep("fail").num_requests, 1);
+  assertEquals(ep("fail").num_errors, 1);
+  assertEquals(ep("fail").last_error, "disk full");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - multi-line error descriptions are sent on one line", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("sync", () => {
+    throw new Error("line one\nline two");
+  });
+  srv.addEndpoint("async", async () => {
+    await delay(10);
+    throw new ServiceError(400, "line one\r\nline two");
+  });
+  srv.addEndpoint("respond", (_err, msg) => {
+    msg.respondError(400, "line one\nline two");
+  });
+
+  for (const subj of ["sync", "async", "respond"]) {
+    const r = await nc.request(subj);
+    assertEquals(r.headers?.get(ServiceErrorHeader), "line one line two");
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - async rejection after the connection closed does not throw", async () => {
+  const { ns, nc } = await setup();
+
+  const svc = new Svcm(nc);
+  const started = deferred<void>();
+  const gate = deferred<void>();
+  const srv = await svc.add({ name: "late", version: "0.0.1" });
+  srv.addEndpoint("late", async () => {
+    started.resolve();
+    await gate;
+    throw new Error("boom");
+  });
+
+  nc.publish("late", undefined, { reply: createInbox() });
+  await started;
+  await nc.close();
+  // the error reply now fails to publish; an unhandled rejection would fail
+  // the test
+  gate.resolve();
+  await delay(50);
+
+  await ns.stop();
 });

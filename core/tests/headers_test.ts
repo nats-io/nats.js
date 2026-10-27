@@ -495,7 +495,7 @@ Deno.test("headers - record", () => {
 
 Deno.test("headers - fromRecord normalizes non-array values", () => {
   const hr = MsgHdrsImpl.fromRecord(
-    { a: "x", d: 1 } as unknown as Record<string, string[]>,
+    { a: "x", d: 1 } as unknown as Record<string, string>,
   ) as MsgHdrsImpl;
   assertEquals(hr.get("a"), "x");
   assertEquals(hr.get("d"), "1");
@@ -505,6 +505,63 @@ Deno.test("headers - fromRecord normalizes non-array values", () => {
     a: ["x"],
     d: ["1"],
   });
+});
+
+Deno.test("headers - fromRecord accepts strings and string arrays", () => {
+  const hr = MsgHdrsImpl.fromRecord({ a: "x", b: ["y", "z"] });
+  assertEquals(hr.get("a"), "x");
+  assertEquals(hr.values("b"), ["y", "z"]);
+});
+
+Deno.test("headers - fromRecord validates like append", () => {
+  ["bad:", "bad "].forEach((k) => {
+    assertThrows(
+      () => MsgHdrsImpl.fromRecord({ [k]: ["x"] }),
+      errors.InvalidArgumentError,
+      "is not a valid character in a header name",
+    );
+  });
+  assertThrows(
+    () => MsgHdrsImpl.fromRecord({ a: ["x\r\nInjected: yes"] }),
+    errors.InvalidArgumentError,
+    "values cannot contain \\r or \\n",
+  );
+  // values are trimmed and non-string array entries are stringified
+  const hr = MsgHdrsImpl.fromRecord({
+    a: [" x "],
+    b: [1 as unknown as string],
+  });
+  assertEquals(hr.get("a"), "x");
+  assertEquals(hr.get("b"), "1");
+});
+
+Deno.test("headers - fromRecord copies the record", () => {
+  const r = { a: ["1"] };
+  const h = MsgHdrsImpl.fromRecord(r);
+  h.append("a", "2");
+  r.a.push("3");
+  assertEquals(r.a, ["1", "3"]);
+  assertEquals(h.values("a"), ["1", "2"]);
+});
+
+Deno.test("headers - fromRecord skips empty values", () => {
+  const h = MsgHdrsImpl.fromRecord({ a: [], b: ["x"] });
+  assertFalse(h.has("a"));
+  assertEquals(h.keys(), ["b"]);
+});
+
+Deno.test("headers - fromRecord round trips", () => {
+  const h = headers() as MsgHdrsImpl;
+  h.append("a", "1");
+  h.append("a", "2");
+  h.append("B", "3");
+  const hr = MsgHdrsImpl.fromRecord(h.toRecord()) as MsgHdrsImpl;
+  assert(hr.equals(h));
+
+  // a record survives encoding unchanged
+  const r = { a: [" x "], b: ["y", "z"] };
+  const fr = MsgHdrsImpl.fromRecord(r) as MsgHdrsImpl;
+  assertEquals(MsgHdrsImpl.decode(fr.encode()).toRecord(), fr.toRecord());
 });
 
 Deno.test("headers - not equals", () => {

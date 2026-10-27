@@ -857,6 +857,10 @@ export type Heartbeat = {
   type: "heartbeat";
   lastConsumerSequence: number;
   lastStreamSequence: number;
+  /**
+   * True if the server reported the consumer as stalled waiting on flow control
+   */
+  stalled?: boolean;
 };
 /**
  * Notifies that the client received a server-side flow control message.
@@ -1006,7 +1010,7 @@ export type FastIngestOptions = {
    *   most use cases and high-concurrency publishers.
    * - `3`: may help on high-RTT links; use consciously, not by default.
    *
-   * Values outside 1–3 are clamped.
+   * Values outside 1–3 are rejected.
    */
   maxOutstandingAcks: number;
 };

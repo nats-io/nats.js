@@ -97,10 +97,23 @@ function validName(name = ""): string {
  */
 export const ServiceApiPrefix = "$SRV";
 
+// oneLine joins the lines of an error description: header values cannot hold
+// CR or LF
+function oneLine(s: string): string {
+  return s.replace(/[\r\n]+/g, " ");
+}
+
 export class ServiceMsgImpl implements ServiceMsg {
   msg: Msg;
-  constructor(msg: Msg) {
+  // the error response sent, as "code:description", counted in the endpoint
+  // stats when the handler returns
+  respondErr?: string;
+  // counts an error response as soon as it is sent, for endpoints that have
+  // no handler to return, iterators
+  onError?: (err: string) => void;
+  constructor(msg: Msg, onError?: (err: string) => void) {
     this.msg = msg;
+    this.onError = onError;
   }
 
   get data(): Uint8Array {
@@ -133,11 +146,20 @@ export class ServiceMsgImpl implements ServiceMsg {
     data?: Payload,
     opts?: PublishOptions,
   ): boolean {
+    // a request gets at most one error response
+    if (this.respondErr !== undefined) {
+      return false;
+    }
     opts = opts || {};
     opts.headers = opts.headers || headers();
     opts.headers?.set(ServiceErrorCodeHeader, `${code}`);
-    opts.headers?.set(ServiceErrorHeader, description);
-    return this.msg.respond(data, opts);
+    opts.headers?.set(ServiceErrorHeader, oneLine(description));
+    const ok = this.msg.respond(data, opts);
+    if (ok) {
+      this.respondErr = `${code}:${description}`;
+      this.onError?.(this.respondErr);
+    }
+    return ok;
   }
 
   json<T = unknown>(reviver?: ReviverFn): T {
@@ -151,9 +173,10 @@ export class ServiceMsgImpl implements ServiceMsg {
 
 export class ServiceGroupImpl implements ServiceGroup {
   subject: string;
-  queue: string;
+  // undefined uses the service's queue, "" is no queue
+  queue?: string;
   srv: ServiceImpl;
-  constructor(parent: ServiceGroup, name = "", queue = "") {
+  constructor(parent: ServiceGroup, name = "", queue?: string) {
     if (name !== "") {
       validInternalToken("service group", name);
     }
@@ -192,9 +215,29 @@ export class ServiceGroupImpl implements ServiceGroup {
     validateName("endpoint", name);
     let { subject, handler, metadata, queue } = args;
     subject = subject || name;
-    queue = queue || this.queue;
+    // each level uses its own queue if it sets one, "" included, otherwise
+    // its parent's
+    queue = queue ?? this.queue ?? this.srv.config.queue ?? "";
+    // the same check the service queue gets, wherever the queue was set
+    if (queue !== "") {
+      validateName("queue", queue);
+    }
+    // the endpoint keeps its own copy, so changing the caller's map does not
+    // change what INFO reports
+    if (metadata) {
+      metadata = Object.freeze({ ...metadata });
+    }
     validSubjectName("endpoint subject", subject);
     subject = this.calcSubject(this.subject, subject);
+    // subjects under the service's prefix ($SRV unless configured) are
+    // reserved for its internal handlers; the check is on the full subject,
+    // so a group named after the prefix is caught too
+    const prefix = this.srv.config.prefix ?? ServiceApiPrefix;
+    if (subject === prefix || subject.startsWith(`${prefix}.`)) {
+      throw new Error(
+        `invalid endpoint subject - ${prefix} is reserved for internal handlers`,
+      );
+    }
 
     const ne = { name, subject, queue, handler, metadata };
     return this.srv._addEndpoint(ne);
@@ -221,6 +264,20 @@ function validSubjectName(context: string, subj: string) {
       throw new Error(`${context} cannot have internal '>': '${subj}'`);
     }
   });
+}
+
+// validPrefix checks a discovery prefix: one or more literal subject tokens
+function validPrefix(prefix: string) {
+  if (/\s/.test(prefix)) {
+    throw new Error(`invalid prefix - prefix cannot contain whitespace`);
+  }
+  for (const t of prefix.split(".")) {
+    if (t === "" || t === "*" || t === ">") {
+      throw new Error(
+        `invalid prefix - prefix must be literal subject tokens: '${prefix}'`,
+      );
+    }
+  }
 }
 
 function validInternalToken(context: string, subj: string) {
@@ -295,9 +352,16 @@ export class ServiceImpl implements Service {
     if (this.config.queue === undefined) {
       this.config.queue = "q";
     }
+    if (this.config.prefix === undefined) {
+      this.config.prefix = ServiceApiPrefix;
+    }
+    validPrefix(this.config.prefix);
 
-    // don't allow changing metadata
-    config.metadata = Object.freeze(config.metadata || {});
+    // don't allow changing metadata: keep a frozen copy, so the caller's map
+    // is neither frozen nor able to change what INFO reports
+    if (config.metadata) {
+      this.config.metadata = Object.freeze({ ...config.metadata });
+    }
 
     // this will throw if no name
     validateName("name", this.config.name);
@@ -357,10 +421,10 @@ export class ServiceImpl implements Service {
     const h = headers();
     if (err instanceof ServiceError) {
       const se = err as ServiceError;
-      h.set(ServiceErrorHeader, se.message);
+      h.set(ServiceErrorHeader, oneLine(se.message));
       h.set(ServiceErrorCodeHeader, `${se.code}`);
     } else {
-      h.set(ServiceErrorHeader, err.message);
+      h.set(ServiceErrorHeader, oneLine(err.message));
       h.set(ServiceErrorCodeHeader, "500");
     }
     return h;
@@ -371,7 +435,7 @@ export class ServiceImpl implements Service {
     internal = false,
   ): ServiceSubscription {
     // internals don't use a queue
-    const queue = internal ? "" : (h.queue ? h.queue : this.config.queue);
+    const queue = internal ? "" : (h.queue ?? this.config.queue ?? "");
     const { name, subject, handler } = h as NamedEndpoint;
     const sv = h as ServiceSubscription;
     sv.internal = internal;
@@ -388,13 +452,42 @@ export class ServiceImpl implements Service {
           return;
         }
         const start = Date.now();
-        try {
-          handler(err, new ServiceMsgImpl(msg));
-        } catch (err) {
-          sv.stats.countError(err as Error);
-          msg?.respond(Empty, { headers: this.errorToHeader(err as Error) });
-        } finally {
+        const smsg = new ServiceMsgImpl(msg);
+        // done counts the request once the handler returned, or settled when
+        // it is async: its latency, then one error, the one it threw or
+        // rejected with, else an error response it sent before it was done
+        const done = (failed: boolean, reason?: unknown) => {
           sv.stats.countLatency(start);
+          if (failed) {
+            const e = reason as Error;
+            sv.stats.countError(e);
+            // data responses may precede it, but an error response is sent
+            // once: not when the handler already sent one
+            if (smsg.respondErr === undefined) {
+              try {
+                msg.respond(Empty, { headers: this.errorToHeader(e) });
+              } catch {
+                // the connection closed or is draining: no one to answer
+              }
+            }
+          } else if (smsg.respondErr !== undefined) {
+            sv.stats.countError(new Error(smsg.respondErr));
+          }
+        };
+        let r: unknown;
+        try {
+          r = handler(err, smsg);
+        } catch (err) {
+          done(true, err);
+          return;
+        }
+        if (typeof (r as PromiseLike<void> | undefined)?.then === "function") {
+          Promise.resolve(r as PromiseLike<void>).then(
+            () => done(false),
+            (err) => done(true, err),
+          );
+        } else {
+          done(false);
         }
       }
       : undefined;
@@ -490,7 +583,12 @@ export class ServiceImpl implements Service {
   ) {
     const endpoint = {} as NamedEndpoint;
     endpoint.name = name;
-    endpoint.subject = ServiceImpl.controlSubject(verb, kind, id);
+    endpoint.subject = ServiceImpl.controlSubject(
+      verb,
+      kind,
+      id,
+      this.config.prefix,
+    );
     endpoint.handler = handler;
     this.setupHandler(endpoint, true);
   }
@@ -591,8 +689,7 @@ export class ServiceImpl implements Service {
   }
 
   reset(): void {
-    // pretend we restarted
-    this.started = new Date().toISOString();
+    // only the metrics reset: started stays the time the service started
     if (this.handlers) {
       for (const h of this.handlers) {
         h.stats.reset(h.qi);
@@ -620,7 +717,9 @@ export class ServiceImpl implements Service {
     qi.noIterator = typeof e.handler === "function";
     if (!qi.noIterator) {
       e.handler = (err, msg): void => {
-        err ? this.stop(err).catch() : qi.push(new ServiceMsgImpl(msg));
+        err ? this.stop(err).catch() : qi.push(
+          new ServiceMsgImpl(msg, (e) => ss.stats.countError(new Error(e))),
+        );
       };
       // close the service if the iterator closes
       qi.iterClosed.then(() => {
@@ -645,7 +744,8 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
   num_requests: number;
   processing_time: Nanos;
   num_errors: number;
-  last_error?: string;
+  // "" when no error was counted, so STATS always carries the field
+  last_error: string;
   data?: unknown;
   metadata?: Record<string, string>;
   queue: string;
@@ -655,6 +755,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     this.subject = subject;
     this.average_processing_time = 0;
     this.num_errors = 0;
+    this.last_error = "";
     this.num_requests = 0;
     this.processing_time = 0;
     this.queue = queue;
@@ -664,7 +765,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     this.processing_time = 0;
     this.average_processing_time = 0;
     this.num_errors = 0;
-    this.last_error = undefined;
+    this.last_error = "";
     this.data = undefined;
     const qii = qi as QueuedIteratorImpl<unknown>;
     if (qii) {
@@ -675,7 +776,8 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
   countLatency(start: number) {
     this.num_requests++;
     this.processing_time += nanos(Date.now() - start);
-    this.average_processing_time = Math.round(
+    // whole nanoseconds, truncated as integer division would
+    this.average_processing_time = Math.trunc(
       this.processing_time / this.num_requests,
     );
   }
@@ -717,7 +819,7 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
       this.num_requests = qii.processed;
       this.average_processing_time =
         this.processing_time > 0 && this.num_requests > 0
-          ? this.processing_time / this.num_requests
+          ? Math.trunc(this.processing_time / this.num_requests)
           : 0;
     }
     return this._stats();

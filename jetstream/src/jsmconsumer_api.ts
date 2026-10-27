@@ -151,7 +151,7 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
       consumerName = cfg.name ?? cfg.durable_name ?? "";
     }
     if (consumerName !== "") {
-      let fs = cfg.filter_subject ?? undefined;
+      let fs = cfg.filter_subject || undefined;
       if (fs === ">") {
         fs = undefined;
       }
@@ -235,6 +235,15 @@ export class ConsumerAPIImpl extends BaseApiClientImpl implements ConsumerAPI {
   ): Promise<ConsumerInfo> {
     const ci = await this.info(stream, durable);
     const changable = cfg as ConsumerConfig;
+    // the update defines the filter if it sets either field - the current
+    // filter is dropped so filter_subject and filter_subjects don't collide
+    if (
+      changable.filter_subject !== undefined ||
+      changable.filter_subjects !== undefined
+    ) {
+      delete ci.config.filter_subject;
+      delete ci.config.filter_subjects;
+    }
     return this.addUpdate(
       stream,
       Object.assign(ci.config, changable),

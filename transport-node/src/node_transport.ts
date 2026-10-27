@@ -16,13 +16,13 @@ import type { ConnectionOptions } from "./nats-base-client";
 import {
   checkOptions,
   DataBuffer,
+  debugFrame,
   Deferred,
   deferred,
   errors,
   extend,
   extractProtocolMessage,
   INFO,
-  render,
   ServerInfo,
   Transport,
 } from "./nats-base-client";
@@ -50,6 +50,9 @@ export class NodeTransport implements Transport {
   tlsName = "";
   done = false;
   closeError?: Error;
+  stale?: boolean;
+  // socket of a dial or tls handshake in progress
+  pending?: Socket;
 
   constructor() {
     this.lang = LANG;
@@ -70,11 +73,10 @@ export class NodeTransport implements Transport {
         this.socket = await this.dial(hp);
       }
       // protocol could have terminated
-      if (this.done) {
-        this.socket?.destroy();
-      }
+      this.checkAbandoned();
 
       const info = await this.peekInfo();
+      this.checkAbandoned();
       checkOptions(info, options);
       const { tls_required: tlsRequired, tls_available: tlsAvailable } = info;
       const desired = tlsAvailable === true && options.tls !== null;
@@ -82,9 +84,7 @@ export class NodeTransport implements Transport {
         this.socket = await this.startTLS();
       }
 
-      if (this.done) {
-        this.socket?.destroy();
-      }
+      this.checkAbandoned();
 
       //@ts-ignore: this is possibly a TlsSocket
       if (tlsRequired && this.socket.encrypted !== true) {
@@ -94,6 +94,7 @@ export class NodeTransport implements Transport {
         );
       }
 
+      this.pending = undefined;
       this.connected = true;
       this.setupHandlers();
       this.signal.resolve();
@@ -113,8 +114,17 @@ export class NodeTransport implements Transport {
       const perr = code === "ECONNREFUSED"
         ? new errors.ConnectionError("connection refused", { cause: err })
         : err;
+      this.pending?.destroy();
       this.socket?.destroy();
       throw perr;
+    }
+  }
+
+  // the protocol may have closed or discarded the transport while
+  // the connect was in progress - stop the connect
+  private checkAbandoned(): void {
+    if (this.done) {
+      throw new errors.ConnectionError("connection closed");
     }
   }
 
@@ -125,6 +135,7 @@ export class NodeTransport implements Transport {
       d.resolve(socket);
       socket.removeAllListeners();
     });
+    this.pending = socket;
     socket.on("error", (err) => {
       dialError = err;
     });
@@ -262,6 +273,7 @@ export class NodeTransport implements Transport {
         tlsSocket.removeAllListeners();
         d.resolve(tlsSocket);
       });
+      this.pending = tlsSocket;
 
       tlsSocket.on("error", (err) => {
         tlsError = err;
@@ -314,6 +326,7 @@ export class NodeTransport implements Transport {
         tlsSocket.removeAllListeners();
         d.resolve(tlsSocket);
       });
+      this.pending = tlsSocket;
       tlsSocket.on("error", (err) => {
         tlsError = err;
       });
@@ -376,9 +389,7 @@ export class NodeTransport implements Transport {
       this.yields = [];
 
       for (let i = 0; i < yields.length; i++) {
-        if (this.options.debug) {
-          console.info(`> ${render(yields[i])}`);
-        }
+        debugFrame(this.options, ">", yields[i]);
         yield yields[i];
       }
       // yielding could have paused and microtask
@@ -396,6 +407,7 @@ export class NodeTransport implements Transport {
 
   discard() {
     this.done = true;
+    this.pending?.destroy();
     if (this.socket) {
       try {
         this.socket.removeAllListeners();
@@ -418,24 +430,18 @@ export class NodeTransport implements Transport {
     if (this.isClosed || this.socket === undefined) {
       return Promise.resolve();
     }
-    if (this.options.debug) {
-      console.info(`< ${render(frame)}`);
-    }
+    debugFrame(this.options, "<", frame);
     const d = deferred<void>();
     try {
       this.socket.write(frame, (err: Error | undefined) => {
         if (err) {
-          if (this.options.debug) {
-            console.error(`!!! ${render(frame)}: ${err}`);
-          }
+          debugFrame(this.options, "<", frame, err);
           return d.reject(err);
         }
         return d.resolve();
       });
     } catch (err) {
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
       d.reject(err);
     }
     return d;
@@ -451,20 +457,28 @@ export class NodeTransport implements Transport {
   }
 
   private async _closed(err?: Error, internal = true): Promise<void> {
-    // if this connection didn't succeed, then ignore it.
-    if (!this.connected) return;
+    // if this connection didn't succeed, abandon it - the connect
+    // could still be in progress (dial timeout), so drop the socket
+    if (!this.connected) {
+      this.done = true;
+      this.pending?.destroy();
+      this.socket?.destroy();
+      return;
+    }
     if (this.done) {
       this.socket?.destroy();
       return;
     }
     this.closeError = err;
-    // only try to flush the outbound buffer if we got no error and
-    // the close is internal, if the transport closed, we are done.
-    if (!err && this.socket && internal) {
+    // a client close() flushes pending data, unless the connection failed.
+    // a disconnect (stale, forced reconnect, errors) doesn't - callers that
+    // care can flush first. a stale connection may never drain, so don't
+    // wait on it
+    if (!err && this.socket && !internal && !this.stale) {
       try {
         await this._send(new TextEncoder().encode(""));
       } catch (err) {
-        if (this.options.debug) {
+        if (this.options.debug === true) {
           console.log("transport close terminated with an error", err);
         }
       }

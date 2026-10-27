@@ -30,6 +30,21 @@ export interface ServiceMsg extends Msg {
   ): boolean;
 }
 
+/**
+ * Handles a request to an endpoint. The handler may be async.
+ *
+ * The request is counted in the endpoint's stats when the handler returns or,
+ * when it is async, when its promise settles: its processing time, and an
+ * error if it threw or rejected, or else responded with an error before then.
+ * Work done or replies sent elsewhere afterwards, for example by another
+ * worker the request was handed to, are not counted. A promise that never
+ * settles is never counted.
+ *
+ * If the handler throws or its promise rejects, an error reply is sent: the
+ * code and description of a {@link ServiceError}, or code 500 and the error's
+ * message for any other error. Throw a ServiceError for messages meant for the
+ * client, and catch errors yourself to reply differently.
+ */
 export type ServiceHandler = (err: Error | null, msg: ServiceMsg) => void;
 /**
  * A service Endpoint
@@ -143,9 +158,11 @@ export type NamedEndpointStats = {
    */
   num_errors: number;
   /**
-   * If set, the last error triggered by the endpoint
+   * The last error triggered by the endpoint, or an empty string when there
+   * has been none. Always present, as ADR-32 and the micro stats schema
+   * require and other clients send; older nats.js services may omit it.
    */
-  last_error?: string;
+  last_error: string;
   /**
    * A field that can be customized with any data as returned by stats handler see {@link ServiceConfig}
    */
@@ -221,6 +238,13 @@ export type ServiceConfig = {
    * not be run in a queue.
    */
   queue?: string;
+  /**
+   * Optional prefix for the service's discovery subjects (PING, STATS and
+   * INFO), used in place of `$SRV` the way a JetStream API prefix replaces
+   * `$JS.API`, so tools can reach the service across accounts. Its case is
+   * kept as given. Endpoints cannot be added under it. Defaults to `$SRV`.
+   */
+  prefix?: string;
 };
 /**
  * The stats of a service

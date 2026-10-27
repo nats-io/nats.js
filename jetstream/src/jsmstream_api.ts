@@ -185,7 +185,12 @@ export class ConsumersImpl implements Consumers {
 
     const cc = Object.assign({}, opts) as ConsumerConfig;
     cc.ack_policy = AckPolicy.None;
-    cc.inactive_threshold = nanos(5 * 60 * 1000);
+    // honor a caller provided inactive_threshold (ms), default to 5 minutes
+    cc.inactive_threshold = nanos(
+      typeof opts.inactive_threshold === "number" && opts.inactive_threshold > 0
+        ? opts.inactive_threshold
+        : 5 * 60 * 1000,
+    );
     cc.num_replicas = 1;
     cc.max_deliver = 1;
     cc.flow_control = true;

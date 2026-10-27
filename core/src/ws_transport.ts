@@ -19,8 +19,8 @@ import type {
   Server,
   ServerInfo,
 } from "./core.ts";
-import type { Deferred } from "./util.ts";
-import { deferred, delay, render } from "./util.ts";
+import type { Deferred, Delay } from "./util.ts";
+import { debugFrame, deferred, delay } from "./util.ts";
 import type { Transport, TransportFactory } from "./transport.ts";
 import { extractProtocolMessage, setTransportFactory } from "./transport.ts";
 import { checkOptions } from "./options.ts";
@@ -60,12 +60,15 @@ export class WsTransport implements Transport {
   version: string;
   lang: string;
   closeError?: Error;
+  stale?: boolean;
   connected: boolean;
   private done: boolean;
   // @ts-ignore: expecting global WebSocket
   private socket: WebSocket;
   private options!: WsConnectionOptions;
   socketClosed: boolean;
+  // the wait between checks while close() drains the socket
+  drainWait?: Delay;
   encrypted: boolean;
   peeked: boolean;
 
@@ -129,10 +132,9 @@ export class WsTransport implements Transport {
       if (pm !== "") {
         const m = INFO.exec(pm);
         if (!m) {
-          if (options.debug) {
-            console.error("!!!", render(t));
-          }
-          ok.reject(new Error("unexpected response from server"));
+          const err = new Error("unexpected response from server");
+          debugFrame(options, ">", t, err);
+          ok.reject(err);
           return;
         }
         try {
@@ -177,6 +179,8 @@ export class WsTransport implements Transport {
   }
 
   _cleanup() {
+    // a close that is still draining would otherwise leave its timer behind
+    this.drainWait?.cancel();
     if (this.socketClosed === false) {
       // node seems to not emit closed if there's an error
       // all other runtimes do.
@@ -193,26 +197,44 @@ export class WsTransport implements Transport {
     this._closed(undefined, true);
   }
 
-  private async _closed(err?: Error, _internal = true): Promise<void> {
+  private async _closed(err?: Error, internal = true): Promise<void> {
     if (this.done) {
       try {
         this.socket.close();
       } catch (_) {
         // nothing
       }
+      // an earlier close may still be waiting on a close event that a
+      // stale connection never delivers
+      if (this.stale) {
+        this._cleanup();
+      }
       return;
     }
     this.closeError = err;
-    if (!err) {
-      while (!this.socketClosed && this.socket.bufferedAmount > 0) {
-        await delay(100);
+    // a client close() flushes pending data, unless the connection failed.
+    // a disconnect (stale, forced reconnect, errors) doesn't - callers that
+    // care can flush first. a stale connection may never drain, so don't
+    // wait on it
+    if (!err && !internal && !this.stale) {
+      while (
+        !this.stale && !this.socketClosed && this.socket.bufferedAmount > 0
+      ) {
+        this.drainWait = delay(100);
+        await this.drainWait;
       }
+      this.drainWait = undefined;
     }
     this.done = true;
     try {
       this.socket.close();
     } catch (_) {
       // ignore this
+    }
+    // the close handshake can't complete on a stale connection, so the
+    // close event may never come - don't wait for it
+    if (this.stale) {
+      this._cleanup();
     }
 
     return this.closedNotification as Promise<void>;
@@ -237,9 +259,7 @@ export class WsTransport implements Transport {
       const yields = this.yields;
       this.yields = [];
       for (let i = 0; i < yields.length; i++) {
-        if (this.options.debug) {
-          console.info(`> ${render(yields[i])}`);
-        }
+        debugFrame(this.options, ">", yields[i]);
         yield yields[i];
       }
       // yielding could have paused and microtask
@@ -265,17 +285,13 @@ export class WsTransport implements Transport {
     }
     try {
       this.socket.send(frame.buffer);
-      if (this.options.debug) {
-        console.info(`< ${render(frame)}`);
-      }
+      debugFrame(this.options, "<", frame);
       return;
     } catch (err) {
       // we ignore write errors because client will
       // fail on a read or when the heartbeat timer
       // detects a stale connection
-      if (this.options.debug) {
-        console.error(`!!! ${render(frame)}: ${err}`);
-      }
+      debugFrame(this.options, "<", frame, err);
     }
   }
 

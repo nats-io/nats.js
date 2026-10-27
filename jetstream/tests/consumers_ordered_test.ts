@@ -29,7 +29,7 @@ import {
 } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
-import { deadline, deferred, delay } from "@nats-io/nats-core";
+import { deadline, deferred, delay, nanos } from "@nats-io/nats-core";
 import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
@@ -986,6 +986,71 @@ Deno.test("ordered consumers - next reset", async () => {
   assertExists(m);
   assertEquals(m.json(), 2);
   assertEquals(c.serial, 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - reset preserves inactive_threshold", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  await js.publish("a", JSON.stringify(1));
+  await js.publish("a", JSON.stringify(2));
+  await js.publish("a", JSON.stringify(3));
+
+  const c = await js.consumers.get("A", {
+    inactive_threshold: 10_000,
+  }) as PullConsumerImpl;
+  let ci = await c.info();
+  assertEquals(ci.config.inactive_threshold, nanos(10_000));
+
+  let m = await c.next({ expires: 1000 });
+  assertEquals(m?.json(), 1);
+
+  // force a reset
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
+  m = await c.next({ expires: 1000 });
+  assertEquals(m?.json(), 2);
+  assertEquals(c.serial, 2);
+  ci = await jsm.consumers.info("A", c.name);
+  assertEquals(ci.name, `${c.orderedConsumerState!.namePrefix}_2`);
+  assertEquals(ci.config.inactive_threshold, nanos(10_000));
+
+  // force another reset, value must persist across resets
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
+  m = await c.next({ expires: 1000 });
+  assertEquals(m?.json(), 3);
+  assertEquals(c.serial, 3);
+  ci = await jsm.consumers.info("A", c.name);
+  assertEquals(ci.name, `${c.orderedConsumerState!.namePrefix}_3`);
+  assertEquals(ci.config.inactive_threshold, nanos(10_000));
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - reset keeps default inactive_threshold", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  await js.publish("a", JSON.stringify(1));
+  await js.publish("a", JSON.stringify(2));
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  let m = await c.next({ expires: 1000 });
+  assertEquals(m?.json(), 1);
+
+  // force a reset
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
+  m = await c.next({ expires: 1000 });
+  assertEquals(m?.json(), 2);
+  assertEquals(c.serial, 2);
+  const ci = await jsm.consumers.info("A", c.name);
+  assertEquals(ci.name, `${c.orderedConsumerState!.namePrefix}_2`);
+  assertEquals(ci.config.inactive_threshold, nanos(5 * 60 * 1000));
 
   await cleanup(ns, nc);
 });

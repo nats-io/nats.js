@@ -28,6 +28,7 @@ import {
   deadline,
   deferred,
   delay,
+  errors,
   tokenAuthenticator,
 } from "../src/internal_mod.ts";
 import type { Server } from "../src/internal_mod.ts";
@@ -283,6 +284,102 @@ Deno.test("reconnect - wait on first connect", async () => {
   assertInstanceOf(err, ConnectionError, "connection refused");
 });
 
+function freePort(): number {
+  const l = Deno.listen({ port: 0 });
+  const { port } = l.addr as Deno.NetAddr;
+  l.close();
+  return port;
+}
+
+Deno.test("reconnect - wait on first connect fn stops", async () => {
+  const port = freePort();
+  const failures: { server: string; error: Error; attempts: number }[] = [];
+  const err = await assertRejects(() =>
+    connect({
+      port,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: (f) => {
+        failures.push(f);
+        return f.attempts < 3;
+      },
+    })
+  );
+  assertEquals(failures.length, 3);
+  assertEquals(failures.map((f) => f.attempts), [1, 2, 3]);
+  assertEquals(failures[0].server, `127.0.0.1:${port}`);
+  assert(failures.every((f) => f.error instanceof Error));
+  // rejects with the error the function saw last
+  assertEquals(err, failures[2].error);
+});
+
+Deno.test("reconnect - wait on first connect fn throw stops", async () => {
+  const port = freePort();
+  const stop = new Error("stop");
+  let calls = 0;
+  const err = await assertRejects(() =>
+    connect({
+      port,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: () => {
+        calls++;
+        throw stop;
+      },
+    })
+  );
+  assertEquals(calls, 1);
+  assertEquals(err, stop);
+});
+
+Deno.test("reconnect - wait on first connect fn sees auth errors", async () => {
+  const ns = await NatsServer.start({
+    authorization: { user: "a", password: "a" },
+  });
+  const errs: Error[] = [];
+  const err = await assertRejects(() =>
+    connect({
+      port: ns.port,
+      user: "a",
+      pass: "b",
+      ignoreAuthErrorAbort: true,
+      reconnectTimeWait: 50,
+      waitOnFirstConnect: (f) => {
+        errs.push(f.error);
+        return errs.length < 2;
+      },
+    })
+  );
+  await ns.stop();
+  assertEquals(errs.length, 2);
+  assertInstanceOf(errs[0], errors.AuthorizationError);
+  assertEquals(err, errs[1]);
+});
+
+Deno.test("reconnect - wait on first connect fn only runs before connecting", async () => {
+  let srv = await NatsServer.start({});
+  const port = srv.port;
+  await srv.stop();
+  let calls = 0;
+  const pnc = connect({
+    port,
+    reconnectTimeWait: 50,
+    maxReconnectAttempts: 1,
+    waitOnFirstConnect: () => {
+      calls++;
+      return true;
+    },
+  });
+  await delay(500);
+  srv = await srv.restart();
+  const nc = await pnc;
+  assert(calls > 0);
+  const before = calls;
+
+  // reconnects after the first connection don't call it
+  await srv.stop();
+  await nc.closed();
+  assertEquals(calls, before);
+});
+
 Deno.test("reconnect - close stops reconnects", async () => {
   const { ns, nc } = await setup({}, {
     maxReconnectAttempts: -1,
@@ -409,6 +506,103 @@ Deno.test("reconnect - stale connections don't close", async () => {
   assert(stales >= 3, `stales ${stales}`);
   // there could be a redial timer waiting here for 2s
   await delay(2000);
+});
+
+Deno.test("reconnect - close flushes pending data", async () => {
+  const ns = await NatsServer.start();
+  const sub = await connect({ port: ns.port });
+  // large messages are written as they are published, the small
+  // last one is still in the client's outbound buffer when close() runs
+  const N = 129;
+  let received = 0;
+  const all = deferred<void>();
+  sub.subscribe("x", {
+    callback: () => {
+      if (++received === N) {
+        all.resolve();
+      }
+    },
+  });
+  await sub.flush();
+
+  const pub = await connect({ port: ns.port });
+  const payload = new Uint8Array(512 * 1024);
+  for (let i = 0; i < N - 1; i++) {
+    pub.publish("x", payload);
+  }
+  pub.publish("x");
+  await pub.close();
+
+  try {
+    await deadline(all, 10_000);
+  } finally {
+    await sub.close();
+    await ns.stop();
+  }
+  assertEquals(received, N);
+});
+
+Deno.test("reconnect - stale connection to a server that stopped reading", async () => {
+  // completes the handshake, then never reads or answers pings
+  const listener = Deno.listen({ port: 0, transport: "tcp" });
+  const { port } = listener.addr as Deno.NetAddr;
+  const connections: Deno.Conn[] = [];
+  const TE = new TextEncoder();
+  (async () => {
+    for await (const conn of listener) {
+      connections.push(conn);
+      (async () => {
+        await conn.write(TE.encode(
+          `INFO {"server_id":"stall","version":"2.12.0","proto":1,"max_payload":1048576}\r\n`,
+        ));
+        const buf = new Uint8Array(1024);
+        let lines = "";
+        while (!lines.includes("PING\r\n")) {
+          const n = await conn.read(buf);
+          if (n === null) {
+            return;
+          }
+          lines += new TextDecoder().decode(buf.subarray(0, n));
+        }
+        await conn.write(TE.encode("PONG\r\n"));
+      })().catch(() => {});
+    }
+  })().catch(() => {});
+
+  const nc = await connect({
+    port,
+    pingInterval: 250,
+    maxPingOut: 2,
+    reconnectTimeWait: 100,
+  });
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  // fill the socket so a flush on close never completes
+  const payload = new Uint8Array(1024 * 1024);
+  for (let i = 0; i < 64; i++) {
+    nc.publish("x", payload);
+  }
+
+  try {
+    await deadline(reconnected, 5000);
+  } finally {
+    await nc.close();
+    listener.close();
+    connections.forEach((c) => {
+      try {
+        c.close();
+      } catch (_) {
+        // already closed
+      }
+    });
+  }
 });
 
 Deno.test("reconnect - protocol errors don't close client", async () => {
@@ -634,4 +828,40 @@ Deno.test("setServers - replaces pool and reconnect dials new pool", async () =>
 
   assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
   await nc.close();
+});
+
+Deno.test("reconnect - outage emits one disconnect and one reconnect", async () => {
+  let ns = await NatsServer.start();
+  const nc = await connect({
+    port: ns.port,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+
+  const events: string[] = [];
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push(s.type);
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  await ns.stop();
+  // let a number of dial attempts fail
+  await delay(2000);
+  ns = await ns.restart();
+  await reconnected;
+  // allow any stray status from failed attempts to arrive
+  await delay(1000);
+
+  const count = (t: string) => events.filter((e) => e === t).length;
+  assertEquals(count("disconnect"), 1, events.join(","));
+  assertEquals(count("reconnect"), 1, events.join(","));
+  assert(count("reconnecting") > 1, events.join(","));
+
+  await nc.close();
+  await ns.stop();
 });

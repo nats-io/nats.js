@@ -38,6 +38,7 @@ import type {
 import {
   AckPolicy,
   DeliverPolicy,
+  DeliveryTracker,
   DiscardPolicy,
   JetStreamApiCodes,
   JetStreamApiError,
@@ -587,11 +588,11 @@ export class Bucket implements KV {
     );
   }
 
-  async create(k: string, data: Payload, markerTTL?: string): Promise<number> {
+  async create(k: string, data: Payload, ttl?: string): Promise<number> {
     let firstErr;
     try {
       const opts: Partial<KvPutOptions> = { previousSeq: 0 };
-      const n = await this._put(k, data, opts, markerTTL);
+      const n = await this._put(k, data, opts, ttl);
       return Promise.resolve(n);
     } catch (err) {
       firstErr = err;
@@ -610,7 +611,7 @@ export class Bucket implements KV {
       const e = await this.get(k);
       if (e?.operation === "DEL" || e?.operation === "PURGE") {
         rev = e !== null ? e.revision : 0;
-        return this._put(k, data, { previousSeq: rev }, markerTTL);
+        return this._put(k, data, { previousSeq: rev }, ttl);
       } else {
         return Promise.reject(firstErr);
       }
@@ -635,7 +636,7 @@ export class Bucket implements KV {
     k: string,
     data: Payload,
     opts: Partial<KvPutOptions> = {},
-    markerTTL?: string,
+    ttl?: string,
   ): Promise<number> {
     const ek = this.encodeKey(k);
     this.validateKey(ek);
@@ -648,9 +649,9 @@ export class Bucket implements KV {
       o.headers = h;
       h.set(PubHeaders.ExpectedLastSubjectSequenceHdr, `${opts.previousSeq}`);
     }
-    if (markerTTL) {
+    if (ttl) {
       const h = o.headers || headers();
-      h.set(PubHeaders.MessageTTL, markerTTL);
+      h.set(PubHeaders.MessageTTL, ttl);
     }
     try {
       const pa = await this.js.publish(this.subjectForKey(ek, true), data, o);
@@ -847,30 +848,33 @@ export class Bucket implements KV {
       return qi;
     }
 
+    const tracker = new DeliveryTracker(info.name);
+    const done = () => {
+      tracker.done = true;
+      qi.push(fn);
+    };
     const iter = await oc.consume({
       callback: (m) => {
+        tracker.received(m);
         const e = this.jmToWatchEntry(m, false);
         qi.push(e);
         qi.received++;
         if (m.info.pending === 0) {
-          qi.push(fn);
+          done();
         }
       },
     });
 
-    iter.closed().then(() => {
-      qi.push(fn);
+    iter.closed().then((err) => {
+      qi.push(() => {
+        qi.stop(tracker.closeError(err, "history incomplete"));
+      });
     });
 
     (async () => {
       for await (const s of iter.status()) {
-        switch (s.type) {
-          // if we get a heartbeat we got all the keys
-          case "heartbeat":
-            qi.push(() => {
-              qi.stop();
-            });
-            break;
+        if (tracker.isComplete(s)) {
+          done();
         }
       }
     })().then();
@@ -940,9 +944,9 @@ export class Bucket implements KV {
     qi.iterClosed.then(() => {
       iter.stop();
     });
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       qi.push(() => {
-        qi.stop();
+        qi.stop(err ? err : undefined);
       });
     });
 
@@ -964,35 +968,37 @@ export class Bucket implements KV {
 
     keys._data = oc;
 
+    const tracker = new DeliveryTracker(info.name);
+    // stopping the consumer closes the keys iterator (see closed below)
+    const done = () => {
+      tracker.done = true;
+      iter.stop();
+    };
     const iter = await oc.consume({
       callback: (m) => {
+        tracker.received(m);
         const op = m.headers?.get(kvOperationHdr);
         if (op !== "DEL" && op !== "PURGE") {
           const key = this.decodeKey(m.subject.substring(this.prefixLen));
           keys.push(key);
         }
         if (m.info.pending === 0) {
-          iter.stop();
+          done();
         }
       },
     });
 
     (async () => {
       for await (const s of iter.status()) {
-        switch (s.type) {
-          // if we get a heartbeat we got all the keys
-          case "heartbeat":
-            keys.push(() => {
-              keys.stop();
-            });
-            break;
+        if (tracker.isComplete(s)) {
+          done();
         }
       }
     })().then();
 
-    iter.closed().then(() => {
+    iter.closed().then((err) => {
       keys.push(() => {
-        keys.stop();
+        keys.stop(tracker.closeError(err, "keys incomplete"));
       });
     });
     keys.iterClosed.then(() => {

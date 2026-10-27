@@ -20,6 +20,17 @@ jobs:
     uses: ./.github/workflows/node_checks.yml
   test-unsafe:
     uses: ./.github/workflows/unsafe_checks.yml
+  docs-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.7.x
+      - name: Typecheck docs examples
+        run: deno check docs-io-nats-examples/*.ts
   coveralls-finish:
     needs: [test-deno, test-node, test-unsafe]
     runs-on: ubuntu-latest
