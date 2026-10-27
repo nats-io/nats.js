@@ -43,7 +43,7 @@ import {
 const defaultPrefix = "$JS.API";
 const defaultTimeout = 5000;
 
-export function parseJsResponse(m: Msg): unknown {
+export function parseJsResponse<T = unknown>(m: Msg): T {
   const v = JSON.parse(new TextDecoder().decode(m.data));
   const r = v as ApiResponse;
   if (r.error) {
@@ -60,7 +60,7 @@ export function parseJsResponse(m: Msg): unknown {
         throw new JetStreamApiError(r.error);
     }
   }
-  return v;
+  return v as T;
 }
 
 export function defaultJsOptions(opts?: JetStreamOptions): JetStreamOptions {
@@ -183,7 +183,7 @@ export class BaseApiClientImpl {
     return this.nc;
   }
 
-  parseJsResponse(m: Msg): unknown {
-    return parseJsResponse(m);
+  parseJsResponse<T = unknown>(m: Msg): T {
+    return parseJsResponse<T>(m);
   }
 }

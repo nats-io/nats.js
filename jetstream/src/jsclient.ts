@@ -283,7 +283,7 @@ export class JetStreamManagerImpl extends BaseApiClientImpl
           throw err;
         }
         try {
-          const d = this.parseJsResponse(msg) as ApiResponse;
+          const d = this.parseJsResponse<ApiResponse>(msg);
           const chunks = d.type.split(".");
           const kind = chunks[chunks.length - 1];
           iter.push({ kind: kind as AdvisoryKind, data: d });
@@ -481,7 +481,7 @@ export class JetStreamClientImpl extends BaseApiClientImpl
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<PubAck> {
     const r = await this._publish(subj, data, opts);
-    const pa = this.parseJsResponse(r) as PubAck;
+    const pa = this.parseJsResponse<PubAck>(r);
     if (pa.stream === "") {
       throw new JetStreamError("invalid ack response");
     }
@@ -583,7 +583,8 @@ export class BatchPublisherImpl implements Batch {
       timeout: opts.timeout || 0,
     });
 
-    const ack = r.json<BatchAck>();
+    // surfaces server errors (wrong last sequence, incomplete batch, ...)
+    const ack = this.js.parseJsResponse<BatchAck>(r);
     if (ack.count !== this.count) {
       throw new Error("batch didn't contain number of published messages");
     }
@@ -746,7 +747,7 @@ class FastIngestImpl implements FastIngest {
 
     let data: BatchAck | BatchFlowAck;
     try {
-      data = parseJsResponse(m) as BatchAck | BatchFlowAck;
+      data = parseJsResponse<BatchAck | BatchFlowAck>(m);
     } catch (err) {
       this.close(err as Error);
       return;
