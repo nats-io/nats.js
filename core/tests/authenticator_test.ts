@@ -551,3 +551,28 @@ Deno.test("authenticator - abandoned attempt aborts the signal", async () => {
   assertEquals(signal?.aborted, true);
   await cleanup(ns, nc);
 });
+
+Deno.test("authenticator - sync throw aborts a started async authenticator", async () => {
+  const ns = await NatsServer.start();
+  let signal: AbortSignal | undefined;
+  await assertRejects(
+    () =>
+      connect({
+        port: ns.port,
+        reconnect: false,
+        authenticator: [
+          (_nonce?: string, s?: AbortSignal) => {
+            signal = s;
+            return new Promise<Auth>(() => {});
+          },
+          () => {
+            throw new Error("sync failed");
+          },
+        ],
+      }),
+    Error,
+    "sync failed",
+  );
+  assertEquals(signal?.aborted, true);
+  await ns.stop();
+});

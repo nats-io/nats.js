@@ -947,8 +947,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       if (this.transport.isEncrypted()) {
         this.servers.updateTLSName();
       }
+      const ac = new AbortController();
       try {
-        const ac = new AbortController();
         const auth = typeof this.options.authenticator === "function"
           ? this.options.authenticator(info.nonce, ac.signal)
           : undefined;
@@ -985,6 +985,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         }
       } catch (err) {
         // if we are dying here, this is likely some an authenticator blowing up
+        // - cancel any async authenticator that already started (multi)
+        ac.abort();
         this.close(err as Error).catch();
       }
     }
