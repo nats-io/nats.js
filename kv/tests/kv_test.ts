@@ -145,7 +145,8 @@ Deno.test("kv - defaultBucketOpts returns expected defaults", () => {
   const opts = defaultBucketOpts();
   assertEquals(opts.replicas, 1);
   assertEquals(opts.history, 1);
-  assertEquals(opts.timeout, 2000);
+  // inherits the JetStream client's timeout
+  assertEquals(opts.timeout, undefined);
   assertEquals(opts.max_bytes, -1);
   assertEquals(opts.maxValueSize, -1);
   assertEquals(opts.storage, StorageType.File);

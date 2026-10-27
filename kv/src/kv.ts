@@ -40,6 +40,7 @@ import {
   DeliverPolicy,
   DeliveryTracker,
   DiscardPolicy,
+  jetstream,
   JetStreamApiCodes,
   JetStreamApiError,
   JsHeaders,
@@ -141,7 +142,6 @@ export function defaultBucketOpts(): Partial<KvOptions> {
   return {
     replicas: 1,
     history: 1,
-    timeout: 2000,
     max_bytes: -1,
     maxValueSize: -1,
     codec: NoopKvCodecs(),
@@ -249,11 +249,16 @@ export class Kvm {
         new Error(`kv is only supported on servers ${min} or better`),
       );
     }
+    // a bucket timeout gets its own client, otherwise the bucket inherits
+    const js = !opts.timeout ? this.js : jetstream(this.js.nc, {
+      ...this.js.getOptions(),
+      timeout: opts.timeout,
+    });
     if (opts.bindOnly) {
-      return Bucket.bind(this.js, name, opts);
+      return Bucket.bind(js, name, opts);
     }
 
-    return Bucket.create(this.js, name, opts);
+    return Bucket.create(js, name, opts);
   }
 
   /**

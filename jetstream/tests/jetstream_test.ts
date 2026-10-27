@@ -1350,10 +1350,15 @@ Deno.test("jetstream - jsm base timeout", async () => {
 
   nc.subscribe("test", { callback: () => {} });
 
-  async function req(c: JetStreamManager): Promise<number> {
+  async function req(
+    c: JetStreamManager,
+    timeout?: number,
+  ): Promise<number> {
     const start = Date.now();
     try {
-      await (c as unknown as BaseApiClientImpl)._request("test", Empty);
+      await (c as unknown as BaseApiClientImpl)._request("test", Empty, {
+        timeout,
+      });
     } catch (err) {
       assertIsError(err, Error, "timeout");
       return Date.now() - start;
@@ -1372,6 +1377,10 @@ Deno.test("jetstream - jsm base timeout", async () => {
 
   c = await jetstreamManager(nc, { timeout: 500, checkAPI: false });
   assertBetween(await req(c), 450, 600);
+
+  // a per-call timeout overrides the client's, shorter or longer
+  assertBetween(await req(c, 200), 150, 300);
+  assertBetween(await req(c, 900), 850, 1000);
 
   await cleanup(ns, nc);
 });
