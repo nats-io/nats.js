@@ -16,6 +16,7 @@
 import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
 import { type BatchPublisherImpl, jetstreamManager } from "../src/jsclient.ts";
 import { assertEquals, assertRejects } from "@std/assert";
+import { JetStreamApiError } from "../src/jserrors.ts";
 
 Deno.test("batch publisher - basics", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
@@ -66,8 +67,8 @@ Deno.test("batch publisher - out of sequence", async () => {
     () => {
       return bp.commit("q", "c");
     },
-    Error,
-    "batch didn't contain number of published messages",
+    JetStreamApiError,
+    "atomic publish batch is incomplete",
   );
 
   await cleanup(ns, nc);
@@ -131,19 +132,19 @@ Deno.test("batch publisher - expect last seq", async () => {
 
   const js = jsm.jetstream();
 
-  // this should have failed...
+  // the expectation is checked when the batch commits, so starting succeeds
   const b = await js.startBatch("a", "a", {
     expect: {
       lastSequence: 5,
     },
   });
-  // this fails but the message is doggy
+  // the server's error comes through
   await assertRejects(
     () => {
       return b.commit("a", "");
     },
-    Error,
-    "batch didn't contain number of published messages",
+    JetStreamApiError,
+    "wrong last sequence: 0",
   );
 
   await cleanup(ns, nc);
