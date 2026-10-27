@@ -71,6 +71,7 @@ export type MsgHdrsImpl = _MsgHdrsImpl;
 export type {
   Auth,
   Authenticator,
+  AuthenticatorPendingStatus,
   Backoff,
   BenchOpts,
   ClientPingStatus,

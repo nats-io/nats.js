@@ -666,6 +666,18 @@ const nc = await connect(
 );
 ```
 
+An `Authenticator` can also return a `Promise` (experimental, subject to change
+or removal) for credentials that can't be computed synchronously, such as
+signing the server's nonce with a non-extractable WebCrypto key. The promise
+must resolve within the server's `auth_timeout` (2 seconds by default, 1 second
+more than the TLS timeout with TLS), otherwise the server closes the connection.
+If that happens on a reconnect while the promise is pending, the client notifies
+an `authenticatorPending` status before the server's error; on the first
+connect, `connect()` rejects with the server's error. Two authentication errors
+in a row stop reconnecting unless `ignoreAuthErrorAbort` is set. Only do work in
+an async authenticator that depends on the nonce - fetch anything else before
+connecting.
+
 ### Flush
 
 Flush sends a `PING` protocol message to the server. When the server responds
@@ -800,6 +812,10 @@ status `type`s include:
 - `forceReconnect` - the client has been instructed to reconnect because of
   user-code (`reconnect()`)
 - `close` - the client has closed, no further reconnects will be attempted.
+- `authenticatorPending` (experimental) - the server rejected the connection
+  with an authorization error while an async authenticator was still pending
+  (likely the server's `auth_timeout` expired), `pending` is how long it had
+  been waiting in milliseconds.
 
 ```javascript
 const nc = await connect(opts);

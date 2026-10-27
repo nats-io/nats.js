@@ -30,6 +30,7 @@ import { Kind, Parser } from "./parser.ts";
 import { MsgImpl } from "./msg.ts";
 import { Features, parseSemVer } from "./semver.ts";
 import type {
+  Auth,
   ConnectionOptions,
   Dispatcher,
   FirstConnectFn,
@@ -51,6 +52,7 @@ import {
   DEFAULT_RECONNECT_TIME_WAIT,
 } from "./options.ts";
 import { errors, InvalidArgumentError } from "./errors.ts";
+import { isAsyncAuth } from "./authenticator.ts";
 
 import type {
   AuthorizationError,
@@ -101,7 +103,7 @@ export class Connect {
   constructor(
     transport: { version: string; lang: string },
     opts: ConnectionOptions,
-    nonce?: string,
+    auth?: Auth,
   ) {
     this.protocol = 1;
     this.version = transport.version;
@@ -111,12 +113,7 @@ export class Connect {
     this.pedantic = opts.pedantic;
     this.tls_required = opts.tls ? true : undefined;
     this.name = opts.name;
-
-    const creds =
-      (opts && typeof opts.authenticator === "function"
-        ? opts.authenticator(nonce)
-        : {}) || {};
-    extend(this, creds);
+    extend(this, auth || {});
   }
 }
 
@@ -396,6 +393,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   connected: boolean;
   connectedOnce: boolean;
   infoReceived: boolean;
+  // when an async authenticator started, 0 if none is pending
+  authPendingTs: number;
+  // aborts the pending async authenticator's attempt
+  authAbort?: AbortController;
   info?: ServerInfo;
   muxSubscriptions: MuxSubscription;
   options: ConnectionOptions;
@@ -437,6 +438,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
+    this.authPendingTs = 0;
     this.noMorePublishing = false;
     this.abortReconnect = false;
     // true keeps trying, a function decides after every failed dial
@@ -499,6 +501,13 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     });
     this.parser = new Parser(this);
     this.infoReceived = false;
+    this.abortAuth();
+  }
+
+  abortAuth(): void {
+    this.authPendingTs = 0;
+    this.authAbort?.abort();
+    this.authAbort = undefined;
   }
 
   dispatchStatus(status: Status): void {
@@ -875,6 +884,14 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       }
     }
 
+    // the server gave up on us while the authenticator was still working
+    if (err instanceof errors.AuthorizationError && this.authPendingTs) {
+      this.dispatchStatus({
+        type: "authenticatorPending",
+        server: this.servers.getCurrentServer().toString(),
+        pending: Date.now() - this.authPendingTs,
+      });
+    }
     this.dispatchStatus({ type: "error", error: err });
     this.handleError(err);
   }
@@ -930,24 +947,42 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       if (this.transport.isEncrypted()) {
         this.servers.updateTLSName();
       }
-      // send connect
-      const { version, lang } = this.transport;
       try {
-        const c = new Connect(
-          { version, lang },
-          this.options,
-          info.nonce,
-        );
-
-        if (info.headers) {
-          c.headers = true;
-          c.no_responders = true;
+        const ac = new AbortController();
+        const auth = typeof this.options.authenticator === "function"
+          ? this.options.authenticator(info.nonce, ac.signal)
+          : undefined;
+        if (isAsyncAuth(auth)) {
+          // the CONNECT goes out when the authenticator resolves, unless the
+          // attempt was abandoned in the meantime. an abort drops the
+          // transport and info, so an authenticator that never resolves
+          // doesn't keep them alive
+          let t: Transport | null = this.transport;
+          let i: ServerInfo | null = info;
+          ac.signal.addEventListener("abort", () => {
+            t = null;
+            i = null;
+          }, { once: true });
+          const stale = () =>
+            t === null || this.transport !== t || t.isClosed ||
+            this._closing || this.isClosed();
+          this.authPendingTs = Date.now();
+          this.authAbort = ac;
+          auth.then((a) => {
+            if (!stale()) {
+              this.authPendingTs = 0;
+              this.authAbort = undefined;
+              this.sendConnect(i!, a);
+            }
+          }).catch((err) => {
+            if (!stale()) {
+              this.abortAuth();
+              this.close(err as Error).catch();
+            }
+          });
+        } else {
+          this.sendConnect(info, auth);
         }
-        const cs = JSON.stringify(c);
-        this.transport.send(
-          encode(`CONNECT ${cs}${CR_LF}`),
-        );
-        this.transport.send(PING_CMD);
       } catch (err) {
         // if we are dying here, this is likely some an authenticator blowing up
         this.close(err as Error).catch();
@@ -967,6 +1002,20 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
         },
       );
     }
+  }
+
+  sendConnect(info: ServerInfo, auth?: Auth): void {
+    const { version, lang } = this.transport;
+    const c = new Connect({ version, lang }, this.options, auth);
+    if (info.headers) {
+      c.headers = true;
+      c.no_responders = true;
+    }
+    const cs = JSON.stringify(c);
+    this.transport.send(
+      encode(`CONNECT ${cs}${CR_LF}`),
+    );
+    this.transport.send(PING_CMD);
   }
 
   push(e: ParserEvent): void {
@@ -1162,6 +1211,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
       return;
     }
     this._closing = true;
+    this.abortAuth();
     // concurrent close() calls wait on closed - always resolve it
     try {
       this.whyClosed = new Error("close trace").stack || "";

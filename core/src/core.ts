@@ -69,6 +69,21 @@ export type CloseStatus = {
   type: "close";
 };
 
+/**
+ * Notified when the server rejected the connection with an authorization
+ * error while an async {@link Authenticator} had not yet resolved - typically
+ * the server's `auth_timeout` expired before the authenticator produced
+ * credentials. `pending` is how long (in millis) it had been waiting.
+ *
+ * Like async authenticators, this is experimental, and subject to change or
+ * removal.
+ */
+export type AuthenticatorPendingStatus = {
+  type: "authenticatorPending";
+  server: string;
+  pending: number;
+};
+
 export type Status =
   | DisconnectStatus
   | ReconnectStatus
@@ -80,7 +95,8 @@ export type Status =
   | StaleConnectionStatus
   | SlowConsumerStatus
   | ForceReconnectStatus
-  | CloseStatus;
+  | CloseStatus
+  | AuthenticatorPendingStatus;
 
 export type MsgCallback<T> = (
   err: Error | null,
@@ -909,10 +925,27 @@ export type Auth = NoAuth | TokenAuth | UserPass | NKeyAuth | JwtAuth;
 
 /**
  * Authenticator is an interface that returns credentials.
- * @type function(nonce?: string) => Auth
+ *
+ * Returning a Promise is experimental, and subject to change or removal.
+ * The authenticator can return a Promise for credentials that cannot be
+ * computed synchronously (such as signing the nonce with a non-extractable
+ * WebCrypto key). The promise must resolve within the server's `auth_timeout`
+ * (2 seconds by default, 1 second more than the TLS timeout with TLS),
+ * otherwise the server closes the connection. If that happens on a reconnect
+ * while the promise is pending, the client notifies an
+ * {@link AuthenticatorPendingStatus} before the server's error. On the first
+ * connect, `connect()` rejects with the server's error. Two auth errors in a
+ * row stop reconnecting unless {@link ConnectionOptions.ignoreAuthErrorAbort}
+ * is set.
+ *
+ * The `signal` is aborted when the connection attempt the authenticator was
+ * called for is abandoned (the client closed or moved on to another attempt).
+ * Pass it to any request the authenticator makes, so abandoned work is
+ * cancelled; a late result is ignored either way.
+ * @type function(nonce?: string, signal?: AbortSignal) => Auth | Promise<Auth>
  */
 export interface Authenticator {
-  (nonce?: string): Auth;
+  (nonce?: string, signal?: AbortSignal): Auth | Promise<Auth>;
 }
 
 export interface ConnectionOptions {

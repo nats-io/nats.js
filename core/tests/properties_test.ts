@@ -22,6 +22,7 @@ import {
 } from "@std/assert";
 
 import type {
+  Auth,
   Authenticator,
   ConnectionOptions,
   NatsConnectionImpl,
@@ -85,7 +86,7 @@ Deno.test("properties - configured token options", () => {
   const auth = fn();
   opts = extend(opts, auth);
 
-  const c = new Connect({ version: "1.0.0", lang: "lang" }, opts);
+  const c = new Connect({ version: "1.0.0", lang: "lang" }, opts, auth as Auth);
   const cc = JSON.parse(JSON.stringify(c));
 
   assertEquals(cc.verbose, opts.verbose);
@@ -107,7 +108,7 @@ Deno.test("properties - configured user/pass options", () => {
   const auth = fn();
   opts = extend(opts, auth);
 
-  const c = new Connect({ version: "1.0.0", lang: "lang" }, opts);
+  const c = new Connect({ version: "1.0.0", lang: "lang" }, opts, auth as Auth);
   const cc = JSON.parse(JSON.stringify(c));
 
   assertEquals(cc.user, opts.user);
@@ -132,7 +133,7 @@ Deno.test("properties - tls doesn't leak options", () => {
   const auth = fn() || {};
   po = extend(po, auth);
 
-  const c = new Connect({ version: "1.2.3", lang: "test" }, po);
+  const c = new Connect({ version: "1.2.3", lang: "test" }, po, auth as Auth);
   const cc = JSON.parse(JSON.stringify(c));
   assertEquals(cc.tls_required, true);
   assertEquals(cc.cert, undefined);
@@ -184,7 +185,12 @@ Deno.test("properties - multi", () => {
   opts = parseOptions(opts);
   assertExists(opts.authenticator);
 
-  const c = new Connect({ version: "1.0.0", lang: "lang" }, opts, "hello");
+  const fn = opts.authenticator as Authenticator;
+  const c = new Connect(
+    { version: "1.0.0", lang: "lang" },
+    opts,
+    fn("hello") as Auth,
+  );
   const cc = JSON.parse(JSON.stringify(c));
 
   assertEquals(cc.user, opts.user);
