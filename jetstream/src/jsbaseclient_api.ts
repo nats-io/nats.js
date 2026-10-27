@@ -130,7 +130,11 @@ export class BaseApiClientImpl {
     opts?: Partial<JetStreamApiRequestOptions>,
   ): Promise<unknown> {
     const { retries: r, minApiVersion, ...rest } = opts ?? {};
-    const reqOpts = { ...rest, timeout: this.timeout } as RequestOptions;
+    // a per-call timeout overrides the client's
+    const reqOpts = {
+      ...rest,
+      timeout: rest.timeout || this.timeout,
+    } as RequestOptions;
 
     let a: Uint8Array = Empty;
     if (data) {

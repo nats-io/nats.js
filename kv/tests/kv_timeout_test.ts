@@ -66,6 +66,9 @@ Deno.test("kv - bucket timeout applies to create, open, reads and writes", async
 
       const inherited = await kvm.open(name, { allow_direct });
       await check(() => inherited.get("key"), 4_000);
+      // 0 is the same as not setting it
+      const zero = await kvm.open(name, { allow_direct, timeout: 0 });
+      await check(() => zero.get("key"), 4_000);
       // Configuring one bucket must not change another or the shared client.
       await check(() => kv.get("key"), 1_000);
       assertEquals(js.getOptions(), options);
@@ -81,6 +84,20 @@ Deno.test("kv - bucket timeout preserves JetStream domain and API options", asyn
   const { ns, nc } = await setup(jetstreamServerConf({
     jetstream: { domain: "KVTIMEOUT" },
   }));
+  // a server with a domain still answers $JS.API locally, so check that the
+  // bucket's own client used the domain's prefix and the watcher prefix
+  const requested: string[] = [];
+  const subscribed: string[] = [];
+  const request = nc.request.bind(nc);
+  nc.request = (subject, data, opts) => {
+    requested.push(subject);
+    return request(subject, data, opts);
+  };
+  const subscribe = nc.subscribe.bind(nc);
+  nc.subscribe = (subject, opts) => {
+    subscribed.push(subject);
+    return subscribe(subject, opts);
+  };
   try {
     const js = jetstream(nc, {
       domain: "KVTIMEOUT",
@@ -103,7 +120,16 @@ Deno.test("kv - bucket timeout preserves JetStream domain and API options", asyn
     }
     assertEquals(entries, ["value"]);
     assertEquals(js.getOptions().timeout, 4_000);
+
+    const api = requested.filter((s) => s.startsWith("$JS."));
+    assert(api.length > 0);
+    for (const s of api) {
+      assert(s.startsWith("$JS.KVTIMEOUT.API."), s);
+    }
+    assert(subscribed.some((s) => s.startsWith("kv_watchers.")));
   } finally {
+    nc.request = request;
+    nc.subscribe = subscribe;
     await cleanup(ns, nc);
   }
 });

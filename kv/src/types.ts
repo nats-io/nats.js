@@ -266,7 +266,11 @@ export type KvStatus = KvLimits & {
 
 export type KvOptions = KvLimits & {
   /**
-   * How long to wait in milliseconds for a response from the KV
+   * How long to wait in milliseconds for a response from the KV. If not set,
+   * the KV uses the timeout of the JetStream client it was created with. A
+   * timeout on a put or update overrides it. When set, the KV's requests go
+   * through a new JetStream client with the same options, not the one the
+   * Kvm was created with.
    */
   timeout: number;
   /**
