@@ -412,6 +412,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   publisher: Publisher;
   _closed: boolean;
   _closing: boolean;
+  _draining: boolean;
   closed: Deferred<Error | void>;
   listeners: QueuedIteratorImpl<Status>[];
   heartbeats: Heartbeat;
@@ -438,6 +439,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
     this._closing = false;
+    this._draining = false;
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
@@ -1137,6 +1139,13 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     data: Payload,
     opts: { timeout: number; headers?: MsgHdrs },
   ): Promise<Msg> {
+    // the mux is closed or draining, so nothing would deliver the response
+    if (this._closed || this._closing) {
+      return Promise.reject(new errors.ClosedConnectionError());
+    }
+    if (this._draining) {
+      return Promise.reject(new errors.DrainingConnectionError());
+    }
     const trace = !(this.options?.noAsyncTraces || false);
     const r = new RequestOne(this.muxSubscriptions, subject, {
       timeout: opts.timeout,
@@ -1305,7 +1314,12 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     return this._closed;
   }
 
+  isDraining(): boolean {
+    return this._draining;
+  }
+
   async drain(): Promise<void> {
+    this._draining = true;
     const subs = this.subscriptions.all();
     const promises: Promise<void>[] = [];
     subs.forEach((sub: Subscription) => {

@@ -113,3 +113,84 @@ Deno.test("respondRequest - no responders", async () => {
   assertEquals(nci.protocol.muxSubscriptions.size(), 0);
   await cleanup(ns, nc);
 });
+
+Deno.test("respondRequest - closed connection", async () => {
+  const { ns, nc } = await setup();
+  const nci = nc as NatsConnectionImpl;
+  const svc = createInbox();
+  nc.subscribe(svc, {
+    callback: (_err, msg) => {
+      msg.respond();
+    },
+  });
+
+  const m = await msgWithReply(nc, svc);
+  await nc.close();
+  const start = Date.now();
+  await assertRejects(
+    () => m.respondRequest("", { timeout: 5000 }),
+    errors.ClosedConnectionError,
+  );
+  assert(Date.now() - start < 1000);
+  assertEquals(nci.protocol.muxSubscriptions.size(), 0);
+  await cleanup(ns);
+});
+
+Deno.test("respondRequest - draining connection", async () => {
+  const { ns, nc } = await setup();
+  const nci = nc as NatsConnectionImpl;
+  const svc = createInbox();
+  nc.subscribe(svc, {
+    callback: (_err, msg) => {
+      msg.respond();
+    },
+  });
+
+  const m = await msgWithReply(nc, svc);
+  const drained = nc.drain();
+  const start = Date.now();
+  await assertRejects(
+    () => m.respondRequest("", { timeout: 5000 }),
+    errors.DrainingConnectionError,
+  );
+  assert(Date.now() - start < 1000);
+  assertEquals(nci.protocol.muxSubscriptions.size(), 0);
+  await drained;
+  await cleanup(ns);
+});
+
+Deno.test("respondRequest - handler doesn't hold drain", async () => {
+  const { ns, nc } = await setup();
+  const svc = createInbox();
+  nc.subscribe(svc, {
+    callback: (_err, msg) => {
+      msg.respond();
+    },
+  });
+
+  const subj = createInbox();
+  const sub = nc.subscribe(subj);
+  const got = deferred<void>();
+  const handled = deferred<Error | null>();
+  (async () => {
+    for await (const m of sub) {
+      got.resolve();
+      // wait for the drain to start, then try to respond with a request
+      await nc.flush().catch(() => {});
+      await m.respondRequest("", { timeout: 5000 }).then(
+        () => handled.resolve(null),
+        (err) => handled.resolve(err),
+      );
+    }
+  })().then();
+  nc.publish(subj, "", { reply: svc });
+  await got;
+
+  const start = Date.now();
+  const drained = nc.drain();
+  const err = await handled;
+  assert(err instanceof errors.DrainingConnectionError);
+  await drained;
+  assert(Date.now() - start < 1000);
+  await cleanup(ns);
+});
