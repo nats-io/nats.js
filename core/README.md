@@ -499,6 +499,63 @@ await Promise.all(a);
 
 Run it and publish a request to the subject `echo` to see what happens.
 
+### Responding with a Request
+
+`respond()` publishes a reply and forgets about it. Sometimes the responder
+needs to know the requester got the reply, or needs more input from it. A
+message's `respondRequest()` publishes the reply as a request, and resolves with
+the first response to it. It rejects if no one responds within the `timeout`
+(default 2 seconds), if there are no responders, or if the message has no reply
+subject.
+
+The requester must expect a request on its reply subject (typically its inbox),
+and respond to it. A plain `request()` won't: it takes the reply as the
+response, and nothing answers the follow up. So `respondRequest()` is for custom
+protocols over NATS, where both sides agree the exchange takes more than one
+round trip: a reply that must be confirmed, or a responder that needs more
+input. JetStream's `ackAck()` is one: the client acks, and the server confirms
+it.
+
+```typescript
+import { connect, createInbox } from "@nats-io/transport-deno";
+
+const nc = await connect({ servers: "demo.nats.io" });
+
+// the worker hands out a job and waits for the requester to confirm it
+const sub = nc.subscribe("jobs", { max: 1 });
+const worker = (async () => {
+  for await (const m of sub) {
+    try {
+      const r = await m.respondRequest("job-42", { timeout: 5000 });
+      console.log(`requester confirmed: ${r.string()}`);
+    } catch (err) {
+      // timeout or no responders - the job wasn't taken, hand it out again
+      console.log(`job not confirmed: ${(err as Error).message}`);
+    }
+  }
+})();
+
+// the requester gets the job, itself a request, and confirms it
+const inbox = createInbox();
+nc.subscribe(inbox, {
+  max: 1,
+  callback: (_err, m) => {
+    console.log(`got ${m.string()}`);
+    m.respond("ok");
+  },
+});
+nc.publish("jobs", "", { reply: inbox });
+
+await worker;
+await nc.close();
+```
+
+If the requester uses an inbox dedicated to the job, that inbox can carry the
+rest of the exchange. For example, the worker replies with `respondRequest()` to
+say it is working on the job, and starts only once the requester confirms, so it
+knows someone is waiting. Status updates and the result can then be published to
+the same inbox.
+
 ## Advanced Usage
 
 ### Headers

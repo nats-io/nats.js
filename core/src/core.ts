@@ -637,6 +637,27 @@ export interface Msg {
   respond(payload?: Payload, opts?: PublishOptions): boolean;
 
   /**
+   * Convenience to publish a request to the {@link reply} subject in the
+   * message, resolving with the first response to it. Rejects if the message
+   * has no reply subject.
+   *
+   * The reply subject (typically the requester's inbox) must be handled by
+   * a subscriber that expects a request there, and responds to it. A
+   * requester using a plain `request()` won't: its reply is the response,
+   * and nothing answers the follow up, so this times out or rejects with no
+   * responders.
+   *
+   * This is useful when implementing custom protocols over NATS, where the
+   * response shares an inbox where the client can send additional message(s).
+   * @param payload
+   * @param opts - timeout defaults to 2000 millis
+   */
+  respondRequest(
+    payload?: Payload,
+    opts?: Partial<{ timeout: number; headers: MsgHdrs }>,
+  ): Promise<Msg>;
+
+  /**
    * Convenience method to parse the message payload as JSON. This method
    * will throw an exception if there's a parsing error;
    * @param reviver a reviver function
@@ -846,6 +867,22 @@ export interface Publisher {
     data: Payload,
     options?: { reply?: string; headers?: MsgHdrs },
   ): void;
+}
+
+/**
+ * internal: what a message can do back on the wire,
+ * `MsgImpl.respondRequest` narrows its publisher to this.
+ */
+export interface Replier extends Publisher {
+  /**
+   * publishes a request with a reply on the shared mux inbox,
+   * resolving on the first response.
+   */
+  pubRequest(
+    subject: string,
+    data: Payload,
+    opts: { timeout: number; headers?: MsgHdrs },
+  ): Promise<Msg>;
 }
 
 export function createInbox(prefix = ""): string {

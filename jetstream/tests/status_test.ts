@@ -54,6 +54,9 @@ Deno.test("js status - basics", async (t) => {
       respond: function () {
         return this.reply !== "";
       },
+      respondRequest: function () {
+        return Promise.reject(new Error("not implemented"));
+      },
       string: function () {
         return new TextDecoder().decode(this.data);
       },

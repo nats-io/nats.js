@@ -35,9 +35,11 @@ import type {
   Dispatcher,
   FirstConnectFn,
   Msg,
+  MsgHdrs,
   Payload,
   Publisher,
   PublishOptions,
+  Replier,
   Request,
   Server,
   ServerInfo,
@@ -53,6 +55,7 @@ import {
 } from "./options.ts";
 import { errors, InvalidArgumentError } from "./errors.ts";
 import { isAsyncAuth } from "./authenticator.ts";
+import { RequestOne } from "./request.ts";
 
 import type {
   AuthorizationError,
@@ -389,7 +392,7 @@ export class Subscriptions {
   }
 }
 
-export class ProtocolHandler implements Dispatcher<ParserEvent> {
+export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   connected: boolean;
   connectedOnce: boolean;
   infoReceived: boolean;
@@ -1127,6 +1130,31 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     this.initMux();
     this.muxSubscriptions.add(r);
     return r;
+  }
+
+  pubRequest(
+    subject: string,
+    data: Payload,
+    opts: { timeout: number; headers?: MsgHdrs },
+  ): Promise<Msg> {
+    const trace = !(this.options?.noAsyncTraces || false);
+    const r = new RequestOne(this.muxSubscriptions, subject, {
+      timeout: opts.timeout,
+    }, trace);
+    this.request(r);
+    try {
+      this.publish(subject, data, {
+        reply: `${this.muxSubscriptions.baseInbox}${r.token}`,
+        headers: opts.headers,
+      });
+    } catch (err) {
+      r.cancel(err as Error);
+    }
+    const p = Promise.race([r.timer, r.deferred]);
+    p.catch(() => {
+      r.cancel();
+    });
+    return p;
   }
 
   subscribe(s: SubscriptionImpl): Subscription {
