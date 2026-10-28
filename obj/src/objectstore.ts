@@ -420,6 +420,7 @@ export class ObjectStoreImpl implements ObjectStore {
       }
       const soi = m.json<ServerObjectInfo>();
       soi.revision = m.seq;
+      soi.mtime = m.time.toISOString();
       return soi;
     } catch (err) {
       return Promise.reject(err);
@@ -941,6 +942,7 @@ export class ObjectStoreImpl implements ObjectStore {
           isUpdate = i >= count;
         }
         const oi = jm.json<ObjectWatchInfo>();
+        oi.mtime = jm.timestamp;
         oi.isUpdate = isUpdate;
         if (oi.deleted && opts.ignoreDeletes === true) {
           // do nothing

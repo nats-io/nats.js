@@ -474,6 +474,124 @@ Deno.test("objectstore - list", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("objectstore - server modification time", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  try {
+    const os = await new Objm(nc).create("timestamps");
+    const js = jetstream(nc);
+    const jsm = await jetstreamManager(nc);
+    const expected = new Map<string, string>();
+    const timestamps = [
+      undefined,
+      "0001-01-01T00:00:00Z",
+      "2000-01-01T00:00:00Z",
+    ];
+    for (const [i, mtime] of timestamps.entries()) {
+      const name = `object-${i}`;
+      await os.putBlob({ name }, Empty);
+      const subject = `$O.timestamps.M.${Base64UrlPaddedCodec.encode(name)}`;
+      const original = await jsm.streams.getMessage("OBJ_timestamps", {
+        last_by_subj: subject,
+      });
+      assertExists(original);
+      const metadata = original.json<Record<string, unknown>>();
+      // ADR-20 does not require a stored mtime. Go writes its zero time, and
+      // older JavaScript clients can retain a stale time after metadata edits.
+      metadata.mtime = mtime;
+      const h = headers();
+      h.set("Nats-Rollup", "sub");
+      const ack = await js.publish(subject, JSON.stringify(metadata), {
+        headers: h,
+      });
+      const stored = await jsm.streams.getMessage("OBJ_timestamps", {
+        seq: ack.seq,
+      });
+      assertExists(stored);
+      expected.set(name, stored.time.toISOString());
+    }
+
+    for (const [name, mtime] of expected) {
+      const info = await os.info(name);
+      assertExists(info);
+      assertEquals(info.mtime, mtime, `info(${name})`);
+      const result = await os.get(name);
+      assertExists(result);
+      assertEquals(result.info.mtime, mtime, `get(${name})`);
+      assertEquals(await fromReadableStream(result.data), Empty);
+      assertEquals(await result.error, null);
+    }
+  } finally {
+    await cleanup(ns, nc);
+  }
+});
+
+Deno.test("objectstore - watch server modification time", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  try {
+    const os = await new Objm(nc).create("timestamps");
+    const js = jetstream(nc);
+    const jsm = await jetstreamManager(nc);
+    const name = "object";
+    await os.putBlob({ name }, Empty);
+    const subject = `$O.timestamps.M.${Base64UrlPaddedCodec.encode(name)}`;
+    const original = await jsm.streams.getMessage("OBJ_timestamps", {
+      last_by_subj: subject,
+    });
+    assertExists(original);
+    const metadata = original.json<Record<string, unknown>>();
+    metadata.mtime = "0001-01-01T00:00:00Z";
+    const h = headers();
+    h.set("Nats-Rollup", "sub");
+    await js.publish(subject, JSON.stringify(metadata), { headers: h });
+
+    const latestTime = async () => {
+      const stored = await jsm.streams.getMessage("OBJ_timestamps", {
+        last_by_subj: subject,
+      });
+      assertExists(stored);
+      return stored.time.toISOString();
+    };
+    const nextUpdate = async (includeHistory: boolean) => {
+      const iter = await os.watch({ includeHistory });
+      const update = (async () => {
+        for await (const entry of iter) {
+          return entry;
+        }
+      })();
+      return { iter, update };
+    };
+
+    const history = await nextUpdate(true);
+    const entry = await deadline(history.update, 5000);
+    assertExists(entry);
+    assertEquals(entry.mtime, await latestTime());
+    assertEquals(entry.name, name);
+    const listed = await os.list();
+    assertEquals(listed.length, 1);
+    assertEquals(listed[0].mtime, await latestTime());
+
+    for (const deleted of [false, true]) {
+      const live = await nextUpdate(false);
+      try {
+        if (deleted) {
+          await os.delete(name);
+        } else {
+          await os.update(name, { description: "updated" });
+        }
+        const entry = await deadline(live.update, 5000);
+        assertExists(entry);
+        assertEquals(entry.mtime, await latestTime());
+        assertEquals(entry.isUpdate, true);
+        assertEquals(entry.deleted, deleted);
+      } finally {
+        live.iter.stop();
+      }
+    }
+  } finally {
+    await cleanup(ns, nc);
+  }
+});
+
 Deno.test("objectstore - list no updates", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   if (await notCompatible(ns, nc, "2.6.3")) {
