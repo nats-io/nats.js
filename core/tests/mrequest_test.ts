@@ -20,7 +20,13 @@ import type {
 } from "../src/internal_mod.ts";
 import { createInbox, deferred, delay, Empty } from "../src/internal_mod.ts";
 
-import { assert, assertEquals, assertRejects, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  fail,
+} from "@std/assert";
 import { errors } from "../src/errors.ts";
 
 async function requestManyCount(noMux = false): Promise<void> {
@@ -512,7 +518,7 @@ Deno.test("mreq - no mux request no perms doesn't leak subs", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - request many tracing", async () => {
+async function requestManyTracing(noMux: boolean) {
   const { ns, nc } = await setup();
   const sub = nc.subscribe("foo", {
     callback: (_, m) => {
@@ -530,6 +536,7 @@ Deno.test("basics - request many tracing", async () => {
   let iter = await nc.requestMany("foo", Empty, {
     strategy: "stall",
     maxWait: 2_000,
+    noMux,
     traceDestination: "traces",
   });
   let count = 0;
@@ -541,6 +548,7 @@ Deno.test("basics - request many tracing", async () => {
   iter = await nc.requestMany("foo", Empty, {
     strategy: "stall",
     maxWait: 2_000,
+    noMux,
     traceDestination: "traces",
     traceOnly: true,
   });
@@ -555,5 +563,67 @@ Deno.test("basics - request many tracing", async () => {
   assertEquals(sub.getReceived(), 1);
   assertEquals(traces.getReceived(), 2);
 
+  await cleanup(ns, nc);
+}
+
+Deno.test("basics - request many tracing", async () => {
+  await requestManyTracing(false);
+});
+
+Deno.test("basics - request many tracing noMux", async () => {
+  await requestManyTracing(true);
+});
+
+async function requestManyNoRespondersStack(noMux = false): Promise<void> {
+  const { ns, nc } = await setup({});
+  const iter = await nc.requestMany(createInbox(), Empty, {
+    strategy: "timer",
+    maxWait: 2000,
+    noMux,
+  });
+  const err = await assertRejects(
+    async () => {
+      for await (const _m of iter) {
+        // nothing
+      }
+    },
+    errors.NoRespondersError,
+  );
+  // the stack points to the caller
+  assertStringIncludes(err.stack || "", "mrequest_test");
+  await cleanup(ns, nc);
+}
+
+Deno.test("mreq - no responders stack is useful", async () => {
+  await requestManyNoRespondersStack();
+});
+
+Deno.test("mreq - no responders stack is useful noMux", async () => {
+  await requestManyNoRespondersStack(true);
+});
+
+Deno.test("mreq - shared errors are not modified", async () => {
+  const { ns, nc } = await setup({});
+  const subj = createInbox();
+  nc.subscribe(subj, { callback: () => {} });
+  await nc.flush();
+
+  // closing the connection fails every pending request with one error
+  const iters = await Promise.all([
+    nc.requestMany(subj, Empty, { strategy: "timer", maxWait: 5000 }),
+    nc.requestMany(subj, Empty, { strategy: "timer", maxWait: 5000 }),
+  ]);
+  const errs = iters.map((iter) =>
+    (async () => {
+      for await (const _m of iter) {
+        // nothing
+      }
+    })().then(() => fail("should have failed"), (err) => err as Error)
+  );
+  await nc.close();
+  const [a, b] = await Promise.all(errs);
+  assert(a === b);
+  // nothing was appended to it by either request
+  assertEquals(a.stack?.split("\n\n").length, 1);
   await cleanup(ns, nc);
 });

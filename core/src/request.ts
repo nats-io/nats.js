@@ -21,7 +21,12 @@ import type {
   RequestManyOptions,
   RequestOptions,
 } from "./core.ts";
-import { errors, RequestError, TimeoutError } from "./errors.ts";
+import {
+  errors,
+  NoRespondersError,
+  RequestError,
+  TimeoutError,
+} from "./errors.ts";
 
 export class BaseRequest {
   token: string;
@@ -61,12 +66,17 @@ export class RequestMany extends BaseRequest implements Request {
   timer: number;
   max: number;
   opts: Partial<RequestManyOptionsInternal>;
+  noResponders?: NoRespondersError;
   constructor(
     mux: MuxSubscription,
     requestSubject: string,
     opts: Partial<RequestManyOptions> = { maxWait: 1000 },
   ) {
     super(mux, requestSubject);
+    if (this.ctx) {
+      // created here so its stack is the caller's
+      this.noResponders = new NoRespondersError(requestSubject);
+    }
     this.opts = opts;
     if (typeof this.opts.callback !== "function") {
       throw new TypeError("callback must be a function");
@@ -97,8 +107,9 @@ export class RequestMany extends BaseRequest implements Request {
 
   resolver(err: Error | null, msg: Msg): void {
     if (err) {
-      if (this.ctx) {
-        err.stack += `\n\n${this.ctx.stack}`;
+      // other errors are not ours to modify, they can be shared
+      if (err instanceof NoRespondersError && this.noResponders) {
+        err = this.noResponders;
       }
       this.cancel(err as Error);
     } else {

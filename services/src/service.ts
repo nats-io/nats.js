@@ -32,6 +32,7 @@ import type {
   Payload,
   PublishOptions,
   QueuedIterator,
+  RequestOptions,
   ReviverFn,
   Subscription,
 } from "@nats-io/nats-core/internal";
@@ -142,7 +143,7 @@ export class ServiceMsgImpl implements ServiceMsg {
 
   respondRequest(
     data?: Payload,
-    opts?: Partial<{ timeout: number; headers: MsgHdrs }>,
+    opts?: Partial<Omit<RequestOptions, "noMux" | "reply">>,
   ): Promise<Msg> {
     return this.msg.respondRequest(data, opts);
   }

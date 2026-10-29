@@ -23,6 +23,7 @@ import type {
   Publisher,
   Replier,
   RequestInfo,
+  RequestOptions,
   ReviverFn,
 } from "./core.ts";
 
@@ -91,7 +92,7 @@ export class MsgImpl implements Msg {
 
   respondRequest(
     data: Payload = Empty,
-    opts: Partial<{ timeout: number; headers: MsgHdrs }> = {},
+    opts: Partial<Omit<RequestOptions, "noMux" | "reply">> = {},
   ): Promise<Msg> {
     if (!this.reply) {
       return Promise.reject(
@@ -101,6 +102,8 @@ export class MsgImpl implements Msg {
     return (this.publisher as Replier).pubRequest(this.reply, data, {
       timeout: opts.timeout || 2000,
       headers: opts.headers,
+      traceDestination: opts.traceDestination,
+      traceOnly: opts.traceOnly,
     });
   }
 

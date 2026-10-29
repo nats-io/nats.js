@@ -654,7 +654,7 @@ export interface Msg {
    */
   respondRequest(
     payload?: Payload,
-    opts?: Partial<{ timeout: number; headers: MsgHdrs }>,
+    opts?: Partial<Omit<RequestOptions, "noMux" | "reply">>,
   ): Promise<Msg>;
 
   /**
@@ -881,7 +881,7 @@ export interface Replier extends Publisher {
   pubRequest(
     subject: string,
     data: Payload,
-    opts: { timeout: number; headers?: MsgHdrs },
+    opts: { timeout: number; headers?: MsgHdrs } & TraceOptions,
   ): Promise<Msg>;
 }
 

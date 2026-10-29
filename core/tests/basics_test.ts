@@ -26,6 +26,7 @@ import {
 import {
   collect,
   createInbox,
+  deadline,
   deferred,
   delay,
   Empty,
@@ -1789,7 +1790,7 @@ Deno.test("basics - publish tracing", async () => {
   await cleanup(ns, nc);
 });
 
-Deno.test("basics - request tracing", async () => {
+async function requestTracing(noMux: boolean) {
   const { ns, nc } = await setup();
   const sub = nc.subscribe("foo", {
     callback: (_, m) => {
@@ -1805,11 +1806,13 @@ Deno.test("basics - request tracing", async () => {
 
   await nc.request("foo", Empty, {
     timeout: 2_000,
+    noMux,
     traceDestination: "traces",
   });
   await assertRejects(() => {
     return nc.request("foo", Empty, {
       timeout: 2_000,
+      noMux,
       traceDestination: "traces",
       traceOnly: true,
     });
@@ -1819,6 +1822,98 @@ Deno.test("basics - request tracing", async () => {
   assertEquals(sub.getReceived(), 1);
   assertEquals(traces.getReceived(), 2);
 
+  await cleanup(ns, nc);
+}
+
+Deno.test("basics - request tracing", async () => {
+  await requestTracing(false);
+});
+
+Deno.test("basics - request tracing noMux", async () => {
+  await requestTracing(true);
+});
+
+Deno.test("basics - respond tracing", async () => {
+  const { ns, nc } = await setup();
+  nc.subscribe("foo", {
+    callback: (_, m) => {
+      m.respond(Empty, { traceDestination: "traces" });
+    },
+  });
+  const traces = nc.subscribe("traces", { callback: () => {}, max: 1 });
+  await nc.flush();
+
+  await nc.request("foo", Empty, { timeout: 2_000 });
+  await deadline(traces.closed, 2_000);
+  assertEquals(traces.getReceived(), 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - tracing doesn't modify the caller's headers", async () => {
+  const { ns, nc } = await setup();
+  const msgs: Msg[] = [];
+  nc.subscribe("foo", {
+    callback: (_err, m) => {
+      msgs.push(m);
+    },
+  });
+  const traces = nc.subscribe("traces", { callback: () => {}, max: 1 });
+  await nc.flush();
+
+  const h = headers();
+  h.set("a", "b");
+  const opts: PublishOptions = { headers: h, traceDestination: "traces" };
+  nc.publish("foo", Empty, opts);
+  assertEquals(opts.headers, h);
+  assertEquals(h.keys(), ["a"]);
+
+  // options without headers don't get any assigned
+  const opts2: PublishOptions = { traceDestination: "traces", traceOnly: true };
+  nc.publish("foo", Empty, opts2);
+  assertEquals(opts2.headers, undefined);
+
+  // reusing the headers doesn't trace
+  nc.publish("foo", Empty, { headers: h });
+  await nc.flush();
+  await deadline(traces.closed, 2_000);
+
+  assertEquals(msgs.length, 2);
+  assertEquals(msgs[0].headers?.get("a"), "b");
+  assertEquals(msgs[1].headers?.get("a"), "b");
+  assertEquals(msgs[1].headers?.has("Nats-Trace-Dest"), false);
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - traceOnly false doesn't trace", async () => {
+  const { ns, nc } = await setup();
+  const d = deferred<Msg>();
+  nc.subscribe("foo", { callback: (_err, m) => d.resolve(m), max: 1 });
+  await nc.flush();
+
+  nc.publish("foo", Empty, { traceOnly: false });
+  const m = await d;
+  assertEquals(m.headers, undefined);
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - pubRequest tracing", async () => {
+  const { ns, nc } = await setup();
+  const nci = nc as NatsConnectionImpl;
+  const sub = nc.subscribe("foo", {
+    callback: (_, m) => {
+      m.respond();
+    },
+  });
+  const traces = nc.subscribe("traces", { callback: () => {}, max: 1 });
+  await nc.flush();
+
+  await nci.protocol.pubRequest("foo", Empty, {
+    timeout: 2_000,
+    traceDestination: "traces",
+  });
+  await deadline(traces.closed, 2_000);
+  assertEquals(sub.getReceived(), 1);
+  assertEquals(traces.getReceived(), 1);
   await cleanup(ns, nc);
 });
 
