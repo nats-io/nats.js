@@ -881,7 +881,7 @@ export interface Replier extends Publisher {
   pubRequest(
     subject: string,
     data: Payload,
-    opts: { timeout: number; headers?: MsgHdrs },
+    opts: { timeout: number; headers?: MsgHdrs } & TraceOptions,
   ): Promise<Msg>;
 }
 

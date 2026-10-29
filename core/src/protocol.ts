@@ -21,7 +21,7 @@ import { DataBuffer } from "./databuffer.ts";
 import type { ServerImpl } from "./servers.ts";
 import { Servers } from "./servers.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
-import type { MsgHdrsImpl } from "./headers.ts";
+import { MsgHdrsImpl } from "./headers.ts";
 import { MuxSubscription } from "./muxsubscription.ts";
 import type { PH } from "./heartbeats.ts";
 import { Heartbeat } from "./heartbeats.ts";
@@ -46,6 +46,7 @@ import type {
   Status,
   Subscription,
   SubscriptionOptions,
+  TraceOptions,
 } from "./core.ts";
 
 import {
@@ -390,6 +391,30 @@ export class Subscriptions {
       sub.close();
     });
   }
+}
+
+// trace options are sent as headers - the caller's headers
+// are copied only when they need to be modified
+function traceHeaders(options?: PublishOptions): MsgHdrs | undefined {
+  const dest = typeof options?.traceDestination === "string";
+  const only = options?.traceOnly === true;
+  if (!dest && !only) {
+    return options?.headers;
+  }
+  const src = options?.headers as MsgHdrsImpl | undefined;
+  const h = new MsgHdrsImpl(src?._code, src?._description);
+  if (src) {
+    for (const [k, v] of src) {
+      h.headers.set(k, [...v]);
+    }
+  }
+  if (only) {
+    h.set("Nats-Trace-Only", "true");
+  }
+  if (dest) {
+    h.set("Nats-Trace-Dest", options!.traceDestination!);
+  }
+  return h;
 }
 
 export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
@@ -1086,20 +1111,19 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     }
 
     let len = data.length;
-    options = options || {};
-    options.reply = options.reply || "";
+    const reply = options?.reply || "";
+    const hdrs = traceHeaders(options);
 
     let headers = Empty;
     let hlen = 0;
-    if (options.headers) {
+    if (hdrs) {
       if (this.info && !this.info.headers) {
         InvalidArgumentError.format(
           "headers",
           "are not available on this server",
         );
       }
-      const hdrs = options.headers as MsgHdrsImpl;
-      headers = hdrs.encode();
+      headers = (hdrs as MsgHdrsImpl).encode();
       hlen = headers.length;
       len = data.length + hlen;
     }
@@ -1111,16 +1135,16 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     this.outMsgs++;
 
     let proto: string;
-    if (options.headers) {
-      if (options.reply) {
-        proto = `HPUB ${subject} ${options.reply} ${hlen} ${len}\r\n`;
+    if (hdrs) {
+      if (reply) {
+        proto = `HPUB ${subject} ${reply} ${hlen} ${len}\r\n`;
       } else {
         proto = `HPUB ${subject} ${hlen} ${len}\r\n`;
       }
       this.sendCommand(proto, headers, data, CRLF);
     } else {
-      if (options.reply) {
-        proto = `PUB ${subject} ${options.reply} ${len}\r\n`;
+      if (reply) {
+        proto = `PUB ${subject} ${reply} ${len}\r\n`;
       } else {
         proto = `PUB ${subject} ${len}\r\n`;
       }
@@ -1137,7 +1161,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   pubRequest(
     subject: string,
     data: Payload,
-    opts: { timeout: number; headers?: MsgHdrs },
+    opts: { timeout: number; headers?: MsgHdrs } & TraceOptions,
   ): Promise<Msg> {
     // the mux is closed or draining, so nothing would deliver the response
     if (this._closed || this._closing) {
@@ -1155,6 +1179,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       this.publish(subject, data, {
         reply: `${this.muxSubscriptions.baseInbox}${r.token}`,
         headers: opts.headers,
+        traceDestination: opts.traceDestination,
+        traceOnly: opts.traceOnly,
       });
     } catch (err) {
       r.cancel(err as Error);

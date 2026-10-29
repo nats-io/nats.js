@@ -16,7 +16,6 @@
 import { deferred } from "./util.ts";
 import { ProtocolHandler, SubscriptionImpl } from "./protocol.ts";
 import { Empty } from "./encoders.ts";
-import { headers } from "./headers.ts";
 
 import type { Features, SemVer } from "./semver.ts";
 import { parseSemVer } from "./semver.ts";
@@ -104,17 +103,6 @@ export class NatsConnectionImpl implements NatsConnection {
     this._check(subject, false, true);
     if (options?.reply) {
       this._check(options.reply, false, true);
-    }
-
-    if (typeof options?.traceOnly === "boolean") {
-      const hdrs = options.headers || headers();
-      hdrs.set("Nats-Trace-Only", "true");
-      options.headers = hdrs;
-    }
-    if (typeof options?.traceDestination === "string") {
-      const hdrs = options.headers || headers();
-      hdrs.set("Nats-Trace-Dest", options.traceDestination);
-      options.headers = hdrs;
     }
 
     this.protocol.publish(subject, data, options);
@@ -226,7 +214,10 @@ export class NatsConnectionImpl implements NatsConnection {
 
     if (opts.noMux) {
       // we setup a subscription and manage it
-      const stack = asyncTraces ? new Error().stack : null;
+      // created here so its stack is the caller's
+      const noResponders = asyncTraces
+        ? new errors.NoRespondersError(subject)
+        : null;
       let max = typeof opts.maxMessages === "number" && opts.maxMessages > 0
         ? opts.maxMessages
         : -1;
@@ -238,14 +229,10 @@ export class NatsConnectionImpl implements NatsConnection {
             msg?.data?.length === 0 &&
             msg?.headers?.status === "503"
           ) {
-            err = new errors.NoRespondersError(subject);
+            err = noResponders || new errors.NoRespondersError(subject);
           }
-          // augment any error with the current stack to provide context
-          // for the error in the user code
+          // other errors are not ours to modify, they can be shared
           if (err) {
-            if (stack) {
-              err.stack += `\n\n${stack}`;
-            }
             cancel(err);
             return;
           }
@@ -428,6 +415,8 @@ export class NatsConnectionImpl implements NatsConnection {
       this.protocol.publish(subject, data, {
         reply: inbox,
         headers: opts.headers,
+        traceDestination: opts.traceDestination,
+        traceOnly: opts.traceOnly,
       });
       return d;
     } else {
