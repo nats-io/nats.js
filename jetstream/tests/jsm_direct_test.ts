@@ -14,6 +14,7 @@
  */
 
 import {
+  assert,
   assertArrayIncludes,
   assertEquals,
   assertExists,
@@ -22,7 +23,7 @@ import {
   fail,
 } from "@std/assert";
 
-import { deferred, delay } from "@nats-io/nats-core";
+import { deferred, delay, errors, headers } from "@nats-io/nats-core";
 
 import {
   jetstream,
@@ -32,6 +33,7 @@ import {
   type StoredMsg,
 } from "../src/mod.ts";
 import {
+  assertBetween,
   cleanup,
   jetstreamServerConf,
   notCompatible,
@@ -44,6 +46,7 @@ import { JetStreamStatusError } from "../src/jserrors.ts";
 import type { JetStreamManagerImpl } from "../src/jsclient.ts";
 import type { DirectBatchOptions, DirectLastFor } from "../src/jsapi_types.ts";
 import type {
+  NatsConnection,
   NatsConnectionImpl,
   QueuedIteratorImpl,
 } from "@nats-io/nats-core/internal";
@@ -618,5 +621,290 @@ Deno.test("direct - get no messages", async () => {
   const m = await jsm.direct.getMessage("A", { last_by_subj: "a" });
   assertEquals(m, null);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - batch get honors api timeouts", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  // a silent direct get: requests are received but never answered
+  const payloads: Record<string, unknown>[] = [];
+  nc.subscribe("$JS.API.DIRECT.GET.silent", {
+    callback: (_, m) => {
+      payloads.push(m.json());
+    },
+  });
+  await nc.flush();
+
+  async function batch(
+    timeout: number,
+    perCall?: number,
+    last = false,
+  ): Promise<number> {
+    const jsm = await jetstreamManager(nc, { timeout, checkAPI: false });
+    const start = Date.now();
+    const iter = last
+      ? await jsm.direct.getLastMessagesFor("silent", {
+        multi_last: ["a"],
+        timeout: perCall,
+      })
+      : await jsm.direct.getBatch("silent", { seq: 1, timeout: perCall });
+    try {
+      for await (const _ of iter) {
+        // nothing
+      }
+    } catch (err) {
+      assertIsError(err, Error, "timeout");
+      return Date.now() - start;
+    }
+    throw new Error("should have failed");
+  }
+
+  // the client's timeout, not a fixed 5s
+  assertBetween(await batch(500), 450, 700);
+  assertBetween(await batch(500, undefined, true), 450, 700);
+  // a per-call timeout overrides it, shorter or longer
+  assertBetween(await batch(500, 200), 150, 400);
+  assertBetween(await batch(500, 900), 850, 1100);
+  // the timeout is not sent to the server
+  assert(payloads.length > 0);
+  for (const p of payloads) {
+    assertEquals(p.timeout, undefined);
+  }
+
+  await cleanup(ns, nc);
+});
+
+// replies 100ms apart, then stalls or ends the batch
+function slowDirect(
+  nc: NatsConnection,
+  stream: string,
+  count: number,
+  eob: boolean,
+): void {
+  nc.subscribe(`$JS.API.DIRECT.GET.${stream}`, {
+    callback: (_, m) => {
+      (async () => {
+        for (let i = 0; i < count; i++) {
+          await delay(100);
+          const h = headers();
+          h.set("Nats-Stream", stream);
+          h.set("Nats-Subject", "a");
+          h.set("Nats-Sequence", `${i + 1}`);
+          h.set("Nats-Time-Stamp", new Date().toISOString());
+          h.set("Nats-Num-Pending", `${count - i - 1}`);
+          nc.publish(m.reply!, `${i}`, { headers: h });
+        }
+        if (eob) {
+          nc.publish(m.reply!, undefined, { headers: headers(204, "EOB") });
+        }
+      })().catch(() => {
+        // the connection may close before the responder is done
+      });
+    },
+  });
+}
+
+Deno.test("direct - batch get timeout is per reply", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  slowDirect(nc, "slow", 10, true);
+  slowDirect(nc, "stall", 3, false);
+  await nc.flush();
+  const jsm = await jetstreamManager(nc, { timeout: 300, checkAPI: false });
+
+  // takes about a second, longer than the timeout, but never waits 300ms
+  let iter = await jsm.direct.getBatch("slow", { seq: 1 });
+  let n = 0;
+  for await (const _ of iter) {
+    n++;
+  }
+  assertEquals(n, 10);
+
+  // a stall after the third reply fails after the timeout
+  iter = await jsm.direct.getBatch("stall", { seq: 1 });
+  n = 0;
+  const start = Date.now();
+  try {
+    for await (const _ of iter) {
+      n++;
+    }
+    fail("should have timed out");
+  } catch (err) {
+    assertIsError(err, Error, "timeout");
+  }
+  assertEquals(n, 3);
+  assertBetween(Date.now() - start, 550, 900);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - batch get stall fails the callback", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  slowDirect(nc, "stall", 3, false);
+  await nc.flush();
+  const jsm = await jetstreamManager(nc, { timeout: 300, checkAPI: false });
+
+  const d = deferred<Error | undefined>();
+  let n = 0;
+  await jsm.direct.getBatch("stall", {
+    seq: 1,
+    callback: (done, _) => {
+      if (done) {
+        d.resolve(done.err);
+        return;
+      }
+      n++;
+    },
+  });
+  const err = await d;
+  assertIsError(err, Error, "timeout");
+  assertEquals(n, 3);
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - batch get timeout ends with the batch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  const jsm = await jetstreamManager(nc, { timeout: 2000 });
+  await jsm.streams.add({ name: "A", subjects: ["a"], allow_direct: true });
+  const js = jsm.jetstream();
+  await Promise.all([js.publish("a"), js.publish("a"), js.publish("a")]);
+  const subs = nci.protocol.subscriptions.size();
+  const reqs = nci.protocol.muxSubscriptions.size();
+
+  // the batch is complete when the server sends it, not when it is read
+  const iter = await jsm.direct.getBatch("A", { seq: 1 });
+  await delay(250);
+  assertEquals(nci.protocol.subscriptions.size(), subs);
+  assertEquals(nci.protocol.muxSubscriptions.size(), reqs);
+
+  let n = 0;
+  for await (const _ of iter) {
+    n++;
+  }
+  assertEquals(n, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - stopping a batch ends the request", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const nci = nc as NatsConnectionImpl;
+  slowDirect(nc, "slow", 10, true);
+  await nc.flush();
+  const jsm = await jetstreamManager(nc, { timeout: 2000, checkAPI: false });
+  const reqs = nci.protocol.muxSubscriptions.size();
+
+  const iter = await jsm.direct.getBatch("slow", { seq: 1 });
+  let n = 0;
+  // stopping is not a timeout
+  for await (const _ of iter) {
+    n++;
+    if (n === 2) {
+      break;
+    }
+  }
+  assertEquals(n, 2);
+  await delay(50);
+  assertEquals(nci.protocol.muxSubscriptions.size(), reqs);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - single reply is delivered", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  // a server that answers with a single message, no batch
+  nc.subscribe("$JS.API.DIRECT.GET.single", {
+    callback: (_, m) => {
+      const h = headers();
+      h.set("Nats-Stream", "single");
+      h.set("Nats-Subject", "a");
+      h.set("Nats-Sequence", "1");
+      h.set("Nats-Time-Stamp", new Date().toISOString());
+      m.respond("hello", { headers: h });
+    },
+  });
+  await nc.flush();
+  const jsm = await jetstreamManager(nc, { timeout: 1000, checkAPI: false });
+
+  const iter = await jsm.direct.getLastMessagesFor("single", {
+    multi_last: ["a"],
+  });
+  const buf: string[] = [];
+  for await (const m of iter) {
+    buf.push(m.string());
+  }
+  assertEquals(buf, ["hello"]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - stopping from the callback ends delivery", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.11.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"], allow_direct: true });
+  const js = jsm.jetstream();
+  for (let i = 0; i < 10; i++) {
+    await js.publish("a", `${i}`);
+  }
+
+  const calls: string[] = [];
+  const d = deferred();
+  const iter = await jsm.direct.getBatch("A", {
+    seq: 1,
+    callback: (done, sm) => {
+      if (done) {
+        calls.push(`done:${done.err}`);
+        d.resolve();
+        return;
+      }
+      calls.push(sm.string());
+      if (calls.length === 2) {
+        iter.stop();
+      }
+    },
+  });
+  await d;
+  await delay(100);
+  // done is the last callback, nothing is delivered after the stop
+  assertEquals(calls, ["0", "1", "done:undefined"]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct - batch no responders", async () => {
+  // no jetstream, so nothing answers the direct get
+  const { ns, nc } = await setup();
+  (nc as NatsConnectionImpl).features.update("2.11.0");
+  const jsm = await jetstreamManager(nc, { checkAPI: false });
+  const iter = await jsm.direct.getBatch("A", { seq: 1 });
+  await assertRejects(
+    async () => {
+      for await (const _ of iter) {
+        // nothing
+      }
+    },
+    errors.NoRespondersError,
+  );
   await cleanup(ns, nc);
 });

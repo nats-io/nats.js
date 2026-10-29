@@ -16,6 +16,8 @@ import { assert, assertEquals } from "@std/assert";
 
 import { jetstreamManager, type StoredMsg } from "../src/mod.ts";
 import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
+import { deferred, delay } from "@nats-io/nats-core";
+import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import {
   DirectConsumer,
   type DirectStartOptions,
@@ -155,5 +157,100 @@ Deno.test("direct consumer - consume", async () => {
   assertEquals(iter.getProcessed(), 100);
   assert(nexts > 100);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct consumer - no responders reports 503", async () => {
+  // no jetstream, so nothing answers the direct get
+  const { ns, nc } = await setup();
+  (nc as NatsConnectionImpl).features.update("2.12.0");
+
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
+  const code = deferred<number>();
+  (async () => {
+    for await (const s of dc.status()) {
+      if (s.type === "debug" && s.code !== 0) {
+        code.resolve(s.code);
+      }
+    }
+  })().catch();
+
+  const iter = await dc.consume({ batch: 10 });
+  assertEquals(await code, 503);
+  iter.stop();
+  await cleanup(ns, nc);
+});
+
+async function countPulls(
+  dc: DirectConsumer,
+  ms: number,
+): Promise<number> {
+  let nexts = 0;
+  (async () => {
+    for await (const s of dc.status()) {
+      if (s.type === "next") {
+        nexts++;
+      }
+    }
+  })().catch();
+  const iter = await dc.consume({ batch: 10 });
+  await delay(ms);
+  iter.stop();
+  return nexts;
+}
+
+Deno.test("direct consumer - empty stream doesn't spin", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"], allow_direct: true });
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
+  // the first pull finds nothing, the next waits
+  assertEquals(await countPulls(dc, 1000), 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct consumer - errors don't spin", async () => {
+  // no jetstream, so every pull fails
+  const { ns, nc } = await setup();
+  (nc as NatsConnectionImpl).features.update("2.12.0");
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
+  assertEquals(await countPulls(dc, 1000), 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("direct consumer - empty stream gets new messages", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"], allow_direct: true });
+  const dc = new DirectConsumer(
+    "A",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
+  const iter = await dc.consume({ batch: 10 });
+  await delay(250);
+  await jsm.jetstream().publish("a", "hello");
+  for await (const m of iter) {
+    assertEquals(m.string(), "hello");
+    break;
+  }
   await cleanup(ns, nc);
 });
