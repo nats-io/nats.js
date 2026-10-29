@@ -23,7 +23,7 @@ import { parseSemVer } from "./semver.ts";
 import { parseOptions } from "./options.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
 import type { RequestManyOptionsInternal } from "./request.ts";
-import { RequestMany, RequestOne } from "./request.ts";
+import { RequestMany, RequestManyEnd, RequestOne } from "./request.ts";
 
 import type {
   ConnectionClosedListener,
@@ -193,6 +193,16 @@ export class NatsConnectionImpl implements NatsConnection {
         InvalidArgumentError.format("timeout", "must be greater than 0"),
       );
     }
+    // timeout must be able to fire before maxWait
+    const inRange = (v: number) => v >= 1 && v < opts.maxWait!;
+    if (opts.timeout !== undefined && !inRange(opts.timeout)) {
+      return Promise.reject(
+        InvalidArgumentError.format(
+          "timeout",
+          "must be at least 1 and less than maxWait",
+        ),
+      );
+    }
 
     // the iterator for user results
     const qi = new QueuedIteratorImpl<Msg>();
@@ -218,9 +228,9 @@ export class NatsConnectionImpl implements NatsConnection {
       const noResponders = asyncTraces
         ? new errors.NoRespondersError(subject)
         : null;
-      let max = typeof opts.maxMessages === "number" && opts.maxMessages > 0
-        ? opts.maxMessages
-        : -1;
+      const end = new RequestManyEnd(opts, (err) => {
+        cancel(err);
+      }, asyncTraces);
 
       const sub = this.subscribe(createInbox(this.options.inboxPrefix), {
         callback: (err, msg) => {
@@ -239,32 +249,22 @@ export class NatsConnectionImpl implements NatsConnection {
           // push the message
           callback(null, msg);
           // see if the m request is completed
-          if (opts.strategy === "count") {
-            max--;
-            if (max === 0) {
-              cancel();
-            }
-          }
-          if (opts.strategy === "stall") {
-            clearTimers();
-            timer = setTimeout(() => {
-              cancel();
-            }, 300);
-          }
-          if (opts.strategy === "sentinel") {
-            if (msg && msg.data.length === 0) {
-              cancel();
-            }
-          }
+          end.msg(msg);
         },
       });
       (sub as SubscriptionImpl).requestSubject = subject;
 
       sub.closed
-        .then(() => {
-          stop();
+        .then((err) => {
+          end.stop();
+          // the connection closed under the request, same error as mux
+          if (!err && (this.protocol._closing || this.protocol.isClosed())) {
+            err = new errors.RequestError("connection closed");
+          }
+          stop(err || undefined);
         })
         .catch((err: Error) => {
+          end.stop();
           qi.stop(err);
         });
 
@@ -274,23 +274,19 @@ export class NatsConnectionImpl implements NatsConnection {
             throw err;
           });
         }
-        clearTimers();
-        sub.drain()
-          .then(() => {
-            stop();
-          })
-          .catch((_err: Error) => {
-            stop();
-          });
+        end.stop();
+        // unsubscribe (not drain) so responses in flight are not delivered
+        sub.unsubscribe();
+        stop();
       };
 
       qi.iterClosed
         .then(() => {
-          clearTimers();
+          end.stop();
           sub?.unsubscribe();
         })
         .catch((_err) => {
-          clearTimers();
+          end.stop();
           sub?.unsubscribe();
         });
 
@@ -303,18 +299,11 @@ export class NatsConnectionImpl implements NatsConnection {
           traceOnly,
         });
       } catch (err) {
-        cancel(err as Error);
+        // the request was never sent
+        sub.unsubscribe();
+        return Promise.reject(err);
       }
-
-      let timer = setTimeout(() => {
-        cancel();
-      }, opts.maxWait);
-
-      const clearTimers = () => {
-        if (timer) {
-          clearTimeout(timer);
-        }
-      };
+      end.start();
     } else {
       // the ingestion is the RequestMany
       const rmo = opts as RequestManyOptionsInternal;
@@ -326,7 +315,12 @@ export class NatsConnectionImpl implements NatsConnection {
         r.cancel(err);
       });
 
-      const r = new RequestMany(this.protocol.muxSubscriptions, subject, rmo);
+      const r = new RequestMany(
+        this.protocol.muxSubscriptions,
+        subject,
+        rmo,
+        asyncTraces,
+      );
       this.protocol.request(r);
 
       const { headers, traceDestination, traceOnly } = opts;
@@ -343,7 +337,9 @@ export class NatsConnectionImpl implements NatsConnection {
           },
         );
       } catch (err) {
-        r.cancel(err as Error);
+        // the request was never sent
+        r.cancel();
+        return Promise.reject(err);
       }
     }
 

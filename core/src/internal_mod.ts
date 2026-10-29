@@ -125,6 +125,7 @@ export type {
   RequestOptions,
   RequestStrategy,
   ReviverFn,
+  SentinelFn,
   Server,
   ServerErrorStatus,
   ServerInfo,
