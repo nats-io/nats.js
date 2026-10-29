@@ -35,9 +35,11 @@ import type {
   Dispatcher,
   FirstConnectFn,
   Msg,
+  MsgHdrs,
   Payload,
   Publisher,
   PublishOptions,
+  Replier,
   Request,
   Server,
   ServerInfo,
@@ -53,6 +55,7 @@ import {
 } from "./options.ts";
 import { errors, InvalidArgumentError } from "./errors.ts";
 import { isAsyncAuth } from "./authenticator.ts";
+import { RequestOne } from "./request.ts";
 
 import type {
   AuthorizationError,
@@ -389,7 +392,7 @@ export class Subscriptions {
   }
 }
 
-export class ProtocolHandler implements Dispatcher<ParserEvent> {
+export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   connected: boolean;
   connectedOnce: boolean;
   infoReceived: boolean;
@@ -409,6 +412,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   publisher: Publisher;
   _closed: boolean;
   _closing: boolean;
+  _draining: boolean;
   closed: Deferred<Error | void>;
   listeners: QueuedIteratorImpl<Status>[];
   heartbeats: Heartbeat;
@@ -435,6 +439,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
   constructor(options: ConnectionOptions, publisher: Publisher) {
     this._closed = false;
     this._closing = false;
+    this._draining = false;
     this.connected = false;
     this.connectedOnce = false;
     this.infoReceived = false;
@@ -1129,6 +1134,38 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return r;
   }
 
+  pubRequest(
+    subject: string,
+    data: Payload,
+    opts: { timeout: number; headers?: MsgHdrs },
+  ): Promise<Msg> {
+    // the mux is closed or draining, so nothing would deliver the response
+    if (this._closed || this._closing) {
+      return Promise.reject(new errors.ClosedConnectionError());
+    }
+    if (this._draining) {
+      return Promise.reject(new errors.DrainingConnectionError());
+    }
+    const trace = !(this.options?.noAsyncTraces || false);
+    const r = new RequestOne(this.muxSubscriptions, subject, {
+      timeout: opts.timeout,
+    }, trace);
+    this.request(r);
+    try {
+      this.publish(subject, data, {
+        reply: `${this.muxSubscriptions.baseInbox}${r.token}`,
+        headers: opts.headers,
+      });
+    } catch (err) {
+      r.cancel(err as Error);
+    }
+    const p = Promise.race([r.timer, r.deferred]);
+    p.catch(() => {
+      r.cancel();
+    });
+    return p;
+  }
+
   subscribe(s: SubscriptionImpl): Subscription {
     this.subscriptions.add(s);
     this._subunsub(s);
@@ -1277,7 +1314,12 @@ export class ProtocolHandler implements Dispatcher<ParserEvent> {
     return this._closed;
   }
 
+  isDraining(): boolean {
+    return this._draining;
+  }
+
   async drain(): Promise<void> {
+    this._draining = true;
     const subs = this.subscriptions.all();
     const promises: Promise<void>[] = [];
     subs.forEach((sub: Subscription) => {

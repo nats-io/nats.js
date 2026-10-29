@@ -140,6 +140,13 @@ export class ServiceMsgImpl implements ServiceMsg {
     return this.msg.respond(data, opts);
   }
 
+  respondRequest(
+    data?: Payload,
+    opts?: Partial<{ timeout: number; headers: MsgHdrs }>,
+  ): Promise<Msg> {
+    return this.msg.respondRequest(data, opts);
+  }
+
   respondError(
     code: number,
     description: string,

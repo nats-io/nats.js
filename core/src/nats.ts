@@ -52,11 +52,9 @@ const whitespaceRegex = /[ \n\r\t]/;
 export class NatsConnectionImpl implements NatsConnection {
   options: ConnectionOptions;
   protocol!: ProtocolHandler;
-  draining: boolean;
   closeListeners?: CloseListeners;
 
   private constructor(opts: ConnectionOptions) {
-    this.draining = false;
     this.options = parseOptions(opts);
   }
 
@@ -484,7 +482,6 @@ export class NatsConnectionImpl implements NatsConnection {
     if (this.isDraining()) {
       return Promise.reject(new errors.DrainingConnectionError());
     }
-    this.draining = true;
     return this.protocol.drain();
   }
 
@@ -504,7 +501,7 @@ export class NatsConnectionImpl implements NatsConnection {
   }
 
   isDraining(): boolean {
-    return this.draining;
+    return this.protocol.isDraining();
   }
 
   getServer(): string {

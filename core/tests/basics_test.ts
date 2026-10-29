@@ -1716,6 +1716,10 @@ class MM implements Msg {
     return this.respond(m.data, { headers: m.headers, reply: m.reply });
   }
 
+  respondRequest(): Promise<Msg> {
+    return Promise.reject(new Error("not implemented"));
+  }
+
   string(): string {
     return "";
   }

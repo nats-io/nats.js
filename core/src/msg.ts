@@ -15,11 +15,13 @@
 import { MsgHdrsImpl } from "./headers.ts";
 import type { MsgArg } from "./parser.ts";
 import { Empty, TD } from "./encoders.ts";
+import { InvalidArgumentError } from "./errors.ts";
 import type {
   Msg,
   MsgHdrs,
   Payload,
   Publisher,
+  Replier,
   RequestInfo,
   ReviverFn,
 } from "./core.ts";
@@ -85,6 +87,21 @@ export class MsgImpl implements Msg {
       return true;
     }
     return false;
+  }
+
+  respondRequest(
+    data: Payload = Empty,
+    opts: Partial<{ timeout: number; headers: MsgHdrs }> = {},
+  ): Promise<Msg> {
+    if (!this.reply) {
+      return Promise.reject(
+        InvalidArgumentError.format("reply", "is required"),
+      );
+    }
+    return (this.publisher as Replier).pubRequest(this.reply, data, {
+      timeout: opts.timeout || 2000,
+      headers: opts.headers,
+    });
   }
 
   size(): number {

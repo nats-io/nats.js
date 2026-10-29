@@ -16,8 +16,6 @@
 import type {
   Msg,
   MsgHdrs,
-  MsgImpl,
-  ProtocolHandler,
   RequestOptions,
   ReviverFn,
 } from "@nats-io/nats-core/internal";
@@ -26,7 +24,6 @@ import {
   deferred,
   millis,
   nanos,
-  RequestOne,
 } from "@nats-io/nats-core/internal";
 import type { DeliveryInfo, PullOptions } from "./jsapi_types.ts";
 
@@ -273,8 +270,6 @@ export class JsMsgImpl implements JsMsg {
       p[2] === WPI[2] && p[3] === WPI[3];
   }
 
-  // this has to dig into the internals as the message has access
-  // to the protocol but not the high-level client.
   async ackAck(opts?: Partial<{ timeout: number }>): Promise<boolean> {
     const d = deferred<boolean>();
     if (!this.didAck) {
@@ -282,29 +277,10 @@ export class JsMsgImpl implements JsMsg {
       if (this.msg.reply) {
         opts = opts || {};
         opts.timeout = opts.timeout || this.timeout;
-        const mi = this.msg as MsgImpl;
-        const proto = mi.publisher as unknown as ProtocolHandler;
-        const trace = !(proto.options?.noAsyncTraces || false);
-        const r = new RequestOne(proto.muxSubscriptions, this.msg.reply, {
-          timeout: opts.timeout,
-        }, trace);
-        proto.request(r);
         try {
-          proto.publish(
-            this.msg.reply,
-            ACK,
-            {
-              reply: `${proto.muxSubscriptions.baseInbox}${r.token}`,
-            },
-          );
-        } catch (err) {
-          r.cancel(err as Error);
-        }
-        try {
-          await Promise.race([r.timer, r.deferred]);
+          await this.msg.respondRequest(ACK, { timeout: opts.timeout });
           d.resolve(true);
         } catch (err) {
-          r.cancel(err as Error);
           d.reject(err);
         }
       } else {
