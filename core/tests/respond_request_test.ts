@@ -19,7 +19,12 @@ import type {
   NatsConnection,
   NatsConnectionImpl,
 } from "../src/internal_mod.ts";
-import { createInbox, deferred, headers } from "../src/internal_mod.ts";
+import {
+  createInbox,
+  deadline,
+  deferred,
+  headers,
+} from "../src/internal_mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { errors } from "../src/errors.ts";
 
@@ -193,4 +198,22 @@ Deno.test("respondRequest - handler doesn't hold drain", async () => {
   await drained;
   assert(Date.now() - start < 1000);
   await cleanup(ns);
+});
+
+Deno.test("respondRequest - tracing", async () => {
+  const { ns, nc } = await setup();
+  const svc = createInbox();
+  nc.subscribe(svc, {
+    callback: (_err, msg) => {
+      msg.respond();
+    },
+  });
+  const traces = nc.subscribe("traces", { callback: () => {}, max: 1 });
+  await nc.flush();
+
+  const m = await msgWithReply(nc, svc);
+  await m.respondRequest("", { traceDestination: "traces" });
+  await deadline(traces.closed, 2_000);
+  assertEquals(traces.getReceived(), 1);
+  await cleanup(ns, nc);
 });

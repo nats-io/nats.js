@@ -654,7 +654,7 @@ export interface Msg {
    */
   respondRequest(
     payload?: Payload,
-    opts?: Partial<{ timeout: number; headers: MsgHdrs }>,
+    opts?: Partial<Omit<RequestOptions, "noMux" | "reply">>,
   ): Promise<Msg>;
 
   /**
