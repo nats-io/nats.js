@@ -376,12 +376,42 @@ export interface RequestOptions extends TraceOptions {
 
 export type RequestStrategy = "timer" | "count" | "stall" | "sentinel";
 
+/**
+ * A custom request many strategy. Called for every response after it
+ * is delivered. Return true to continue, false to end the request, or
+ * an Error to end the request with that error.
+ */
+export type SentinelFn = (msg: Msg) => boolean | Error;
+
 export interface RequestManyOptions extends TraceOptions {
-  strategy: RequestStrategy;
+  /**
+   * Ends the request early, before maxWait. A {@link SentinelFn} or an
+   * array of them (run in order, the first that doesn't return true ends
+   * the request) can implement custom protocols.
+   */
+  strategy: RequestStrategy | SentinelFn | SentinelFn[];
+  /**
+   * The upper bound in millis for the request, it ends when this expires.
+   * Defaults to 1000. Infinity removes the bound, the request then ends
+   * only by the strategy, stall, an error or stopping the iterator.
+   */
   maxWait: number;
+  /**
+   * If set, the first response must arrive within this many millis,
+   * otherwise the request fails with a TimeoutError. It doesn't end the
+   * request once responses arrive. Must be less than maxWait.
+   */
+  timeout?: number;
   headers?: MsgHdrs;
   maxMessages?: number;
   noMux?: boolean;
+  /**
+   * If set, after each response the request ends if no other response
+   * arrives within this many millis. Works with any strategy, and never
+   * extends the request past maxWait. A stall of 0 or less, or not less
+   * than maxWait, is ignored. The "stall" strategy defaults to 300,
+   * which is also used if its stall is 0 or less.
+   */
   stall?: number;
 }
 
