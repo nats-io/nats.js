@@ -41,9 +41,12 @@ export interface ServiceMsg extends Msg {
  * settles is never counted.
  *
  * If the handler throws or its promise rejects, an error reply is sent: the
- * code and description of a {@link ServiceError}, or code 500 and the error's
- * message for any other error. Throw a ServiceError for messages meant for the
- * client, and catch errors yourself to reply differently.
+ * code and description of a {@link ServiceError}, or code 500 and
+ * "internal error" for any other error. Throw a ServiceError, or use
+ * respondError, for errors meant for the client.
+ *
+ * Any other error is a runtime error: its details are internal, so they are
+ * only recorded in the endpoint's stats (last_error).
  */
 export type ServiceHandler = (err: Error | null, msg: ServiceMsg) => void;
 /**

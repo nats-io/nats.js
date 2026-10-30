@@ -341,8 +341,11 @@ Deno.test("service - callback error", async () => {
   });
 
   const m = await nc.request("fail");
-  assertEquals(m.headers?.get(ServiceErrorHeader), "boom");
+  // runtime errors are not sent, they are in the stats
+  assertEquals(m.headers?.get(ServiceErrorHeader), "internal error");
   assertEquals(m.headers?.get(ServiceErrorCodeHeader), "500");
+  const stats = await srv.stats();
+  assertEquals(stats.endpoints![0].last_error, "boom");
 
   await cleanup(ns, nc);
 });
@@ -1573,7 +1576,7 @@ Deno.test("service - async handler rejection is counted and answered", async () 
   assertEquals(r.headers?.get(ServiceErrorHeader), "bad input");
   const r2 = await nc.request("boom");
   assertEquals(r2.headers?.get(ServiceErrorCodeHeader), "500");
-  assertEquals(r2.headers?.get(ServiceErrorHeader), "boom");
+  assertEquals(r2.headers?.get(ServiceErrorHeader), "internal error");
 
   const stats = await srv.stats();
   const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
@@ -1582,6 +1585,73 @@ Deno.test("service - async handler rejection is counted and answered", async () 
   assertEquals(ep("bad").last_error, "bad input");
   assertEquals(ep("boom").num_errors, 1);
   assertEquals(ep("boom").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - handlers failing with non-errors are counted and answered", async () => {
+  const { ns, nc } = await setup();
+  const unhandled: unknown[] = [];
+  const onRejection = (e: PromiseRejectionEvent) => {
+    unhandled.push(e.reason);
+    e.preventDefault();
+  };
+  globalThis.addEventListener("unhandledrejection", onRejection);
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("undefined", async () => {
+    await Promise.reject();
+  });
+  srv.addEndpoint("null", async () => {
+    await Promise.reject(null);
+  });
+  srv.addEndpoint("string", async () => {
+    await Promise.reject("bad thing");
+  });
+  srv.addEndpoint("sync", () => {
+    throw "sync bad thing";
+  });
+  srv.addEndpoint("unprintable", async () => {
+    await Promise.reject(Object.create(null));
+  });
+  // a named handler is reported, no queue isn't
+  async function namedHandler(): Promise<void> {
+    await Promise.reject("named bad thing");
+  }
+  srv.addEndpoint("named", { handler: namedHandler, queue: "" });
+
+  const m = (
+    name: string,
+    how: string,
+    q = ', queue "q"',
+    fn = "",
+  ) => `endpoint "${name}" (${name}${q}) handler${fn} ${how}`;
+  const expected: Record<string, string> = {
+    undefined: m("undefined", "rejected with undefined"),
+    null: m("null", "rejected with null"),
+    string: m("string", 'rejected with "bad thing"'),
+    sync: m("sync", 'threw "sync bad thing"'),
+    unprintable: m("unprintable", "rejected with an unprintable value"),
+    named: m("named", 'rejected with "named bad thing"', "", " namedHandler"),
+  };
+  for (const name of Object.keys(expected)) {
+    const r = await nc.request(name);
+    assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+    // details are internal, they are only in the stats
+    assertEquals(r.headers?.get(ServiceErrorHeader), "internal error");
+  }
+
+  const stats = await srv.stats();
+  for (const [name, message] of Object.entries(expected)) {
+    const ep = stats.endpoints!.find((e) => e.name === name)!;
+    assertEquals(ep.num_requests, 1);
+    assertEquals(ep.num_errors, 1);
+    assertEquals(ep.last_error, message);
+  }
+  await delay(20);
+  globalThis.removeEventListener("unhandledrejection", onRejection);
+  assertEquals(unhandled, []);
 
   await cleanup(ns, nc);
 });
@@ -1665,7 +1735,7 @@ Deno.test("service - a request gets at most one error response", async () => {
   for (const subj of ["data-sync", "data-async"]) {
     const r = await replies(subj);
     assertEquals(r.map((m) => m.string()), ["a", "b", ""], subj);
-    assertEquals(r.map(errorOf), ["", "", "boom"], subj);
+    assertEquals(r.map(errorOf), ["", "", "internal error"], subj);
   }
   for (const subj of ["error-sync", "error-async"]) {
     const r = await replies(subj);
@@ -1730,7 +1800,7 @@ Deno.test("service - multi-line error descriptions are sent on one line", async 
   const svc = new Svcm(nc);
   const srv = await svc.add({ name: "example", version: "0.0.1" });
   srv.addEndpoint("sync", () => {
-    throw new Error("line one\nline two");
+    throw new ServiceError(400, "line one\nline two");
   });
   srv.addEndpoint("async", async () => {
     await delay(10);
