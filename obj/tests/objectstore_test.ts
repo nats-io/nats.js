@@ -1935,6 +1935,39 @@ Deno.test("os - get fails if the connection closes mid-read", async () => {
   await ns.stop().catch(() => {});
 });
 
+Deno.test("os - get fails if the chunks are missing", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const os = await new Objm(nc).create("missing");
+  await os.putBlob({ name: "value" }, new Uint8Array([1, 2, 3]));
+  const impl = os as ObjectStoreImpl;
+  await impl.jsm.streams.purge(impl.stream, {
+    filter: "$O.missing.C.>",
+  });
+
+  const r = await os.get("value");
+  assertExists(r);
+  // settles right away, not after an idle heartbeat
+  const start = Date.now();
+  await assertRejects(
+    async () => {
+      for await (const _ of r.data) {
+        // nothing
+      }
+    },
+    Error,
+    "object read incomplete",
+  );
+  assertIsError(await r.error, Error, "object read incomplete");
+  assert(Date.now() - start < 5000);
+  await assertRejects(
+    () => os.getBlob("value"),
+    Error,
+    "object read incomplete",
+  );
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("os - list and get complete", async () => {
   const { ns, nc, os } = await bigOs();
   const data = makeData(4 * 1024 * 1024);
