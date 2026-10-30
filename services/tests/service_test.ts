@@ -1635,7 +1635,7 @@ Deno.test("service - handlers failing with non-errors are counted and answered",
     unprintable: m("unprintable", "rejected with an unprintable value"),
     named: m("named", 'rejected with "named bad thing"', "", " namedHandler"),
   };
-  for (const [name, message] of Object.entries(expected)) {
+  for (const name of Object.keys(expected)) {
     const r = await nc.request(name);
     assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
     // details are internal, they are only in the stats
