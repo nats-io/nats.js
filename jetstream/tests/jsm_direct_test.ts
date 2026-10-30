@@ -24,6 +24,7 @@ import {
 } from "@std/assert";
 
 import { deferred, delay, errors, headers } from "@nats-io/nats-core";
+import type { Delay } from "@nats-io/nats-core";
 
 import {
   jetstream,
@@ -684,11 +685,22 @@ function slowDirect(
   count: number,
   eob: boolean,
 ): void {
+  // the test can end before the responder is done - don't leak its timers
+  const pending = new Set<Delay>();
+  nc.closed().then(() => {
+    pending.forEach((d) => d.cancel());
+  });
   nc.subscribe(`$JS.API.DIRECT.GET.${stream}`, {
     callback: (_, m) => {
       (async () => {
         for (let i = 0; i < count; i++) {
-          await delay(100);
+          const d = delay(100);
+          pending.add(d);
+          await d;
+          pending.delete(d);
+          if (nc.isClosed()) {
+            return;
+          }
           const h = headers();
           h.set("Nats-Stream", stream);
           h.set("Nats-Subject", "a");

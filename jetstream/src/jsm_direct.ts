@@ -423,6 +423,10 @@ export class DirectConsumer {
       // retry in a tight loop (errors, an empty stream)
       let idle = false;
       while (true) {
+        // stopped during the last pull - don't start a sleep nothing cancels
+        if (qi.done) {
+          break;
+        }
         // if caught up or idle, slow it down
         // on the first pull pending doesn't exist so no delay
         if (this.cursor.pending === 0 || idle) {
