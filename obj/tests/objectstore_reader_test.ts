@@ -20,7 +20,7 @@ import type { ObjectStoreOptions } from "../src/types.ts";
 
 for (const allowBatched of [false, true]) {
   for (const size of [0, 1024]) {
-    Deno.test(`objectstore - put releases the reader after ${size} bytes (batched=${allowBatched})`, async () => {
+    Deno.test(`os - put releases the reader after ${size} bytes (batched=${allowBatched})`, async () => {
       const { ns, nc } = await setup(jetstreamServerConf({}));
       try {
         const os = await new Objm(nc).create(
@@ -47,7 +47,7 @@ for (const allowBatched of [false, true]) {
     });
   }
 
-  Deno.test(`objectstore - failed put lets the caller cancel the source (batched=${allowBatched})`, async () => {
+  Deno.test(`os - failed put lets the caller cancel the source (batched=${allowBatched})`, async () => {
     const { ns, nc } = await setup(jetstreamServerConf({}));
     try {
       const os = await new Objm(nc).create(
@@ -69,7 +69,7 @@ for (const allowBatched of [false, true]) {
         os.put({ name: "data", options: { max_chunk_size: 256 } }, rs)
       );
       assertEquals(canceled, false);
-      // The upload has stopped reading. The caller must be able to close a file
+      // the upload has stopped reading. the caller must be able to close a file
       // or cancel a response body that supplies the rest of the object.
       await rs.cancel(err);
       assertEquals(canceled, true);
@@ -82,7 +82,7 @@ for (const allowBatched of [false, true]) {
   });
 }
 
-Deno.test("objectstore - put releases an errored reader", async () => {
+Deno.test("os - put releases an errored reader", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   try {
     const os = await new Objm(nc).create("reader");
@@ -100,7 +100,7 @@ Deno.test("objectstore - put releases an errored reader", async () => {
   }
 });
 
-Deno.test("objectstore - put releases the reader when cleanup fails", async () => {
+Deno.test("os - put releases the reader when cleanup fails", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   try {
     const os = await new Objm(nc).create("reader") as ObjectStoreImpl;
@@ -119,7 +119,7 @@ Deno.test("objectstore - put releases the reader when cleanup fails", async () =
   }
 });
 
-Deno.test("objectstore - put preserves a reader owned by the caller", async () => {
+Deno.test("os - put preserves a reader owned by the caller", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   try {
     const os = await new Objm(nc).create("reader");
