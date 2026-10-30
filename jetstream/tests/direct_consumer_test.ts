@@ -254,3 +254,42 @@ Deno.test("direct consumer - empty stream gets new messages", async () => {
   }
   await cleanup(ns, nc);
 });
+
+Deno.test("direct consumer - stop during a pull doesn't sleep", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  if (await notCompatible(ns, nc, "2.12.0")) {
+    return;
+  }
+  // a responder that never answers, so the pull stays in flight
+  const requested = deferred<void>();
+  nc.subscribe("$JS.API.DIRECT.GET.fake", {
+    callback: () => {
+      requested.resolve();
+    },
+  });
+  await nc.flush();
+
+  const dc = new DirectConsumer(
+    "fake",
+    new DirectStreamAPIImpl(nc),
+    { seq: 0 } as DirectStartOptions,
+  );
+  const notifications: string[] = [];
+  (async () => {
+    for await (const s of dc.status()) {
+      notifications.push(
+        s.type === "debug" ? s.description : s.type,
+      );
+    }
+  })().catch();
+
+  const iter = await dc.consume({ batch: 10 });
+  await requested;
+  iter.stop();
+  await delay(100);
+  // stopped mid-pull, the loop exits instead of sleeping
+  assertEquals(notifications.filter((n) => n.startsWith("sleeping")), []);
+  assertEquals(notifications.filter((n) => n === "next").length, 1);
+
+  await cleanup(ns, nc);
+});
