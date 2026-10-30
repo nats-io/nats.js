@@ -32,15 +32,17 @@ import type {
   NatsConnection,
   QueuedIterator,
   ReviverFn,
+  SentinelFn,
 } from "@nats-io/nats-core/internal";
 import {
-  createInbox,
   deferred,
   delay,
   Empty,
   Feature,
+  NoRespondersError,
   QueuedIteratorImpl,
   TD,
+  TimeoutError,
 } from "@nats-io/nats-core/internal";
 import type {
   CompletionResult,
@@ -113,8 +115,7 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     stream: string,
     opts: DirectBatchOptions,
   ): Promise<QueuedIterator<StoredMsg>> {
-    opts.batch = opts.batch || 1024;
-    return this.get(stream, opts);
+    return this.get(stream, { ...opts, batch: opts.batch || 1024 });
   }
 
   getLastMessagesFor(
@@ -128,13 +129,14 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
     stream: string,
     opts: DirectBatchOptions | DirectLastFor,
   ): Promise<QueuedIterator<StoredMsg>> {
-    opts = { ...opts };
+    // the timeout and callback are for the client, not part of the request
+    const { timeout, callback: cb, ...req } = opts;
     const { min, ok } = this.nc.features.get(Feature.JS_BATCH_DIRECT_GET);
     if (!ok) {
       return Promise.reject(new Error(`batch direct require server ${min}`));
     }
     validateStreamName(stream);
-    const callback = typeof opts.callback === "function" ? opts.callback : null;
+    const callback = typeof cb === "function" ? cb : null;
     const iter = new QueuedIteratorImpl<StoredMsg>();
 
     function pushIter(
@@ -162,64 +164,36 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       cb(done, m);
     }
 
-    if (callback) {
-      iter.iterClosed.then((err) => {
-        push({ err: err ? err : undefined }, {} as StoredMsg);
-        sub.unsubscribe();
-      });
-    }
-
     const push = callback ? pushCb : pushIter;
 
-    const inbox = createInbox(this.nc.options.inboxPrefix);
+    // the batch is complete when the server says so - end of batch, no
+    // results, or a single reply when no batch was requested
+    let complete = false;
     let batchSupported = false;
-    const sub = this.nc.subscribe(inbox, {
-      timeout: 5000,
-      callback: (err, msg) => {
-        if (err) {
-          iter.stop(err);
-          sub.unsubscribe();
-          return;
+    const strategy: SentinelFn = (msg) => {
+      const status = JetStreamStatus.maybeParseStatus(msg);
+      if (status) {
+        if (status.isEndOfBatch() || status.isNoResults()) {
+          complete = true;
+          return false;
         }
-        const status = JetStreamStatus.maybeParseStatus(msg);
-        if (status) {
-          if (status.isNoResults()) {
-            push({}, () => {
-              iter.stop();
-            });
-          }
-          if (status.isEndOfBatch()) {
-            push({}, () => {
-              iter.stop();
-            });
-          } else {
-            const err = status.toError();
-            push({ err }, () => {
-              iter.stop(err);
-            });
-          }
-          return;
+        return status.toError();
+      }
+      if (!batchSupported) {
+        if (!msg.headers?.has("Nats-Num-Pending")) {
+          // no batch/max_bytes option was provided, so single response
+          complete = true;
+          return false;
         }
-        if (!batchSupported) {
-          if (typeof msg.headers?.get("Nats-Num-Pending") !== "string") {
-            // no batch/max_bytes option was provided, so single response
-            sub.unsubscribe();
-            push({}, () => {
-              iter.stop();
-            });
-          } else {
-            batchSupported = true;
-          }
-        }
-
-        push(null, new DirectMsgImpl(msg));
-      },
-    });
+        batchSupported = true;
+      }
+      return true;
+    };
 
     const pre = this.opts.apiPrefix || "$JS.API";
     const subj = `${pre}.DIRECT.GET.${stream}`;
 
-    const payload = JSON.stringify(opts, (key, value) => {
+    const payload = JSON.stringify(req, (key, value) => {
       if (
         (key === "up_to_time" || key === "start_time") && value instanceof Date
       ) {
@@ -227,9 +201,54 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
       }
       return value;
     });
-    this.nc.publish(subj, payload, { reply: inbox });
 
-    return Promise.resolve(iter);
+    // each reply must arrive within the timeout: the first (timeout), and
+    // every one after it (stall). a batch that keeps flowing is never cut
+    // short, so there's no upper bound.
+    const ms = timeout || this.timeout;
+    // created here so its stack is the caller's
+    const stalled = new TimeoutError();
+    return this.nc.requestMany(subj, payload, {
+      strategy,
+      timeout: ms,
+      stall: ms,
+      maxWait: Infinity,
+    }).then((replies) => {
+      iter.iterClosed.then((err) => {
+        replies.stop();
+        if (callback) {
+          push({ err: err ? err : undefined }, {} as StoredMsg);
+        }
+      });
+
+      (async () => {
+        for await (const m of replies) {
+          // stopped by the user, possibly from the callback - nothing
+          // is delivered after that
+          if (iter.done) {
+            break;
+          }
+          // status replies end the batch, they are not messages
+          if (!JetStreamStatus.maybeParseStatus(m)) {
+            push(null, new DirectMsgImpl(m));
+          }
+        }
+        // the replies stopped before the batch completed
+        if (!complete && !iter.done) {
+          throw stalled;
+        }
+      })().then(() => {
+        push({}, () => {
+          iter.stop();
+        });
+      }).catch((err) => {
+        push({ err }, () => {
+          iter.stop(err);
+        });
+      });
+
+      return iter;
+    });
   }
 }
 
@@ -387,15 +406,30 @@ export class DirectConsumer {
   }
 
   consume(opts: DirectBatchLimits): Promise<QueuedIterator<StoredMsg>> {
-    let pending: Delay;
-    let requestDone: Deferred<void>;
+    let pending: Delay | undefined;
+    let requestDone: Deferred<void> | undefined;
+    let src: QueuedIteratorImpl<StoredMsg> | undefined;
     const qi = new QueuedIteratorImpl<StoredMsg>();
 
+    // stopping ends the current pull or sleep
+    qi.iterClosed.then(() => {
+      src?.stop();
+      pending?.cancel();
+      requestDone?.resolve();
+    });
+
     (async () => {
+      // set when the last pull failed or delivered nothing, so we don't
+      // retry in a tight loop (errors, an empty stream)
+      let idle = false;
       while (true) {
-        // if we have nothing pending, slow it down
+        // stopped during the last pull - don't start a sleep nothing cancels
+        if (qi.done) {
+          break;
+        }
+        // if caught up or idle, slow it down
         // on the first pull pending doesn't exist so no delay
-        if (this.cursor.pending === 0) {
+        if (this.cursor.pending === 0 || idle) {
           this.notify({
             type: "debug",
             code: 0,
@@ -409,7 +443,11 @@ export class DirectConsumer {
         if (qi.done) {
           break;
         }
-        requestDone = deferred<void>();
+        const done = deferred<void>();
+        requestDone = done;
+        let delivered = 0;
+        let failed = false;
+        let reset = false;
         const dbo = this.getOptions(opts);
         this.notify({
           type: "next",
@@ -420,10 +458,17 @@ export class DirectConsumer {
           if (r) {
             // if the current fetch is done, ready to schedule the next
             if (r.err) {
+              failed = true;
               if (r.err instanceof JetStreamStatusError) {
                 this.notify({
                   type: "debug",
                   code: r.err.code,
+                  description: r.err.message,
+                });
+              } else if (r.err instanceof NoRespondersError) {
+                this.notify({
+                  type: "debug",
+                  code: 503,
                   description: r.err.message,
                 });
               } else {
@@ -434,18 +479,20 @@ export class DirectConsumer {
                 });
               }
             }
-            requestDone.resolve();
+            done.resolve();
           } else if (
             sm.lastSequence > 0 && sm.lastSequence !== this.cursor.last
           ) {
             // need to reset
-            src.stop();
-            requestDone.resolve();
+            reset = true;
+            src?.stop();
+            done.resolve();
             this.notify({
               type: "reset",
               name: "direct",
             });
           } else {
+            delivered++;
             qi.push(sm);
             qi.received++;
             this.cursor.last = sm.seq;
@@ -453,18 +500,24 @@ export class DirectConsumer {
           }
         };
 
-        const src = await this.api.getBatch(
-          this.stream,
-          dbo,
-        ) as QueuedIteratorImpl<StoredMsg>;
-
-        qi.iterClosed.then(() => {
+        try {
+          src = await this.api.getBatch(
+            this.stream,
+            dbo,
+          ) as QueuedIteratorImpl<StoredMsg>;
+        } catch (err) {
+          // the request couldn't be made (closed connection, etc)
+          qi.stop(err as Error);
+          break;
+        }
+        if (qi.done) {
           src.stop();
-          pending?.cancel();
-          requestDone?.resolve();
-        });
+          break;
+        }
 
-        await requestDone;
+        await done;
+        // a reset pulls again right away
+        idle = !reset && (failed || delivered === 0);
       }
     })().catch((err) => {
       qi.stop(err);

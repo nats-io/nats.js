@@ -622,6 +622,12 @@ export type DirectBatchLimits = {
   max_bytes: number;
   callback: BatchCallback<StoredMsg>;
   next_by_subj?: string;
+  /**
+   * Millis to wait for each reply, so a batch that stalls fails with a
+   * TimeoutError while one that keeps flowing completes. Defaults to the
+   * JetStream client's timeout.
+   */
+  timeout?: number;
 };
 export type DirectBatchStartSeq = Partial<DirectBatchLimits> & {
   seq: number;
