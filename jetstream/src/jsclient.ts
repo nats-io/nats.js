@@ -693,15 +693,22 @@ class FastIngestImpl implements FastIngest {
     payload?: Payload,
     opts?: Partial<JetStreamPublishOptions>,
   ): Promise<void> {
+    try {
+      const headers = opts ? buildPublishHeaders(opts) : undefined;
+      const inbox = `${this.inboxPrefix}.${this.batch}.>`;
+      this.sub = this.nc.subscribe(inbox, {
+        callback: (err, msg) => this.route(err, msg),
+      });
+      const rs = this.replyFor(FastIngestOp.Start, 1);
+      this.nc.publish(subj, payload, { reply: rs, headers });
+    } catch (err) {
+      // nothing was sent, so the batch didn't start and can be retried
+      this.sub?.unsubscribe();
+      this.sub = undefined;
+      return Promise.reject(err);
+    }
     this.batchSubj = subj;
-    const inbox = `${this.inboxPrefix}.${this.batch}.>`;
-    this.sub = this.nc.subscribe(inbox, {
-      callback: (err, msg) => this.route(err, msg),
-    });
     this.seq = 1;
-    const rs = this.replyFor(FastIngestOp.Start, 1);
-    const headers = opts ? buildPublishHeaders(opts) : undefined;
-    this.nc.publish(this.batchSubj, payload, { reply: rs, headers });
     return this.deadlineOrClose(
       this.startDeferred,
       opts?.timeout ?? this.defaultTimeout,
@@ -840,6 +847,23 @@ class FastIngestImpl implements FastIngest {
     this.sub?.unsubscribe();
   }
 
+  // publishes a message of the batch, returning the error if it couldn't be
+  // sent - then nothing was sent, so the caller doesn't advance the sequence
+  private publish(
+    subj: string,
+    payload: Payload | undefined,
+    reply: string,
+    opts?: Partial<JetStreamPublishOptions>,
+  ): Error | undefined {
+    try {
+      const headers = opts ? buildPublishHeaders(opts) : undefined;
+      this.nc.publish(subj, payload, { reply, headers });
+    } catch (err) {
+      return err as Error;
+    }
+    return undefined;
+  }
+
   add(
     subj: string,
     payload?: Payload,
@@ -851,10 +875,11 @@ class FastIngestImpl implements FastIngest {
         return { batchSeq: 1, ackSeq: this.acked };
       });
     }
-    const mySeq = ++this.seq;
+    const mySeq = this.seq + 1;
     const rs = this.replyFor(FastIngestOp.Append, mySeq);
-    const headers = opts ? buildPublishHeaders(opts) : undefined;
-    this.nc.publish(subj, payload, { reply: rs, headers });
+    const err = this.publish(subj, payload, rs, opts);
+    if (err) return Promise.reject(err);
+    this.seq = mySeq;
 
     if (mySeq - this.acked < this.ackInterval * this.maxOutstandingAcks) {
       return Promise.resolve({ batchSeq: mySeq, ackSeq: this.acked });
@@ -877,12 +902,16 @@ class FastIngestImpl implements FastIngest {
         return this.end(timeout === undefined ? undefined : { timeout });
       });
     }
-    const mySeq = ++this.seq;
+    const mySeq = this.seq + 1;
     const rs = this.replyFor(FastIngestOp.Final, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.Final, deferred: d });
-    const headers = opts ? buildPublishHeaders(opts) : undefined;
-    this.nc.publish(subj, payload, { reply: rs, headers });
+    const err = this.publish(subj, payload, rs, opts);
+    if (err) {
+      this.pending.delete(rs);
+      return Promise.reject(err);
+    }
+    this.seq = mySeq;
     return this.waitAndPing(d, opts?.timeout ?? this.defaultTimeout);
   }
 
@@ -903,12 +932,16 @@ class FastIngestImpl implements FastIngest {
       this.gapIter?.stop();
       return Promise.resolve(ack);
     }
-    const mySeq = ++this.seq;
+    const mySeq = this.seq + 1;
     const rs = this.replyFor(FastIngestOp.EOB, mySeq);
     const d = deferred<BatchAck>();
     this.pending.set(rs, { seq: mySeq, op: FastIngestOp.EOB, deferred: d });
-    const headers = opts ? buildPublishHeaders(opts) : undefined;
-    this.nc.publish(this.batchSubj, Empty, { reply: rs, headers });
+    const err = this.publish(this.batchSubj, Empty, rs, opts);
+    if (err) {
+      this.pending.delete(rs);
+      return Promise.reject(err);
+    }
+    this.seq = mySeq;
     return this.waitAndPing(d, opts?.timeout ?? this.defaultTimeout);
   }
 
@@ -925,8 +958,9 @@ class FastIngestImpl implements FastIngest {
       return deadline(existing.deferred, timeout);
     }
     const d = deferred<FastIngestProgress>();
+    const err = this.publish(this.batchSubj, Empty, rs);
+    if (err) return Promise.reject(err);
     this.pending.set(rs, { seq: this.seq, op: FastIngestOp.Ping, deferred: d });
-    this.nc.publish(this.batchSubj, Empty, { reply: rs });
     return this.deadlineOrClose(d, timeout);
   }
 
