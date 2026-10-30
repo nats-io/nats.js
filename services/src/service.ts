@@ -464,10 +464,13 @@ export class ServiceImpl implements Service {
         // done counts the request once the handler returned, or settled when
         // it is async: its latency, then one error, the one it threw or
         // rejected with, else an error response it sent before it was done
-        const done = (failed: boolean, reason?: unknown) => {
+        const done = (failed: boolean, reason?: unknown, threw = false) => {
           sv.stats.countLatency(start);
           if (failed) {
-            const e = reason as Error;
+            // handlers can throw or reject with anything, not only errors
+            const e = reason instanceof Error
+              ? reason
+              : nonError(name, subject, queue, handler, reason, threw);
             sv.stats.countError(e);
             // data responses may precede it, but an error response is sent
             // once: not when the handler already sent one
@@ -486,7 +489,7 @@ export class ServiceImpl implements Service {
         try {
           r = handler(err, smsg);
         } catch (err) {
-          done(true, err);
+          done(true, err, true);
           return;
         }
         if (typeof (r as PromiseLike<void> | undefined)?.then === "function") {
@@ -832,4 +835,28 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     }
     return this._stats();
   }
+}
+
+// a handler threw or rejected with something that isn't an error - it has no
+// stack, so the message says which handler did it and what it was
+function nonError(
+  name: string,
+  subject: string,
+  queue: string,
+  handler: ServiceHandler,
+  reason: unknown,
+  threw: boolean,
+): Error {
+  let v: string;
+  try {
+    v = typeof reason === "string" ? JSON.stringify(reason) : String(reason);
+  } catch {
+    v = "an unprintable value";
+  }
+  const q = queue ? `, queue "${queue}"` : "";
+  const fn = handler.name ? ` ${handler.name}` : "";
+  const how = threw ? "threw" : "rejected with";
+  return new Error(
+    `endpoint "${name}" (${subject}${q}) handler${fn} ${how} ${v}`,
+  );
 }
