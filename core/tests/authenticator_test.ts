@@ -552,6 +552,46 @@ Deno.test("authenticator - abandoned attempt aborts the signal", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("authenticator - failed connect timeout aborts the signal", async () => {
+  const ns = await NatsServer.start();
+  let signal: AbortSignal | undefined;
+  await assertRejects(() =>
+    connect({
+      port: ns.port,
+      timeout: 100,
+      authenticator: (_nonce?: string, s?: AbortSignal) => {
+        signal = s;
+        return new Promise<Auth>(() => {});
+      },
+    })
+  );
+  assertEquals(signal?.aborted, true);
+  await ns.stop();
+});
+
+Deno.test("authenticator - failed connect auth timeout aborts the signal", async () => {
+  // the server gives up on the pending authenticator
+  const ns = await NatsServer.start({
+    authorization: {
+      users: [{ user: "a", password: "a" }],
+      timeout: 0.5,
+    },
+  });
+  let signal: AbortSignal | undefined;
+  await assertRejects(() =>
+    connect({
+      port: ns.port,
+      timeout: 5000,
+      authenticator: (_nonce?: string, s?: AbortSignal) => {
+        signal = s;
+        return new Promise<Auth>(() => {});
+      },
+    })
+  );
+  assertEquals(signal?.aborted, true);
+  await ns.stop();
+});
+
 Deno.test("authenticator - sync throw aborts a started async authenticator", async () => {
   const ns = await NatsServer.start();
   let signal: AbortSignal | undefined;
