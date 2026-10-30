@@ -522,8 +522,9 @@ export class ObjectStoreImpl implements ObjectStore {
       await this.js.publish(chunkSubj, payload, { timeout });
     };
 
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
-      const reader = rs ? rs.getReader() : null;
+      reader = rs ? rs.getReader() : null;
       const sha = await createSha256();
 
       while (true) {
@@ -606,8 +607,23 @@ export class ObjectStoreImpl implements ObjectStore {
       }
       // cleanup: purge any chunks that landed before the failure, otherwise
       // we leak orphan chunks under chunkSubj
-      await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
+      try {
+        await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
+      } catch (pe) {
+        // orphan chunks may remain - the put failure is the cause
+        d.reject(
+          new Error(
+            `could not cleanup bucket after erroneous put operation: ${
+              (pe as Error).message
+            }`,
+            { cause: err },
+          ),
+        );
+        return d;
+      }
       d.reject(err);
+    } finally {
+      reader?.releaseLock();
     }
 
     return d;
