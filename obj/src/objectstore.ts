@@ -607,7 +607,11 @@ export class ObjectStoreImpl implements ObjectStore {
       }
       // cleanup: purge any chunks that landed before the failure, otherwise
       // we leak orphan chunks under chunkSubj
-      await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
+      try {
+        await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
+      } catch (_e) {
+        // ignore - report the original failure
+      }
       d.reject(err);
     } finally {
       reader?.releaseLock();

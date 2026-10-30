@@ -104,11 +104,11 @@ Deno.test("os - put releases the reader when cleanup fails", async () => {
   const { ns, nc } = await setup(jetstreamServerConf({}));
   try {
     const os = await new Objm(nc).create("reader") as ObjectStoreImpl;
-    const expected = new Error("cleanup failed");
-    os.jsm.streams.purge = () => Promise.reject(expected);
+    os.jsm.streams.purge = () => Promise.reject(new Error("cleanup failed"));
+    const expected = new Error("source failed");
     const rs = new ReadableStream<Uint8Array>({
       pull(controller) {
-        controller.error(new Error("source failed"));
+        controller.error(expected);
       },
     });
     const err = await assertRejects(() => os.put({ name: "data" }, rs));
