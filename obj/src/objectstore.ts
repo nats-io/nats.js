@@ -609,8 +609,17 @@ export class ObjectStoreImpl implements ObjectStore {
       // we leak orphan chunks under chunkSubj
       try {
         await this.jsm.streams.purge(this.stream, { filter: chunkSubj });
-      } catch (_e) {
-        // ignore - report the original failure
+      } catch (pe) {
+        // orphan chunks may remain - the put failure is the cause
+        d.reject(
+          new Error(
+            `could not cleanup bucket after erroneous put operation: ${
+              (pe as Error).message
+            }`,
+            { cause: err },
+          ),
+        );
+        return d;
       }
       d.reject(err);
     } finally {

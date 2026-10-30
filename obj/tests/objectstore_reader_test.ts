@@ -111,8 +111,12 @@ Deno.test("os - put releases the reader when cleanup fails", async () => {
         controller.error(expected);
       },
     });
-    const err = await assertRejects(() => os.put({ name: "data" }, rs));
-    assertEquals(err, expected);
+    const err = await assertRejects(
+      () => os.put({ name: "data" }, rs),
+      Error,
+      "could not cleanup bucket after erroneous put operation: cleanup failed",
+    );
+    assertEquals(err.cause, expected);
     assertEquals(rs.locked, false);
   } finally {
     await cleanup(ns, nc);
