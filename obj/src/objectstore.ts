@@ -745,9 +745,25 @@ export class ObjectStoreImpl implements ObjectStore {
     cc.idle_heartbeat = nanos(30_000);
     cc.flow_control = true;
     const oc = await this.js.consumers.getPushConsumer(this.stream, cc);
+    const ci = await oc.info(true);
+    const tracker = new DeliveryTracker(ci.name);
     const iter = await oc.consume() as PushConsumerMessagesImpl;
     let done = false;
     let cancelled = false;
+
+    // the object has data, but its chunks are missing (ie purged)
+    if (ci.num_pending === 0) {
+      iter.stop();
+    }
+    // an idle heartbeat that confirms everything sent was received, before
+    // the last chunk arrived, means chunks went missing while reading
+    (async () => {
+      for await (const s of iter.status()) {
+        if (!done && tracker.isComplete(s)) {
+          iter.stop();
+        }
+      }
+    })().then();
 
     (async () => {
       for await (const jm of iter) {
@@ -755,6 +771,7 @@ export class ObjectStoreImpl implements ObjectStore {
         if (cancelled) {
           break;
         }
+        tracker.received(jm);
         if (jm.data.length > 0) {
           sha.update(jm.data);
           controller!.enqueue(jm.data);
