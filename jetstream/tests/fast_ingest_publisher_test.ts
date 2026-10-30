@@ -21,7 +21,8 @@ import {
 } from "../src/jsclient.ts";
 import type { FastIngest } from "../src/types.ts";
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { delay, errors } from "@nats-io/nats-core/internal";
+import { delay, errors, headers } from "@nats-io/nats-core/internal";
+import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import type { Msg, NatsConnection } from "@nats-io/nats-core";
 
 Deno.test("fast ingest - basics", async () => {
@@ -706,5 +707,86 @@ Deno.test("fast ingest ping - calls blocked together send one ping", async () =>
   const ack = await fi.end();
   assertEquals(ack.count, 10);
 
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest create - failed first add leaves nothing behind", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+  const nci = nc as NatsConnectionImpl;
+  const subs = nci.protocol.subscriptions.size();
+
+  const fi = createFastIngest(nc, { allowGaps: false });
+  // rejects (doesn't throw), and holds no subscription
+  await assertRejects(() => fi.add("bad subject", "1"));
+  assertEquals(nci.protocol.subscriptions.size(), subs);
+  // invalid headers fail before anything is created
+  const h = headers();
+  await assertRejects(() => fi.add("q", "1", { msgID: "a\r\nb", headers: h }));
+  assertEquals(nci.protocol.subscriptions.size(), subs);
+
+  // the batch didn't start, so it can still be used
+  await fi.add("q", "1");
+  const ack = await fi.last("q", "2");
+  assertEquals(ack.count, 2);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest create - failed publish mid batch doesn't leave a gap", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+
+  const fi = createFastIngest(nc, { allowGaps: false, ackInterval: 5 });
+  await fi.add("q", "1");
+  await assertRejects(() => fi.add("bad subject", "2"));
+  await fi.add("q", "2");
+  await assertRejects(() => fi.last("bad subject", "3"));
+  const ack = await fi.last("q", "3");
+  assertEquals(ack.count, 3);
+
+  const si = await jsm.streams.info("batch");
+  assertEquals(si.state.messages, 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("fast ingest create - ping on a closed connection rejects", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf({}));
+  if (await notCompatible(ns, nc, "2.14.0")) {
+    return;
+  }
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({
+    name: "batch",
+    allow_batched: true,
+    subjects: ["q"],
+  });
+  const fi = createFastIngest(nc, { allowGaps: false }) as unknown as {
+    add(subj: string, data: string): Promise<unknown>;
+    ping(): Promise<unknown>;
+    pending: Map<string, unknown>;
+  };
+  await fi.add("q", "1");
+  await nc.close();
+  // rejects (doesn't throw), and leaves nothing pending
+  await assertRejects(() => fi.ping());
+  assertEquals(fi.pending.size, 0);
   await cleanup(ns, nc);
 });
