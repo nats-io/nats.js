@@ -341,8 +341,11 @@ Deno.test("service - callback error", async () => {
   });
 
   const m = await nc.request("fail");
-  assertEquals(m.headers?.get(ServiceErrorHeader), "boom");
+  // runtime errors are not sent, they are in the stats
+  assertEquals(m.headers?.get(ServiceErrorHeader), "internal error");
   assertEquals(m.headers?.get(ServiceErrorCodeHeader), "500");
+  const stats = await srv.stats();
+  assertEquals(stats.endpoints![0].last_error, "boom");
 
   await cleanup(ns, nc);
 });
@@ -1573,7 +1576,7 @@ Deno.test("service - async handler rejection is counted and answered", async () 
   assertEquals(r.headers?.get(ServiceErrorHeader), "bad input");
   const r2 = await nc.request("boom");
   assertEquals(r2.headers?.get(ServiceErrorCodeHeader), "500");
-  assertEquals(r2.headers?.get(ServiceErrorHeader), "boom");
+  assertEquals(r2.headers?.get(ServiceErrorHeader), "internal error");
 
   const stats = await srv.stats();
   const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
@@ -1635,7 +1638,8 @@ Deno.test("service - handlers failing with non-errors are counted and answered",
   for (const [name, message] of Object.entries(expected)) {
     const r = await nc.request(name);
     assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
-    assertEquals(r.headers?.get(ServiceErrorHeader), message);
+    // details are internal, they are only in the stats
+    assertEquals(r.headers?.get(ServiceErrorHeader), "internal error");
   }
 
   const stats = await srv.stats();
@@ -1731,7 +1735,7 @@ Deno.test("service - a request gets at most one error response", async () => {
   for (const subj of ["data-sync", "data-async"]) {
     const r = await replies(subj);
     assertEquals(r.map((m) => m.string()), ["a", "b", ""], subj);
-    assertEquals(r.map(errorOf), ["", "", "boom"], subj);
+    assertEquals(r.map(errorOf), ["", "", "internal error"], subj);
   }
   for (const subj of ["error-sync", "error-async"]) {
     const r = await replies(subj);
@@ -1796,7 +1800,7 @@ Deno.test("service - multi-line error descriptions are sent on one line", async 
   const svc = new Svcm(nc);
   const srv = await svc.add({ name: "example", version: "0.0.1" });
   srv.addEndpoint("sync", () => {
-    throw new Error("line one\nline two");
+    throw new ServiceError(400, "line one\nline two");
   });
   srv.addEndpoint("async", async () => {
     await delay(10);

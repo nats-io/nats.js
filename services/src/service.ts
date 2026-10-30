@@ -432,7 +432,9 @@ export class ServiceImpl implements Service {
       h.set(ServiceErrorHeader, oneLine(se.message));
       h.set(ServiceErrorCodeHeader, `${se.code}`);
     } else {
-      h.set(ServiceErrorHeader, oneLine(err.message));
+      // a runtime error the handler didn't turn into a service error -
+      // its details are internal, they are only in the stats
+      h.set(ServiceErrorHeader, "internal error");
       h.set(ServiceErrorCodeHeader, "500");
     }
     return h;
