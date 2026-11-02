@@ -190,10 +190,20 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
           this.timer = undefined;
         })
         .catch((err) => {
-          // timer fired
+          // timer fired - unless a message cancelled it meanwhile
+          if (!this.timer) {
+            return;
+          }
           this.stop(err);
           if (this.noIterator) {
             this.protocol.guardedCallback(this, err, {} as Msg);
+            // an iterator does this when it closes - a callback
+            // subscription is done too, so it settles and unsubscribes
+            this.closed.resolve(err);
+            // unless the callback already did
+            if (this.protocol.subscriptions.get(this.sid) === this) {
+              this.unsubscribe();
+            }
           }
         });
     }
@@ -269,6 +279,8 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
       );
     }
     if (!this.drained) {
+      // a draining subscription is ending, it can't time out
+      this.cancelTimeout();
       this.draining = true;
       this.protocol.unsub(this);
       this.drained = this.protocol.flush(deferred<void>())
@@ -918,6 +930,11 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       return;
     }
     sub.received += 1;
+    // the first message cancels the timeout - a user callback replaces the
+    // subscription's own callback(), which is what cancelled it
+    if (sub.timer) {
+      sub.cancelTimeout();
+    }
 
     this.guardedCallback(sub, null, new MsgImpl(msg, data, this));
 
