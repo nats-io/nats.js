@@ -41,9 +41,14 @@ export interface ServiceMsg extends Msg {
  * settles is never counted.
  *
  * If the handler throws or its promise rejects, an error reply is sent: the
- * code and description of a {@link ServiceError}, or code 500 and the error's
- * message for any other error. Throw a ServiceError for messages meant for the
- * client, and catch errors yourself to reply differently.
+ * code and description of a {@link ServiceError}, or code 500 and
+ * "internal error" for any other error. Throw a ServiceError, or use
+ * respondError, for errors meant for the client.
+ *
+ * Any other error is a runtime error: its details are internal, so they are
+ * only recorded in the endpoint's stats (last_error), and printed with
+ * `console.error` as an `errors.UnhandledCallbackError` that says which handler
+ * failed, with what was thrown as its `cause`.
  */
 export type ServiceHandler = (err: Error | null, msg: ServiceMsg) => void;
 /**
@@ -219,7 +224,10 @@ export type ServiceConfig = {
   description?: string;
   /**
    * A customized handler for the stats of an endpoint. The
-   * data returned by the endpoint will be serialized as is
+   * data returned by the endpoint will be serialized as is.
+   * If it throws or rejects, it is printed with `console.error` as an
+   * `errors.UnhandledCallbackError`, and the stats fail: `stats()` rejects, and a
+   * stats request gets an error response. The service continues.
    * @param endpoint
    */
   statsHandler?: (

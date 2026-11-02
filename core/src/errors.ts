@@ -283,6 +283,54 @@ export class PermissionViolationError extends Error {
   }
 }
 
+// describes a value user code threw, which can be anything
+function describeThrown(v: unknown): string {
+  try {
+    if (v instanceof Error) {
+      return `${v.name}: ${v.message}`;
+    }
+    return typeof v === "string" ? JSON.stringify(v) : String(v);
+  } catch {
+    return "an unprintable value";
+  }
+}
+
+/**
+ * UnhandledCallbackError wraps a value thrown or rejected by user code the
+ * client called - a callback or a provider such as an authenticator - that
+ * the user's code didn't handle. The client contains it: the message says
+ * where it failed and what was thrown, and the `cause` is the original
+ * value, as thrown, even if it is not an Error.
+ *
+ * Callbacks that fail are printed as an UnhandledCallbackError and the
+ * client continues. Providers the client needs a value from fail the
+ * operation, with the error thrown, or an UnhandledCallbackError if what was
+ * thrown is not an Error.
+ */
+export class UnhandledCallbackError extends Error {
+  constructor(where: string, cause: unknown) {
+    super(`${where} threw ${describeThrown(cause)}`, { cause });
+    this.name = "UnhandledCallbackError";
+  }
+}
+
+/**
+ * Ensures what user code threw is passed on as an Error: the value thrown
+ * if it is an Error, unchanged, otherwise an UnhandledCallbackError for it.
+ * @internal
+ */
+export function ensureError(where: string, err: unknown): Error {
+  return err instanceof Error ? err : new UnhandledCallbackError(where, err);
+}
+
+/**
+ * Prints a failure in a user callback, the client continues.
+ * @internal
+ */
+export function reportCallbackError(where: string, err: unknown): void {
+  console.error(new UnhandledCallbackError(where, err));
+}
+
 export const errors = {
   AuthorizationError,
   ClosedConnectionError,
@@ -296,5 +344,6 @@ export const errors = {
   ProtocolError,
   RequestError,
   TimeoutError,
+  UnhandledCallbackError,
   UserAuthenticationExpiredError,
 };

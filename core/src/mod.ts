@@ -50,6 +50,7 @@ export {
   syncIterator,
   TimeoutError,
   tokenAuthenticator,
+  UnhandledCallbackError,
   UserAuthenticationExpiredError,
   usernamePasswordAuthenticator,
   wsconnect,

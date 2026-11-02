@@ -32,6 +32,7 @@ import {
   nanos,
   nuid,
   QueuedIteratorImpl,
+  reportCallbackError,
 } from "@nats-io/nats-core/internal";
 import type { ConsumerAPIImpl } from "./jsmconsumer_api.ts";
 
@@ -68,7 +69,7 @@ import type {
   ThresholdMessages,
 } from "./types.ts";
 import { JetStreamError, JetStreamStatus } from "./jserrors.ts";
-import { minValidation } from "./jsutil.ts";
+import { consumerCallbackName, minValidation } from "./jsutil.ts";
 
 export const PullConsumerType = {
   Unset: "",
@@ -560,16 +561,26 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     if (!this.callback) {
       super.push(r);
     } else {
-      const fn = typeof r === "function" ? r as CallbackFn : null;
+      if (typeof r === "function") {
+        // ours - the error it stops with is reported to the user
+        try {
+          (r as CallbackFn)();
+        } catch (err) {
+          this.stop(err as Error);
+        }
+        return;
+      }
+      // user code - if it fails, it is printed and the consumer continues,
+      // the message wasn't acked, and will be redelivered
       try {
-        if (!fn) {
-          const m = r as JsMsg;
-          this.callback(m);
-        } else {
-          fn();
+        const p: unknown = this.callback(r as JsMsg);
+        if (typeof (p as PromiseLike<void> | undefined)?.then === "function") {
+          (p as PromiseLike<void>).then(undefined, (err) => {
+            reportCallbackError(consumerCallbackName(this.consumer), err);
+          });
         }
       } catch (err) {
-        this.stop(err as Error);
+        reportCallbackError(consumerCallbackName(this.consumer), err);
       }
     }
   }

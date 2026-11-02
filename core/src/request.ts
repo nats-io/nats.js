@@ -23,6 +23,7 @@ import type {
   SentinelFn,
 } from "./core.ts";
 import {
+  ensureError,
   errors,
   NoRespondersError,
   RequestError,
@@ -107,7 +108,7 @@ function guard(fns: SentinelFn[]): SentinelFn {
       try {
         r = fn(msg);
       } catch (err) {
-        return err instanceof Error ? err : new Error(String(err));
+        return ensureError("request many strategy", err);
       }
       if (r === false || r instanceof Error) {
         return r;

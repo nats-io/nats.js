@@ -163,6 +163,7 @@ export {
   ClosedConnectionError,
   ConnectionError,
   DrainingConnectionError,
+  ensureError,
   errors,
   InvalidArgumentError,
   InvalidOperationError,
@@ -170,7 +171,9 @@ export {
   NoRespondersError,
   PermissionViolationError,
   ProtocolError,
+  reportCallbackError,
   RequestError,
   TimeoutError,
+  UnhandledCallbackError,
   UserAuthenticationExpiredError,
 } from "./errors.ts";

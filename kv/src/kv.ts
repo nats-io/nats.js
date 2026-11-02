@@ -860,12 +860,17 @@ export class Bucket implements KV {
     };
     const iter = await oc.consume({
       callback: (m) => {
-        tracker.received(m);
-        const e = this.jmToWatchEntry(m, false);
-        qi.push(e);
-        qi.received++;
-        if (m.info.pending === 0) {
-          done();
+        // ours - if it fails, the iterator fails with the error
+        try {
+          tracker.received(m);
+          const e = this.jmToWatchEntry(m, false);
+          qi.push(e);
+          qi.received++;
+          if (m.info.pending === 0) {
+            done();
+          }
+        } catch (err) {
+          iter.stop(err as Error);
         }
       },
     });
@@ -933,16 +938,21 @@ export class Bucket implements KV {
     let i = 0;
     const iter = await oc.consume({
       callback: (m) => {
-        if (!isUpdate) {
-          i++;
-          isUpdate = i >= count;
+        // ours - if it fails, the iterator fails with the error
+        try {
+          if (!isUpdate) {
+            i++;
+            isUpdate = i >= count;
+          }
+          const e = this.jmToWatchEntry(m, isUpdate);
+          if (ignoreDeletes && e.operation === "DEL") {
+            return;
+          }
+          qi.push(e);
+          qi.received++;
+        } catch (err) {
+          iter.stop(err as Error);
         }
-        const e = this.jmToWatchEntry(m, isUpdate);
-        if (ignoreDeletes && e.operation === "DEL") {
-          return;
-        }
-        qi.push(e);
-        qi.received++;
       },
     });
 
@@ -981,14 +991,19 @@ export class Bucket implements KV {
     };
     const iter = await oc.consume({
       callback: (m) => {
-        tracker.received(m);
-        const op = m.headers?.get(kvOperationHdr);
-        if (op !== "DEL" && op !== "PURGE") {
-          const key = this.decodeKey(m.subject.substring(this.prefixLen));
-          keys.push(key);
-        }
-        if (m.info.pending === 0) {
-          done();
+        // ours - if it fails, the iterator fails with the error
+        try {
+          tracker.received(m);
+          const op = m.headers?.get(kvOperationHdr);
+          if (op !== "DEL" && op !== "PURGE") {
+            const key = this.decodeKey(m.subject.substring(this.prefixLen));
+            keys.push(key);
+          }
+          if (m.info.pending === 0) {
+            done();
+          }
+        } catch (err) {
+          iter.stop(err as Error);
         }
       },
     });

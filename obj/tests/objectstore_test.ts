@@ -1996,3 +1996,25 @@ Deno.test("os - get cancelled by the reader", async () => {
   assertIsError(await r.error, Error, "object read cancelled");
   await cleanup(ns, nc);
 });
+
+Deno.test("os - watch fails on metadata that isn't json", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const os = await new Objm(nc).create("corrupt");
+  await os.putBlob({ name: "a" }, new Uint8Array([1]));
+  const impl = os as ObjectStoreImpl;
+  await jetstream(nc).publish(impl._metaSubject("b"), "not json");
+
+  // a failure in the library's own callback fails the iterator, it isn't
+  // skipped as a user callback error would be
+  const iter = await os.watch({ includeHistory: true });
+  await assertRejects(
+    async () => {
+      for await (const _ of iter) {
+        // nothing
+      }
+    },
+    SyntaxError,
+  );
+
+  await cleanup(ns, nc);
+});

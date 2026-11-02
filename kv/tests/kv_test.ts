@@ -3046,3 +3046,41 @@ Deno.test("kv - history recovers from heartbeat sequence mismatch", async () => 
   assert(!name.endsWith("_1"), name);
   await cleanup(ns, nc);
 });
+
+Deno.test("kv - keys fail when decoding a key throws", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const js = jetstream(nc);
+  const b64 = Base64KeyCodec();
+  const kv = await new Kvm(js).create(nuid.next(), {
+    codec: {
+      key: {
+        encode: (k: string) => b64.encode(k),
+        decode: (k: string) => {
+          const v = b64.decode(k);
+          if (v === "bad") {
+            throw new Error("can't decode");
+          }
+          return v;
+        },
+      },
+      value: NoopKvCodecs().value,
+    },
+  });
+  await kv.put("a", "1");
+  await kv.put("bad", "2");
+
+  // a failure in the library's own callback fails the iterator, it isn't
+  // skipped as a user callback error would be
+  await assertRejects(
+    async () => {
+      const keys = await kv.keys();
+      for await (const _k of keys) {
+        // nothing
+      }
+    },
+    Error,
+    "can't decode",
+  );
+
+  await cleanup(ns, nc);
+});
