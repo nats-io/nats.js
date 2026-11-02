@@ -687,6 +687,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       this.heartbeats.start();
     } catch (err) {
       this.raceTimer?.cancel();
+      // the attempt failed - an async authenticator still working on it
+      // shouldn't continue, even if there's no other attempt
+      this.abortAuth();
       await this.transport.close(err as Error);
       throw err;
     }
