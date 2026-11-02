@@ -54,7 +54,12 @@ import {
   DEFAULT_PING_INTERVAL,
   DEFAULT_RECONNECT_TIME_WAIT,
 } from "./options.ts";
-import { errors, InvalidArgumentError } from "./errors.ts";
+import {
+  ensureError,
+  errors,
+  InvalidArgumentError,
+  reportCallbackError,
+} from "./errors.ts";
 import { isAsyncAuth } from "./authenticator.ts";
 import { RequestOne } from "./request.ts";
 
@@ -188,7 +193,7 @@ export class SubscriptionImpl extends QueuedIteratorImpl<Msg>
           // timer fired
           this.stop(err);
           if (this.noIterator) {
-            this.callback(err, {} as Msg);
+            this.protocol.guardedCallback(this, err, {} as Msg);
           }
         });
     }
@@ -377,7 +382,7 @@ export class Subscriptions {
       });
     }
     if (sub) {
-      sub.callback(err, {} as Msg);
+      sub.protocol.guardedCallback(sub, err, {} as Msg);
       sub.close(err);
       this.subs.delete(sub.sid);
       return sub !== this.mux;
@@ -730,7 +735,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
             });
           } catch (err) {
             keepTrying = false;
-            lastErr = err as Error;
+            lastErr = ensureError("waitOnFirstConnect", err);
           }
           if (!keepTrying) {
             this.abortReconnect = true;
@@ -757,6 +762,20 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     return this.connectPromise;
   }
 
+  // the user's handler failing fails the reconnect, as it always has, but
+  // the client closes with an error
+  reconnectDelay(): number {
+    const fn = this.options.reconnectDelayHandler;
+    if (!fn) {
+      return DEFAULT_RECONNECT_TIME_WAIT;
+    }
+    try {
+      return fn();
+    } catch (err) {
+      throw ensureError("reconnectDelayHandler", err);
+    }
+  }
+
   async dodialLoop(): Promise<void> {
     let lastError: Error | undefined;
     while (true) {
@@ -766,9 +785,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
         // in the case of close, want to stop.
         this.servers.clear();
       }
-      const wait = this.options.reconnectDelayHandler
-        ? this.options.reconnectDelayHandler()
-        : DEFAULT_RECONNECT_TIME_WAIT;
+      const wait = this.reconnectDelay();
       let maxWait = wait;
       const srv = this.selectServer();
       if (!srv || this.abortReconnect) {
@@ -812,7 +829,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
               }
             }
           } catch (cause) {
-            const c = cause instanceof Error ? cause : new Error(String(cause));
+            const c = ensureError("reconnectToServer", cause);
             throw new errors.ConnectionError(
               `${ERR_RECONNECT_HANDLER_FAILED}: ${c.message}`,
               { cause: c },
@@ -874,6 +891,21 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     return new errors.ProtocolError(s);
   }
 
+  // calls a subscription's callback with a message or an error. it can be
+  // user code - if it fails, it is printed and the subscription continues
+  guardedCallback(sub: SubscriptionImpl, err: Error | null, msg: Msg) {
+    try {
+      const r: unknown = sub.callback(err, msg);
+      if (typeof (r as PromiseLike<unknown> | undefined)?.then === "function") {
+        (r as PromiseLike<unknown>).then(undefined, (e) => {
+          reportCallbackError(callbackName(sub), e);
+        });
+      }
+    } catch (e) {
+      reportCallbackError(callbackName(sub), e);
+    }
+  }
+
   processMsg(msg: MsgArg, data: Uint8Array) {
     this.inMsgs++;
     this.inBytes += data.length;
@@ -887,9 +919,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     }
     sub.received += 1;
 
-    if (sub.callback) {
-      sub.callback(null, new MsgImpl(msg, data, this));
-    }
+    this.guardedCallback(sub, null, new MsgImpl(msg, data, this));
 
     if (sub.max !== undefined && sub.received >= sub.max) {
       sub.unsubscribe();
@@ -1010,7 +1040,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
           }).catch((err) => {
             if (!stale()) {
               this.abortAuth();
-              this.close(err as Error).catch();
+              this.close(ensureError("authenticator", err)).catch();
             }
           });
         } else {
@@ -1020,7 +1050,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
         // if we are dying here, this is likely some an authenticator blowing up
         // - cancel any async authenticator that already started (multi)
         ac.abort();
-        this.close(err as Error).catch();
+        this.close(ensureError("authenticator", err)).catch();
       }
     }
     if (updates) {
@@ -1403,4 +1433,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   getServer(): ServerImpl | undefined {
     return this.server;
   }
+}
+
+function callbackName(sub: SubscriptionImpl): string {
+  const q = sub.queue ? ` (queue "${sub.queue}")` : "";
+  return `subscription callback for "${sub.subject}"${q}`;
 }

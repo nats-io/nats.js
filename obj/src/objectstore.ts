@@ -969,22 +969,27 @@ export class ObjectStoreImpl implements ObjectStore {
     const tracker = new DeliveryTracker(info.name);
     const iter = await oc.consume({
       callback: (jm: JsMsg) => {
-        tracker.received(jm);
-        if (!isUpdate) {
-          i++;
-          isUpdate = i >= count;
-        }
-        const oi = jm.json<ObjectWatchInfo>();
-        oi.mtime = jm.timestamp;
-        oi.isUpdate = isUpdate;
-        if (oi.deleted && opts.ignoreDeletes === true) {
-          // do nothing
-        } else {
-          qi.push(oi);
-        }
-        if (historyOnly && i === count) {
-          tracker.done = true;
-          iter.stop();
+        // ours - if it fails, the iterator fails with the error
+        try {
+          tracker.received(jm);
+          if (!isUpdate) {
+            i++;
+            isUpdate = i >= count;
+          }
+          const oi = jm.json<ObjectWatchInfo>();
+          oi.mtime = jm.timestamp;
+          oi.isUpdate = isUpdate;
+          if (oi.deleted && opts.ignoreDeletes === true) {
+            // do nothing
+          } else {
+            qi.push(oi);
+          }
+          if (historyOnly && i === count) {
+            tracker.done = true;
+            iter.stop();
+          }
+        } catch (err) {
+          iter.stop(err as Error);
         }
       },
     });

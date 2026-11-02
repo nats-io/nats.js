@@ -39,6 +39,7 @@ import type {
   NatsConnectionImpl,
   QueuedIterator,
   SubscriptionImpl,
+  UnhandledCallbackError,
 } from "@nats-io/nats-core/internal";
 import type {
   EndpointInfo,
@@ -48,6 +49,29 @@ import type {
   ServiceInfo,
   ServiceStats,
 } from "../src/mod.ts";
+
+// captures the callback errors printed with console.error, until restored
+// or disposed, so a failing test doesn't leave it patched
+function capturePrinted(): {
+  errors: UnhandledCallbackError[];
+  restore: () => void;
+  [Symbol.dispose]: () => void;
+} {
+  const found: UnhandledCallbackError[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => {
+    const e = args[0];
+    if (e instanceof errors.UnhandledCallbackError) {
+      found.push(e);
+    } else {
+      orig(...args);
+    }
+  };
+  const restore = () => {
+    console.error = orig;
+  };
+  return { errors: found, restore, [Symbol.dispose]: restore };
+}
 import {
   ServiceError,
   ServiceErrorCodeHeader,
@@ -341,8 +365,11 @@ Deno.test("service - callback error", async () => {
   });
 
   const m = await nc.request("fail");
-  assertEquals(m.headers?.get(ServiceErrorHeader), "boom");
+  // runtime errors are not sent, they are in the stats
+  assertEquals(m.headers?.get(ServiceErrorHeader), "internal error");
   assertEquals(m.headers?.get(ServiceErrorCodeHeader), "500");
+  const stats = await srv.stats();
+  assertEquals(stats.endpoints![0].last_error, "boom");
 
   await cleanup(ns, nc);
 });
@@ -477,14 +504,16 @@ Deno.test("service - stats handler error", async () => {
     m.respond();
   });
 
-  const m = svc.client();
-  const stats = await collect(await m.stats());
-  assertEquals(stats.length, 1);
-  assertEquals(stats[0].endpoints?.length, 1);
-  const s = stats[0].endpoints?.[0]!;
-  assertEquals(s.data, undefined);
-  assertEquals(s.last_error, "bad stats handler");
-  assertEquals(s.num_errors, 1);
+  // the handler is user code the stats need, the stats fail with its error
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    await assertRejects(() => srv.stats(), Error, "bad stats handler");
+    const r = await nc.request(`$SRV.STATS.test`);
+    assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+  } finally {
+    console.error = orig;
+  }
 
   await cleanup(ns, nc);
 });
@@ -1573,7 +1602,7 @@ Deno.test("service - async handler rejection is counted and answered", async () 
   assertEquals(r.headers?.get(ServiceErrorHeader), "bad input");
   const r2 = await nc.request("boom");
   assertEquals(r2.headers?.get(ServiceErrorCodeHeader), "500");
-  assertEquals(r2.headers?.get(ServiceErrorHeader), "boom");
+  assertEquals(r2.headers?.get(ServiceErrorHeader), "internal error");
 
   const stats = await srv.stats();
   const ep = (name: string) => stats.endpoints!.find((e) => e.name === name)!;
@@ -1582,6 +1611,84 @@ Deno.test("service - async handler rejection is counted and answered", async () 
   assertEquals(ep("bad").last_error, "bad input");
   assertEquals(ep("boom").num_errors, 1);
   assertEquals(ep("boom").last_error, "boom");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - handlers failing with non-errors are counted, answered and printed", async () => {
+  const { ns, nc } = await setup();
+  using printed = capturePrinted();
+  const unhandled: unknown[] = [];
+  const onRejection = (e: PromiseRejectionEvent) => {
+    unhandled.push(e.reason);
+    e.preventDefault();
+  };
+  globalThis.addEventListener("unhandledrejection", onRejection);
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("undefined", async () => {
+    await Promise.reject();
+  });
+  srv.addEndpoint("null", async () => {
+    await Promise.reject(null);
+  });
+  srv.addEndpoint("string", async () => {
+    await Promise.reject("bad thing");
+  });
+  srv.addEndpoint("sync", () => {
+    throw "sync bad thing";
+  });
+  srv.addEndpoint("unprintable", async () => {
+    await Promise.reject(Object.create(null));
+  });
+  // a named handler is reported, no queue isn't
+  async function namedHandler(): Promise<void> {
+    await Promise.reject("named bad thing");
+  }
+  srv.addEndpoint("named", { handler: namedHandler, queue: "" });
+
+  const m = (
+    name: string,
+    what: string,
+    q = ', queue "q"',
+    fn = "",
+  ) =>
+    `service "example" endpoint "${name}" (${name}${q}) handler${fn} threw ${what}`;
+  const expected: Record<string, string> = {
+    undefined: m("undefined", "undefined"),
+    null: m("null", "null"),
+    string: m("string", '"bad thing"'),
+    sync: m("sync", '"sync bad thing"'),
+    unprintable: m("unprintable", "an unprintable value"),
+    named: m("named", '"named bad thing"', "", " namedHandler"),
+  };
+  for (const name of Object.keys(expected)) {
+    const r = await nc.request(name);
+    assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+    // details are internal, they are only in the stats
+    assertEquals(r.headers?.get(ServiceErrorHeader), "internal error");
+  }
+
+  const stats = await srv.stats();
+  for (const [name, message] of Object.entries(expected)) {
+    const ep = stats.endpoints!.find((e) => e.name === name)!;
+    assertEquals(ep.num_requests, 1);
+    assertEquals(ep.num_errors, 1);
+    assertEquals(ep.last_error, message);
+  }
+  await delay(20);
+  globalThis.removeEventListener("unhandledrejection", onRejection);
+  assertEquals(unhandled, []);
+  printed.restore();
+  // printed as they are recorded, with the value thrown as the cause
+  assertEquals(
+    printed.errors.map((e) => e.message).sort(),
+    Object.values(expected).sort(),
+  );
+  const named = printed.errors.find((e) => e.message === expected.named)!;
+  assertInstanceOf(named, errors.UnhandledCallbackError);
+  assertEquals(named.cause, "named bad thing");
 
   await cleanup(ns, nc);
 });
@@ -1665,7 +1772,7 @@ Deno.test("service - a request gets at most one error response", async () => {
   for (const subj of ["data-sync", "data-async"]) {
     const r = await replies(subj);
     assertEquals(r.map((m) => m.string()), ["a", "b", ""], subj);
-    assertEquals(r.map(errorOf), ["", "", "boom"], subj);
+    assertEquals(r.map(errorOf), ["", "", "internal error"], subj);
   }
   for (const subj of ["error-sync", "error-async"]) {
     const r = await replies(subj);
@@ -1730,7 +1837,7 @@ Deno.test("service - multi-line error descriptions are sent on one line", async 
   const svc = new Svcm(nc);
   const srv = await svc.add({ name: "example", version: "0.0.1" });
   srv.addEndpoint("sync", () => {
-    throw new Error("line one\nline two");
+    throw new ServiceError(400, "line one\nline two");
   });
   srv.addEndpoint("async", async () => {
     await delay(10);
@@ -1770,4 +1877,99 @@ Deno.test("service - async rejection after the connection closed does not throw"
   await delay(50);
 
   await ns.stop();
+});
+
+Deno.test("service - runtime errors are printed, service errors are not", async () => {
+  const { ns, nc } = await setup();
+  using printed = capturePrinted();
+
+  const boom = new Error("boom");
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("boom", () => {
+    throw boom;
+  });
+  srv.addEndpoint("bad", () => {
+    throw new ServiceError(400, "bad input");
+  });
+
+  let r = await nc.request("boom");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+  r = await nc.request("bad");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "400");
+  await delay(20);
+  printed.restore();
+
+  // the handler's answer isn't a failure, the runtime error is printed with
+  // where it failed, its stack is the cause
+  assertEquals(printed.errors.length, 1);
+  assertEquals(
+    printed.errors[0].message,
+    'service "example" endpoint "boom" (boom, queue "q") handler threw Error: boom',
+  );
+  assert(printed.errors[0].cause === boom);
+  const stats = await srv.stats();
+  const ep = (n: string) => stats.endpoints!.find((e) => e.name === n)!;
+  assertEquals(ep("boom").last_error, "boom");
+  assertEquals(ep("bad").last_error, "bad input");
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - a failing stats handler fails the stats and is printed", async () => {
+  const { ns, nc } = await setup();
+  using printed = capturePrinted();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({
+    name: "example",
+    version: "0.0.1",
+    statsHandler: (): Promise<unknown> => {
+      return Promise.reject();
+    },
+  });
+  srv.addEndpoint("a", (_err, m) => {
+    m.respond();
+  });
+
+  const where =
+    'service "example" stats handler for endpoint "a" threw undefined';
+  await assertRejects(() => srv.stats(), errors.UnhandledCallbackError, where);
+  // a stats request gets an error, the service continues
+  const r = await nc.request("$SRV.STATS");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+  assertEquals(r.headers?.get(ServiceErrorHeader), "internal error");
+  await nc.request("a");
+  await delay(20);
+  printed.restore();
+  assertEquals(printed.errors.map((e) => e.message), [where, where]);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("service - a handler returning a thenable with a failing then getter is answered", async () => {
+  const { ns, nc } = await setup();
+  using printed = capturePrinted();
+
+  const svc = new Svcm(nc);
+  const srv = await svc.add({ name: "example", version: "0.0.1" });
+  srv.addEndpoint("bad", () => {
+    return {
+      get then() {
+        throw new Error("no then");
+      },
+    } as unknown as void;
+  });
+
+  const r = await nc.request("bad");
+  assertEquals(r.headers?.get(ServiceErrorCodeHeader), "500");
+  printed.restore();
+  assertEquals(printed.errors.map((e) => e.message), [
+    'service "example" endpoint "bad" (bad, queue "q") handler threw Error: no then',
+  ]);
+  const stats = await srv.stats();
+  assertEquals(stats.endpoints![0].num_errors, 1);
+  assertEquals(stats.endpoints![0].last_error, "no then");
+
+  await cleanup(ns, nc);
 });

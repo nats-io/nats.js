@@ -79,3 +79,8 @@ export function validName(name = ""): string {
   }
   return "";
 }
+
+// names a consumer's callback when it fails
+export function consumerCallbackName(c: { stream: string; name: string }) {
+  return `consumer "${c.name}" on stream "${c.stream}" callback`;
+}

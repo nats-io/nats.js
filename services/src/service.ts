@@ -15,11 +15,13 @@
 import {
   deferred,
   Empty,
+  ensureError,
   headers,
   nanos,
   nuid,
   parseSemVer,
   QueuedIteratorImpl,
+  reportCallbackError,
 } from "@nats-io/nats-core/internal";
 import type {
   ConnectionClosedListener,
@@ -432,7 +434,9 @@ export class ServiceImpl implements Service {
       h.set(ServiceErrorHeader, oneLine(se.message));
       h.set(ServiceErrorCodeHeader, `${se.code}`);
     } else {
-      h.set(ServiceErrorHeader, oneLine(err.message));
+      // a runtime error the handler didn't turn into a service error -
+      // its details are internal, they are only in the stats
+      h.set(ServiceErrorHeader, "internal error");
       h.set(ServiceErrorCodeHeader, "500");
     }
     return h;
@@ -467,7 +471,14 @@ export class ServiceImpl implements Service {
         const done = (failed: boolean, reason?: unknown) => {
           sv.stats.countLatency(start);
           if (failed) {
-            const e = reason as Error;
+            // handlers can throw or reject with anything, not only errors.
+            // a service error is the handler's answer, anything else is a
+            // failure in user code, it is printed - ours are not
+            const where = handlerName(this.name, name, subject, queue, handler);
+            if (!(reason instanceof ServiceError) && !internal) {
+              reportCallbackError(where, reason);
+            }
+            const e = ensureError(where, reason);
             sv.stats.countError(e);
             // data responses may precede it, but an error response is sent
             // once: not when the handler already sent one
@@ -482,14 +493,18 @@ export class ServiceImpl implements Service {
             sv.stats.countError(new Error(smsg.respondErr));
           }
         };
+        // inspecting what it returned is user code too
+        let thenable: boolean;
         let r: unknown;
         try {
           r = handler(err, smsg);
+          thenable =
+            typeof (r as PromiseLike<void> | undefined)?.then === "function";
         } catch (err) {
           done(true, err);
           return;
         }
-        if (typeof (r as PromiseLike<void> | undefined)?.then === "function") {
+        if (thenable) {
           Promise.resolve(r as PromiseLike<void>).then(
             () => done(false),
             (err) => done(true, err),
@@ -547,10 +562,15 @@ export class ServiceImpl implements Service {
     const endpoints: NamedEndpointStats[] = [];
     for (const h of this.handlers) {
       if (typeof this.config.statsHandler === "function") {
+        // user code the stats need a value from - if it fails, it is
+        // printed, and the stats fail with it
         try {
           h.stats.data = await this.config.statsHandler(h);
         } catch (err) {
-          h.stats.countError(err as Error);
+          const where =
+            `service "${this.name}" stats handler for endpoint "${h.name}"`;
+          reportCallbackError(where, err);
+          throw ensureError(where, err);
         }
       }
       endpoints.push(h.stats.stats(h.qi));
@@ -832,4 +852,19 @@ class NamedEndpointStatsImpl implements NamedEndpointStats {
     }
     return this._stats();
   }
+}
+
+// a handler threw or rejected with something that isn't an error - it has no
+// stack, so the message says which handler did it and what it was
+// names an endpoint's handler when it fails
+function handlerName(
+  service: string,
+  name: string,
+  subject: string,
+  queue: string,
+  handler: ServiceHandler,
+): string {
+  const q = queue ? `, queue "${queue}"` : "";
+  const fn = handler.name ? ` ${handler.name}` : "";
+  return `service "${service}" endpoint "${name}" (${subject}${q}) handler${fn}`;
 }

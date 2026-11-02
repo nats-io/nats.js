@@ -41,6 +41,7 @@ import {
   Feature,
   NoRespondersError,
   QueuedIteratorImpl,
+  reportCallbackError,
   TD,
   TimeoutError,
 } from "@nats-io/nats-core/internal";
@@ -161,7 +162,20 @@ export class DirectStreamAPIImpl extends BaseApiClientImpl
         m();
         return;
       }
-      cb(done, m);
+      // user code - if it fails, it is printed and the batch continues
+      try {
+        const p: unknown = cb(done, m);
+        if (typeof (p as PromiseLike<void> | undefined)?.then === "function") {
+          (p as PromiseLike<void>).then(undefined, (err) => {
+            reportCallbackError(
+              `direct get on stream "${stream}" callback`,
+              err,
+            );
+          });
+        }
+      } catch (err) {
+        reportCallbackError(`direct get on stream "${stream}" callback`, err);
+      }
     }
 
     const push = callback ? pushCb : pushIter;
