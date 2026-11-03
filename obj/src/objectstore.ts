@@ -271,6 +271,16 @@ export type ServerObjectStoreMeta = {
   options?: ObjectStoreMetaOptions;
 };
 
+// mtime and revision come from the metadata message, as ADR-20 specifies
+// they are never stored - what info() returns is republished without them.
+// like the go client, mtime is stored as the zero time, so readers that
+// still take it from the json get a valid date
+const zeroTime = "0001-01-01T00:00:00Z";
+function storedMeta(info: Partial<ServerObjectInfo>): string {
+  const { mtime: _mtime, revision: _revision, ...stored } = info;
+  return JSON.stringify({ ...stored, mtime: zeroTime });
+}
+
 export type ServerObjectInfo = {
   bucket: string;
   nuid: string;
@@ -541,7 +551,7 @@ export class ObjectStoreImpl implements ObjectStore {
             await publishChunk(payload);
           }
 
-          // prepare the metadata
+          // prepare the metadata - mtime is only on the result
           info.mtime = new Date().toISOString();
           const digest = Base64UrlPaddedCodec.encode(sha.digest());
           info.digest = `${digestType}${digest}`;
@@ -560,11 +570,11 @@ export class ObjectStoreImpl implements ObjectStore {
 
           // cast: closure-captured `let` defeats TS narrowing.
           const ack = fi
-            ? await (fi as FastIngest).last(metaSubj, JSON.stringify(info), {
+            ? await (fi as FastIngest).last(metaSubj, storedMeta(info), {
               headers: h,
               timeout,
             })
-            : await this.js.publish(metaSubj, JSON.stringify(info), {
+            : await this.js.publish(metaSubj, storedMeta(info), {
               headers: h,
               timeout,
             });
@@ -862,8 +872,8 @@ export class ObjectStoreImpl implements ObjectStore {
       name: n,
       bucket: info.bucket,
       options: { link: link },
-    } as ObjectStoreMeta;
-    await this.js.publish(this._metaSubject(name), JSON.stringify(mm));
+    } as Partial<ServerObjectInfo>;
+    await this.js.publish(this._metaSubject(name), storedMeta(mm));
     const i = await this.info(name);
     return Promise.resolve(i!);
   }
@@ -881,7 +891,7 @@ export class ObjectStoreImpl implements ObjectStore {
     const h = headers();
     h.set(JsHeaders.RollupHdr, JsHeaders.RollupValueSubject);
 
-    await this.js.publish(this._metaSubject(info.name), JSON.stringify(info), {
+    await this.js.publish(this._metaSubject(info.name), storedMeta(info), {
       headers: h,
     });
     return this.jsm.streams.purge(this.stream, {
@@ -920,7 +930,7 @@ export class ObjectStoreImpl implements ObjectStore {
     // if the name changed, delete the old meta
     const ack = await this.js.publish(
       this._metaSubject(ii.name),
-      JSON.stringify(ii),
+      storedMeta(ii),
     );
     if (name !== meta.name) {
       await this.jsm.streams.purge(this.stream, {
@@ -978,6 +988,7 @@ export class ObjectStoreImpl implements ObjectStore {
           }
           const oi = jm.json<ObjectWatchInfo>();
           oi.mtime = jm.timestamp;
+          oi.revision = jm.seq;
           oi.isUpdate = isUpdate;
           if (oi.deleted && opts.ignoreDeletes === true) {
             // do nothing

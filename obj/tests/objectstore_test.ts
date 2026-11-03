@@ -2018,3 +2018,53 @@ Deno.test("os - watch fails on metadata that isn't json", async () => {
 
   await cleanup(ns, nc);
 });
+
+Deno.test("os - mtime and revision are not stored, mtime is the zero time like go", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const os = await new Objm(nc).create("stored");
+  const impl = os as ObjectStoreImpl;
+  // the metadata as stored, not as info() returns it
+  const stored = async (name: string) => {
+    const m = await impl.jsm.streams.getMessage(impl.stream, {
+      last_by_subj: impl._metaSubject(name),
+    });
+    return m!.json<Record<string, unknown>>();
+  };
+  const notStored = async (name: string) => {
+    const meta = await stored(name);
+    assertEquals(meta.mtime, "0001-01-01T00:00:00Z");
+    assertEquals(meta.revision, undefined);
+  };
+
+  // put returns an mtime, and info() has the server's
+  const pi = await os.putBlob({ name: "a" }, new Uint8Array([1]));
+  assertExists(pi.mtime);
+  await notStored("a");
+  const info = await os.info("a");
+  assertExists(info!.mtime);
+  assertEquals(info!.revision, pi.revision);
+
+  // republished metadata doesn't carry what info() added
+  await os.update("a", { description: "updated" });
+  await notStored("a");
+  await os.update("a", { name: "b" });
+  await notStored("b");
+
+  // watch entries have the revision of their message
+  const iter = await os.watch({ includeHistory: true });
+  for await (const e of iter) {
+    const i = await os.info(e.name);
+    assertEquals(e.revision, i!.revision);
+    assertExists(e.mtime);
+    break;
+  }
+
+  // links too
+  await os.link("l", (await os.info("b"))!);
+  await notStored("l");
+
+  await os.delete("b");
+  await notStored("b");
+
+  await cleanup(ns, nc);
+});
