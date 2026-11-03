@@ -170,13 +170,6 @@ export class Objm {
     name: string,
     opts: Partial<ObjectStoreOptions> = {},
   ): Promise<ObjectStore> {
-    if (typeof crypto?.subtle?.digest !== "function") {
-      return Promise.reject(
-        new Error(
-          "objectstore: unable to calculate hashes - crypto.subtle.digest with sha256 support is required",
-        ),
-      );
-    }
     const { ok, min } = this.js.nc.features.get(Feature.JS_OBJECTSTORE);
     if (!ok) {
       return Promise.reject(
