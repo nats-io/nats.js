@@ -13,7 +13,12 @@
  * limitations under the License.
  */
 
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertInstanceOf,
+  assertRejects,
+} from "@std/assert";
 import { connect } from "./connect.ts";
 import { cleanup, NatsServer, setup } from "nst";
 import { delay, Empty, errors } from "../src/internal_mod.ts";
@@ -214,15 +219,16 @@ Deno.test("callback errors - a callback failing on a subscription timeout is pri
   using unhandled = captureUnhandled();
 
   const got: Error[] = [];
-  nc.subscribe("a", {
+  const sub = nc.subscribe("a", {
     timeout: 100,
     callback: (err) => {
       got.push(err!);
       throw "bad";
     },
   });
-  // a callback subscription's closed doesn't settle on a timeout
-  await delay(200);
+  // the subscription still closes with the timeout
+  assertInstanceOf(await sub.closed, errors.TimeoutError);
+  await delay(20);
   printed.restore();
   unhandled.restore();
 

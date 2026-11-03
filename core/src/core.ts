@@ -118,9 +118,12 @@ export interface SubOpts<T> {
    */
   max?: number;
   /**
-   * Optional maximum number of milliseconds before a timer raises an error. This
-   * useful to monitor a subscription that is expected to yield messages.
-   * The timer is cancelled when the first message is received by the subscription.
+   * Optional maximum number of milliseconds before a timer raises an error if
+   * no messages arrive before it expires. This is useful to monitor a
+   * subscription that is expected to yield messages. The timer is cancelled
+   * when the first message is received by the subscription. If it expires,
+   * the subscription closes with a TimeoutError: an iterator throws it, a
+   * callback is called with it, and `closed` resolves with it.
    */
   timeout?: number;
   /**

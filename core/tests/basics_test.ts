@@ -981,6 +981,65 @@ Deno.test("basics - subscription cb with timeout cancels on message", async () =
   await cleanup(ns, nc);
 });
 
+Deno.test("basics - subscription cb with timeout keeps receiving past the timeout", async () => {
+  const { ns, nc } = await setup();
+  const subj = createInbox();
+  const errs: Error[] = [];
+  let n = 0;
+  const sub = nc.subscribe(subj, {
+    timeout: 300,
+    callback: (err) => {
+      if (err) {
+        errs.push(err);
+      } else {
+        n++;
+      }
+    },
+  }) as SubscriptionImpl;
+  nc.publish(subj);
+  await nc.flush();
+  // the first message cancelled the timer
+  await delay(500);
+  nc.publish(subj);
+  await nc.flush();
+  assertEquals(errs, []);
+  assertEquals(n, 2);
+  assertEquals(sub.isClosed(), false);
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - subscription cb with timeout closes on the timeout", async () => {
+  const { ns, nc } = await setup();
+  const subj = createInbox();
+  const errs: Error[] = [];
+  let n = 0;
+  const sub = nc.subscribe(subj, {
+    timeout: 300,
+    callback: (err) => {
+      if (err) {
+        errs.push(err);
+      } else {
+        n++;
+      }
+    },
+  }) as SubscriptionImpl;
+  // closed settles with the timeout, as for an iterator
+  const err = await deadline(sub.closed, 1000);
+  assertInstanceOf(err, errors.TimeoutError);
+  assertEquals(errs.length, 1);
+  assertInstanceOf(errs[0], errors.TimeoutError);
+
+  // and it was unsubscribed - nothing is delivered after the timeout
+  nc.publish(subj);
+  await nc.flush();
+  assertEquals(n, 0);
+  assertEquals(
+    (nc as NatsConnectionImpl).protocol.subscriptions.get(sub.sid),
+    undefined,
+  );
+  await cleanup(ns, nc);
+});
+
 Deno.test("basics - resolve", async () => {
   // fake dns so the test doesn't depend on public records. the server
   // only listens on 127.0.0.1, so the first alternate (::1) fails and
