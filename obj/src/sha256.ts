@@ -27,45 +27,70 @@ export type StreamingSha256 = {
 /**
  * SHA-256 backend selector.
  *
- * - `"js"` — pure-JS (`js-sha256`). Default. Works in every runtime including
- *   the browser. Slow (~5-10× slower than native at MB+ payloads).
- * - `"native"` — `node:crypto` `createHash`. Built into Node, Deno and Bun
- *   (no extra dependency). Not available in browsers without a polyfill —
- *   selecting `"native"` in a browser bundle will throw at first put/get.
+ * - `"auto"` — the default: `"native"` when the runtime provides it, `"js"`
+ *   otherwise.
+ * - `"js"` — pure-JS (`js-sha256`). Works in every runtime including the
+ *   browser and React Native. Slow (~5-10× slower than native at MB+
+ *   payloads).
+ * - `"native"` — `node:crypto` `createHash`, obtained from the runtime with
+ *   `process.getBuiltinModule()`: Node (20.16+, 22.3+), Deno and Bun, with no
+ *   extra dependency. It isn't imported, so bundles for the browser or React
+ *   Native don't reference `node:crypto`. Selecting it where it isn't
+ *   available throws at the first put/get.
  */
-export type Sha256Backend = "js" | "native";
+export type Sha256Backend = "auto" | "js" | "native";
 
 type NodeHash = {
   update(data: Uint8Array): void;
   digest(): Uint8Array;
 };
 
-let backend: Sha256Backend = "js";
+let backend: Sha256Backend = "auto";
 let factory: (() => StreamingSha256) | null = null;
-let initPromise: Promise<void> | null = null;
 
 /**
  * Selects the SHA-256 backend used by Object Store put/get operations.
- * Default is `"js"` (pure-JS, browser-safe). Apps running on Node, Deno or
- * Bun can flip to `"native"` for substantially higher throughput on large
- * objects. The choice is process-wide — call once at startup, before any
- * Object Store operation.
+ * Default is `"auto"`: `"native"` on Node, Deno or Bun, for substantially
+ * higher throughput on large objects, and `"js"` (pure-JS) elsewhere. The
+ * choice is process-wide — call once at startup, before any Object Store
+ * operation.
  */
 export function setSha256Backend(b: Sha256Backend): void {
-  if (b !== "js" && b !== "native") {
+  if (b !== "auto" && b !== "js" && b !== "native") {
     throw new Error(`unknown sha256 backend: ${b}`);
   }
   if (b === backend) return;
   backend = b;
   factory = null;
-  initPromise = null;
 }
 
 /**
- * Returns the currently selected backend.
+ * Returns the backend in use: the one selected, or for `"auto"` the one it
+ * resolves to in this runtime.
  */
-export function getSha256Backend(): Sha256Backend {
+export function getSha256Backend(): "js" | "native" {
+  if (backend === "auto") {
+    return nodeCreateHash() ? "native" : "js";
+  }
   return backend;
+}
+
+// node:crypto's createHash, asked of the runtime rather than imported: a
+// bundler leaves a function call alone, while it tries to resolve an
+// import("node:crypto") even if it never runs - which fails for the browser
+// and react native. those don't have process.getBuiltinModule, so it's null
+function nodeCreateHash(): ((alg: string) => NodeHash) | null {
+  try {
+    const p = (globalThis as {
+      process?: { getBuiltinModule?: (id: string) => unknown };
+    }).process;
+    const m = p?.getBuiltinModule?.("node:crypto") as
+      | { createHash?: (alg: string) => NodeHash }
+      | undefined;
+    return typeof m?.createHash === "function" ? m.createHash : null;
+  } catch {
+    return null;
+  }
 }
 
 function jsFactory(): StreamingSha256 {
@@ -80,49 +105,41 @@ function jsFactory(): StreamingSha256 {
   };
 }
 
-async function init(): Promise<void> {
-  if (factory) return;
-  if (backend === "native") {
-    // `node:` prefix is recognized by browser bundlers as a node builtin and
-    // externalized; literal specifier required for JSR static analysis
-    const m = await import("node:crypto") as {
-      createHash?: (alg: string) => NodeHash;
-    };
-    if (typeof m?.createHash !== "function") {
+function resolveFactory(): () => StreamingSha256 {
+  if (backend === "js") {
+    return jsFactory;
+  }
+  const create = nodeCreateHash();
+  if (!create) {
+    if (backend === "native") {
       throw new Error(
         "sha256 backend 'native' selected but `node:crypto` is not available in this runtime",
       );
     }
-    const create = m.createHash;
-    factory = () => {
-      const h = create("sha256");
-      return {
-        update(data: Uint8Array): void {
-          h.update(data);
-        },
-        digest(): Uint8Array {
-          return new Uint8Array(h.digest());
-        },
-      };
-    };
-    return;
+    return jsFactory;
   }
-  factory = jsFactory;
+  return () => {
+    const h = create("sha256");
+    return {
+      update(data: Uint8Array): void {
+        h.update(data);
+      },
+      digest(): Uint8Array {
+        return new Uint8Array(h.digest());
+      },
+    };
+  };
 }
 
 /**
  * Returns a new streaming SHA-256 hasher using the currently selected backend.
- * Resolves the backend lazily on first call after each `setSha256Backend()`.
+ * Resolves the backend on first call after each `setSha256Backend()`.
  */
-export async function createSha256(): Promise<StreamingSha256> {
-  if (!factory) {
-    initPromise = initPromise ?? init();
-    await initPromise;
+export function createSha256(): Promise<StreamingSha256> {
+  try {
+    factory = factory ?? resolveFactory();
+    return Promise.resolve(factory());
+  } catch (err) {
+    return Promise.reject(err);
   }
-  const f = factory;
-  if (!f) {
-    // setSha256Backend() was called between await and here; rare race
-    throw new Error("sha256 backend reset during init");
-  }
-  return f();
 }

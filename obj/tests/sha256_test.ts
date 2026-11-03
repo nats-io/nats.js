@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { sha256 } from "js-sha256";
 import {
   createSha256,
@@ -74,11 +74,48 @@ Deno.test("sha256 - returns 32 bytes", async () => {
   assertEquals(out.length, 32);
 });
 
-Deno.test("sha256 - default backend is js", () => {
-  // since this test file imports a fresh module instance per Deno.test file,
-  // initial state should be the documented default.
-  setSha256Backend("js");
-  assertEquals(getSha256Backend(), "js");
+Deno.test("sha256 - default backend is auto, native where the runtime has it", () => {
+  // nothing in this file changed the backend before this test, so this is
+  // the documented default resolved in deno
+  assertEquals(getSha256Backend(), "native");
+});
+
+// runs fn as if the runtime were a browser or react native: no
+// process.getBuiltinModule
+async function withoutBuiltins(fn: () => Promise<void>): Promise<void> {
+  const p = globalThis.process as unknown as Record<string, unknown>;
+  const orig = p.getBuiltinModule;
+  p.getBuiltinModule = undefined;
+  try {
+    await fn();
+  } finally {
+    p.getBuiltinModule = orig;
+    setSha256Backend("js");
+    setSha256Backend("auto");
+  }
+}
+
+Deno.test("sha256 - auto falls back to js without native support", async () => {
+  await withoutBuiltins(async () => {
+    setSha256Backend("js");
+    setSha256Backend("auto");
+    assertEquals(getSha256Backend(), "js");
+    const data = new TextEncoder().encode("abc");
+    const h = await createSha256();
+    h.update(data);
+    assertEquals(hex(h.digest()), hex(Uint8Array.from(sha256.array(data))));
+  });
+});
+
+Deno.test("sha256 - native fails where the runtime doesn't have it", async () => {
+  await withoutBuiltins(async () => {
+    setSha256Backend("native");
+    await assertRejects(
+      () => createSha256(),
+      Error,
+      "`node:crypto` is not available",
+    );
+  });
 });
 
 Deno.test("sha256 - native backend matches js backend", async () => {

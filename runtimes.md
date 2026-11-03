@@ -255,12 +255,14 @@ Two caveats specific to React Native:
   `babel-preset-expo` can wire up the worklets plugin:
   `npx expo install react-native-worklets`. After installing, run
   `npx expo start --clear` to flush Metro's babel cache.
-- **`crypto.subtle.digest` for ObjectStore.** Hermes does not expose Web
-  Crypto's subtle API. `Objm.create` checks for `crypto.subtle.digest` as a
-  precondition (the actual hashing uses `js-sha256`), so a tiny stub at the top
-  of your NATS module is enough — see
+- **ObjectStore on 3.4.0 and earlier.** Hermes does not expose Web Crypto's
+  subtle API, and those versions of `Objm.create` check for
+  `crypto.subtle.digest` (the actual hashing uses `js-sha256`), so a tiny stub
+  at the top of your NATS module is needed — see
   [`lib/nats.ts`](https://github.com/aricart/nats-react-native/blob/main/lib/nats.ts)
-  in the example.
+  in the example. 3.4.0 also fails to bundle for iOS and Android, because of an
+  `import("node:crypto")` in the ObjectStore. Later versions need neither
+  workaround.
 
 The sample app at
 [aricart/nats-react-native](https://github.com/aricart/nats-react-native) shows
@@ -305,6 +307,10 @@ Create your own local bundled version of the libraries:
 ```bash
 esbuild --format=esm --bundle --minify nats.js > nats.mjs
 ```
+
+With 3.4.0, add `--external:node:crypto` - its ObjectStore has an
+`import("node:crypto")` that esbuild can't resolve for the browser. Later
+versions don't need it.
 
 Create your own NATS application referencing the bundled modules (as
 `index.js`):
