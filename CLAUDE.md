@@ -67,16 +67,18 @@ npm test                             # Build then run Node.js test suite
 npm run coverage                     # Build then run with lcov output
 ```
 
-### Module npm build process (core, jetstream, kv, obj, services)
+### Module npm build process (core, jetstream, kv, obj, services, transport-node)
 
-Each module's npm build:
+Each module's npm build compiles `src/` twice with `tsc`; relative imports in
+`src/` end in `.ts`, and `rewriteRelativeImportExtensions` turns them into
+`.js`:
 
-1. `npm run pre-process` — runs `bin/cjs-fix-imports.ts` to copy `.ts` sources
-   to `build/src/` with import paths fixed for CJS (removes `.ts` extensions)
-2. `npm run build-cjs` — runs `tsc` to compile `build/src/` into `lib/`
+1. `npm run build-cjs` — `tsconfig.json`, CommonJS into `lib/`
+2. `npm run build-esm` — `tsconfig.esm.json`, ESM into `lib/esm/`, plus a
+   `lib/esm/package.json` (`type: module`, `sideEffects: false`)
 
-The `transport-node` package compiles directly from `src/` to `lib/` (no
-pre-process step).
+`exports` in `package.json` sends `import` to `lib/esm/` and `require` to
+`lib/`, each with its own types.
 
 ## Code Conventions
 

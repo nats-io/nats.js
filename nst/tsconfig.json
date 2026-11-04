@@ -8,9 +8,11 @@
     "declaration": true,
     "allowJs": true,
     "removeComments": false,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "rootDir": "./src",
+    "rewriteRelativeImportExtensions": true
   },
   "include": [
-    "./build/src/**/*"
+    "./src/**/*"
   ]
 }

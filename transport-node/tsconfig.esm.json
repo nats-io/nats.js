@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "./src",
+    "outDir": "./lib/esm/",
+    "sourceMap": true,
+    "declaration": true,
+    "removeComments": false,
+    "skipLibCheck": true
+  },
+  "include": [
+    "./src/**/*"
+  ]
+}

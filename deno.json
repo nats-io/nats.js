@@ -10,7 +10,7 @@
     "@aricart/cobra": "jsr:@aricart/cobra@0.1.2",
     "esbuild": "npm:esbuild@0.27.3",
     "@luca/esbuild-deno-loader": "jsr:@luca/esbuild-deno-loader@0.11.1",
-    "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@3.4.0",
+    "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@3.5.0-0",
     "@david/dax": "jsr:@david/dax@0.45.0",
     "license-checker": "npm:license-checker@25.0.1",
     "@std/assert": "jsr:@std/assert@1.0.18",
@@ -19,7 +19,7 @@
     "@std/fmt": "jsr:@std/fmt@1.0.9",
     "@std/jsonc": "jsr:@std/jsonc@1.0.2",
     "@std/semver": "jsr:@std/semver@1.0.8",
-    "@nats-io/jwt": "jsr:@nats-io/jwt@0.0.11",
+    "@nats-io/jwt": "jsr:@nats-io/jwt@0.1.0-1",
     "@chiefbiiko/sha256": "https://denopkg.com/chiefbiiko/sha256@v1.0.0/mod.ts",
     "nats-deno": "https://raw.githubusercontent.com/nats-io/nats.deno/main/src/mod.ts",
     "ajv": "npm:ajv@8.17.1"

@@ -550,6 +550,174 @@ Deno.test("version_manager - release bump removes prerelease qualifier", async (
   assertEquals(result2.output.includes("is already a release version"), true);
 });
 
+// a workspace shaped like nats.js: subpath imports (/internal), import maps
+// and a module (nst) that lists core in peerDependencies and devDependencies
+async function createWorkspace(version: string) {
+  await Deno.remove(testDir, { recursive: true });
+  await Deno.mkdir(testDir);
+
+  await createTestFile("core/package.json", {
+    name: "@nats-io/nats-core",
+    version,
+  });
+  await createTestFile("core/deno.json", {
+    name: "@nats-io/nats-core",
+    version,
+  });
+  await createTestFile("jetstream/package.json", {
+    name: "@nats-io/jetstream",
+    version,
+    dependencies: { "@nats-io/nats-core": version },
+  });
+  await createTestFile("jetstream/deno.json", {
+    name: "@nats-io/jetstream",
+    version,
+    imports: {
+      "@nats-io/nats-core": `jsr:@nats-io/nats-core@${version}`,
+      "@nats-io/nats-core/internal":
+        `jsr:@nats-io/nats-core@${version}/internal`,
+    },
+  });
+  await createTestFile("jetstream/import_map.json", {
+    imports: {
+      "@nats-io/nats-core": `jsr:@nats-io/nats-core@${version}`,
+      "@nats-io/nats-core/internal":
+        `jsr:@nats-io/nats-core@${version}/internal`,
+      "@nats-io/nuid": "jsr:@nats-io/nuid@3.1.0-0",
+    },
+  });
+  await createTestFile("nst/package.json", {
+    name: "@nats-io/nst",
+    version,
+    peerDependencies: { "@nats-io/nats-core": version },
+    devDependencies: { "@nats-io/nats-core": version },
+  });
+  await createTestFile("nst/deno.json", {
+    name: "@nats-io/nst",
+    version,
+    imports: {
+      "@nats-io/nats-core": `jsr:@nats-io/nats-core@${version}`,
+      "@nats-io/nats-core/internal":
+        `jsr:@nats-io/nats-core@${version}/internal`,
+    },
+  });
+}
+
+type Imports = { imports: Record<string, string> };
+type Pkg = {
+  version: string;
+  peerDependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
+Deno.test("version_manager - bump keeps import subpaths", async () => {
+  await createWorkspace("3.4.0");
+  const result = await runVersionManager(["bump", "all", "preminor"]);
+  assertEquals(result.success, true, result.output);
+
+  for (const f of ["jetstream/deno.json", "nst/deno.json"]) {
+    const { imports } = await readTestFile(f) as Imports;
+    assertEquals(
+      imports["@nats-io/nats-core"],
+      "jsr:@nats-io/nats-core@3.5.0-0",
+      f,
+    );
+    assertEquals(
+      imports["@nats-io/nats-core/internal"],
+      "jsr:@nats-io/nats-core@3.5.0-0/internal",
+      f,
+    );
+  }
+});
+
+Deno.test("version_manager - bump updates import maps", async () => {
+  await createWorkspace("3.4.0");
+  const result = await runVersionManager(["bump", "all", "preminor"]);
+  assertEquals(result.success, true, result.output);
+
+  const { imports } = await readTestFile(
+    "jetstream/import_map.json",
+  ) as Imports;
+  assertEquals(
+    imports["@nats-io/nats-core"],
+    "jsr:@nats-io/nats-core@3.5.0-0",
+  );
+  assertEquals(
+    imports["@nats-io/nats-core/internal"],
+    "jsr:@nats-io/nats-core@3.5.0-0/internal",
+  );
+  // not a module of this workspace, left alone
+  assertEquals(imports["@nats-io/nuid"], "jsr:@nats-io/nuid@3.1.0-0");
+});
+
+Deno.test("version_manager - bump updates peerDependencies and devDependencies", async () => {
+  await createWorkspace("3.4.0");
+  const result = await runVersionManager(["bump", "all", "preminor"]);
+  assertEquals(result.success, true, result.output);
+
+  const nst = await readTestFile("nst/package.json") as Pkg;
+  assertEquals(nst.version, "3.5.0-0");
+  assertEquals(nst.peerDependencies!["@nats-io/nats-core"], "3.5.0-0");
+  assertEquals(nst.devDependencies!["@nats-io/nats-core"], "3.5.0-0");
+});
+
+Deno.test("version_manager - bump from a prerelease updates references", async () => {
+  await createWorkspace("3.5.0-rc.1");
+  const result = await runVersionManager(["bump", "all", "prerelease"]);
+  assertEquals(result.success, true, result.output);
+
+  const { imports } = await readTestFile("nst/deno.json") as Imports;
+  assertEquals(
+    imports["@nats-io/nats-core/internal"],
+    "jsr:@nats-io/nats-core@3.5.0-rc.2/internal",
+  );
+  const map = await readTestFile("jetstream/import_map.json") as Imports;
+  assertEquals(
+    map.imports["@nats-io/nats-core"],
+    "jsr:@nats-io/nats-core@3.5.0-rc.2",
+  );
+});
+
+Deno.test("version_manager - bump uses --preid", async () => {
+  await createWorkspace("3.4.0");
+  const result = await runVersionManager([
+    "bump",
+    "all",
+    "preminor",
+    "--preid",
+    "rc",
+  ]);
+  assertEquals(result.success, true, result.output);
+
+  const core = await readTestFile("core/package.json") as Pkg;
+  assertEquals(core.version, "3.5.0-rc.0");
+});
+
+Deno.test("version_manager - check and fix see import maps and subpaths", async () => {
+  await createWorkspace("3.5.0-0");
+  // stale references
+  await createTestFile("jetstream/import_map.json", {
+    imports: {
+      "@nats-io/nats-core/internal": "jsr:@nats-io/nats-core@3.4.0/internal",
+    },
+  });
+  let result = await runVersionManager(["check"]);
+  assertEquals(result.success, false, result.output);
+
+  result = await runVersionManager(["fix"]);
+  assertEquals(result.success, true, result.output);
+  const { imports } = await readTestFile(
+    "jetstream/import_map.json",
+  ) as Imports;
+  assertEquals(
+    imports["@nats-io/nats-core/internal"],
+    "jsr:@nats-io/nats-core@3.5.0-0/internal",
+  );
+
+  result = await runVersionManager(["check"]);
+  assertEquals(result.success, true, result.output);
+});
+
 // Cleanup after all tests
 Deno.test("cleanup", async () => {
   await Deno.remove(testDir, { recursive: true });

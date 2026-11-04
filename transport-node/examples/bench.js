@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const parse = require("minimist");
-const { Bench, Metric, connect, Nuid } = require("../lib/mod");
-const process = require("node:process");
+import parse from "minimist";
+import { Bench, connect, Metric, Nuid } from "@nats-io/transport-node";
+import process from "node:process";
 
 const defaults = {
   s: "127.0.0.1:4222",

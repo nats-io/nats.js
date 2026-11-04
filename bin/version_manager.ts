@@ -25,6 +25,8 @@ interface PackageJson {
   version: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -52,6 +54,34 @@ interface VersionSuggestion {
 
 const NATS_SCOPE = "@nats-io/";
 
+// a jsr reference to one of our modules, with an optional prerelease and
+// subpath: jsr:@nats-io/nats-core@3.5.0-rc.1/internal
+const NATS_JSR_RE =
+  /jsr:(@nats-io\/[a-z0-9-]+)@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/;
+
+// rewrites only the version of a jsr reference, keeping any subpath
+function setJsrVersion(spec: string, version: string): string {
+  return spec.replace(
+    NATS_JSR_RE,
+    (_m: string, name: string) => `jsr:${name}@${version}`,
+  );
+}
+
+// every package.json section that can reference one of our modules
+function depSections(pkg: PackageJson): Record<string, string>[] {
+  return [
+    pkg.dependencies,
+    pkg.devDependencies,
+    pkg.peerDependencies,
+    pkg.optionalDependencies,
+  ].filter((d): d is Record<string, string> => d !== undefined);
+}
+
+// files with an imports map: deno.json and import_map.json
+function hasImports(filePath: string): boolean {
+  return filePath.endsWith("deno.json") || filePath.endsWith("import_map.json");
+}
+
 async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
     const content = await Deno.readTextFile(filePath);
@@ -75,20 +105,15 @@ async function getAllPackageAndDenoJsonPaths(): Promise<string[]> {
     if (dirEntry.isDirectory && !dirEntry.name.startsWith(".")) {
       const packageJsonPath = `${dirEntry.name}/package.json`;
       const denoJsonPath = `${dirEntry.name}/deno.json`;
-      try {
-        await Deno.stat(packageJsonPath);
-        paths.push(packageJsonPath);
-      } catch (e) {
-        if (!(e instanceof Deno.errors.NotFound)) {
-          throw e;
-        }
-      }
-      try {
-        await Deno.stat(denoJsonPath);
-        paths.push(denoJsonPath);
-      } catch (e) {
-        if (!(e instanceof Deno.errors.NotFound)) {
-          throw e;
+      const importMapPath = `${dirEntry.name}/import_map.json`;
+      for (const p of [packageJsonPath, denoJsonPath, importMapPath]) {
+        try {
+          await Deno.stat(p);
+          paths.push(p);
+        } catch (e) {
+          if (!(e instanceof Deno.errors.NotFound)) {
+            throw e;
+          }
         }
       }
     }
@@ -318,15 +343,14 @@ async function checkVersions() {
           }
         }
       };
-      checkDependencies(pkg.dependencies);
-      checkDependencies(pkg.devDependencies);
-    } else if (filePath.endsWith("deno.json")) {
+      depSections(pkg).forEach(checkDependencies);
+    } else if (hasImports(filePath)) {
       const denoConfig = await readJsonFile<DenoJson>(filePath);
       if (!denoConfig || !denoConfig.imports) continue;
 
       for (const importPath in denoConfig.imports) {
         const importString = denoConfig.imports[importPath];
-        const match = importString.match(/jsr:(@nats-io\/[^@]+)@([\d\.-]+)/);
+        const match = importString.match(NATS_JSR_RE);
         if (match) {
           const depName = match[1];
           const actualVersion = match[2];
@@ -403,27 +427,28 @@ async function fixVersions() {
           }
         }
       };
-      fixDependencies(pkg.dependencies);
-      fixDependencies(pkg.devDependencies);
+      depSections(pkg).forEach(fixDependencies);
 
       if (changed) {
         await writeJsonFile(filePath, pkg);
       }
-    } else if (filePath.endsWith("deno.json")) {
+    } else if (hasImports(filePath)) {
       const denoConfig = await readJsonFile<DenoJson>(filePath);
       if (!denoConfig || !denoConfig.imports) continue;
 
       let changed = false;
       for (const importPath in denoConfig.imports) {
         const importString = denoConfig.imports[importPath];
-        const match = importString.match(/jsr:(@nats-io\/[^@]+)@([\d\.-]+)/);
+        const match = importString.match(NATS_JSR_RE);
         if (match) {
           const depName = match[1];
           const actualVersion = match[2];
           const expectedVersion = moduleVersions.get(depName);
           if (expectedVersion && actualVersion !== expectedVersion) {
-            denoConfig.imports[importPath] =
-              `jsr:${depName}@${expectedVersion}`;
+            denoConfig.imports[importPath] = setJsrVersion(
+              importString,
+              expectedVersion,
+            );
             console.log(
               `Fixed ${filePath}: ${depName} to ${expectedVersion}`,
             );
@@ -585,7 +610,9 @@ async function bumpVersion(
       ) {
         // If already a prerelease, just increment the prerelease version
         newVersion = semver.format(
-          semver.increment(currentSemver, "prerelease", prereleaseIdentifier)!,
+          semver.increment(currentSemver, "prerelease", {
+            prerelease: prereleaseIdentifier,
+          })!,
         );
       } else {
         // Otherwise use the appropriate pre-bump type
@@ -595,7 +622,9 @@ async function bumpVersion(
           | "prepatch"
           | "prerelease";
         newVersion = semver.format(
-          semver.increment(currentSemver, releaseType, prereleaseIdentifier)!,
+          semver.increment(currentSemver, releaseType, {
+            prerelease: prereleaseIdentifier,
+          })!,
         );
       }
     } else {
@@ -679,9 +708,7 @@ export const version = "${newVersion}";
   // Update all references to the bumped module
   let updatedReferences = 0;
   for (const filePath of allFiles) {
-    if (
-      filePath.endsWith("package.json") || filePath.endsWith("deno.json")
-    ) {
+    if (filePath.endsWith("package.json") || hasImports(filePath)) {
       let content: PackageJson | DenoJson | null = null;
       if (filePath.endsWith("package.json")) {
         content = await readJsonFile<PackageJson>(filePath);
@@ -701,25 +728,20 @@ export const version = "${newVersion}";
           updatedReferences++;
         }
       };
-      updateDeps((content as PackageJson).dependencies);
-      updateDeps((content as PackageJson).devDependencies);
+      if (filePath.endsWith("package.json")) {
+        depSections(content as PackageJson).forEach(updateDeps);
+      }
 
       // Update deno.json imports
       if ((content as DenoJson).imports) {
         for (const importPath in (content as DenoJson).imports) {
           const importString = (content as DenoJson).imports![importPath];
-          // Escape special regex characters in module name
-          const escapedModuleName = moduleName.replace(
-            /[.*+?^${}()|[\]\\]/g,
-            "\$&",
-          );
-          const match = importString.match(
-            new RegExp(`(jsr:${escapedModuleName})@([\\d.-]+)`),
-          );
-          if (match && match[2] !== newVersion) {
-            (content as DenoJson).imports![importPath] = `${
-              match[1]
-            }@${newVersion}`;
+          const match = importString.match(NATS_JSR_RE);
+          if (match && match[1] === moduleName && match[2] !== newVersion) {
+            (content as DenoJson).imports![importPath] = setJsrVersion(
+              importString,
+              newVersion,
+            );
             changed = true;
             updatedReferences++;
           }
