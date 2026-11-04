@@ -7,6 +7,6 @@
     "nst": "../nst/src/mod.ts",
     "@nats-io/nkeys": "jsr:@nats-io/nkeys@2.1.0-0",
     "@nats-io/nuid": "jsr:@nats-io/nuid@3.1.0-0",
-    "@std/io": "jsr:@std/io@0.225.2"
+    "@std/io": "jsr:@std/io@0.225.3"
   }
 }

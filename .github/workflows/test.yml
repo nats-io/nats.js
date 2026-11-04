@@ -28,7 +28,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: 2.7.x
+          deno-version: 2.9.x
       - name: Typecheck docs examples
         run: deno check docs-io-nats-examples/*.ts
   coveralls-finish:

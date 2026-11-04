@@ -3,6 +3,6 @@
     "nst": "../nst/src/mod.ts",
     "@nats-io/nats-core": "./src/mod.ts",
     "@nats-io/nats-core/internal": "./src/internal_mod.ts",
-    "@std/io": "jsr:@std/io@0.225.2"
+    "@std/io": "jsr:@std/io@0.225.3"
   }
 }
