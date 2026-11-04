@@ -9,7 +9,7 @@ jobs:
   test:
     strategy:
       matrix:
-        node-version: [24.x]
+        node-version: [26.x]
         deno-version: [2.7.x]
 
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
         run: |
           deno publish --allow-dirty --dry-run
           npm install --workspaces
-          npm publish --provenance --access public --tag=${NPM_TAG} --workspaces --dry-run
+          bin/npm-publish.sh --dry-run
           npm run clean --workspaces
 
       - name: Publish JSR
@@ -53,44 +53,5 @@ jobs:
       - name: Build Bundles
         run:  npm run build --workspaces
 
-      - name: Publish NPM core
-        run: |
-          cd core
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM nst
-        run: |
-          cd nst
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM jetstream
-        run: |
-          cd jetstream
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM kv
-        run: |
-          cd kv
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM obj
-        run: |
-          cd obj
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM services
-        run: |
-          cd services
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
-
-      - name: Publish NPM transport-node
-        run: |
-          cd transport-node
-          npm publish --provenance --access public --tag=${NPM_TAG}
-        continue-on-error: true
+      - name: Publish NPM
+        run: bin/npm-publish.sh
