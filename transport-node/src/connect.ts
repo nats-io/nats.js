@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { nodeResolveHost, NodeTransport } from "./node_transport";
+import { nodeResolveHost, NodeTransport } from "./node_transport.ts";
 import {
   ConnectionOptions,
   NatsConnection,
@@ -21,9 +21,9 @@ import {
   type TlsOptions,
   Transport,
   TransportFactory,
-} from "./nats-base-client";
+} from "./nats-base-client.ts";
 
-import { errors, hasWsProtocol } from "./nats-base-client";
+import { errors, hasWsProtocol } from "./nats-base-client.ts";
 
 export type NodeTlsOptions = {
   rejectUnauthorized?: boolean;

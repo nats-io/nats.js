@@ -8,7 +8,8 @@
     "declaration": true,
     "allowJs": true,
     "removeComments": false,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "rewriteRelativeImportExtensions": true
   },
   "include": [
     "src/**/*"

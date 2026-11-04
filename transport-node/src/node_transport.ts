@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import type { ConnectionOptions } from "./nats-base-client";
+import type { ConnectionOptions } from "./nats-base-client.ts";
 import {
   checkOptions,
   DataBuffer,
@@ -25,15 +25,15 @@ import {
   INFO,
   ServerInfo,
   Transport,
-} from "./nats-base-client";
+} from "./nats-base-client.ts";
 import { createConnection, Socket } from "node:net";
 import { connect as tlsConnect, TlsOptions, TLSSocket } from "node:tls";
 import { resolve } from "node:path";
 import { existsSync, readFile } from "node:fs";
 import dns from "node:dns";
 import { Buffer } from "node:buffer";
-import { version } from "./version";
-import type { NodeConnectionOptions } from "./connect";
+import { version } from "./version.ts";
+import type { NodeConnectionOptions } from "./connect.ts";
 
 export const VERSION = version;
 const LANG = "nats.js";

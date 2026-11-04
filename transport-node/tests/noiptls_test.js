@@ -16,7 +16,7 @@ const { describe, it } = require("node:test");
 const {
   connect,
 } = require(
-  "../index",
+  "@nats-io/transport-node",
 );
 
 const process = require("node:process");

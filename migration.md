@@ -206,19 +206,6 @@ Use `KvOptions.storage` and `KvStatus.storage`.
 
 ## Changes to ObjectStore
 
-> [!CAUTION]
->
-> Clients prior to 3.x used to shim the global `crypto` automatically. `crypto`
-> is available on node 20 and better. Please upgrade your node runtime or shim
-> `crypto`:
->
-> ```javascript
-> if (typeof globalThis.crypto === "undefined") {
->   const c = require("crypto");
->   global.crypto = c.webcrypto;
-> }
-> ```
-
 > [!IMPORTANT]
 >
 > Clients that use @nats-io/obj prior to 3.0.0-34, potentially generated sha-256

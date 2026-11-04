@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-exports.Performance = class Performance {
+export class Performance {
   timers;
   measures;
 
@@ -45,4 +45,4 @@ exports.Performance = class Performance {
     });
     return values;
   }
-};
+}

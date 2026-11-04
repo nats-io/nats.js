@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
-const parse = require("minimist");
-const { connect, headers, credsAuthenticator, delay } = require(
-  "../index",
-);
-const fs = require("node:fs");
-const process = require("node:process");
+import parse from "minimist";
+import {
+  connect,
+  credsAuthenticator,
+  delay,
+  headers,
+} from "@nats-io/transport-node";
+import fs from "node:fs";
+import process from "node:process";
 
 const argv = parse(
   process.argv.slice(2),

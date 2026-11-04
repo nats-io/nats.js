@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const process = require("node:process");
-const parse = require("minimist");
-const { connect } = require("../index");
+import process from "node:process";
+import parse from "minimist";
+import { connect } from "@nats-io/transport-node";
 
 const argv = parse(
   process.argv.slice(2),

@@ -1,15 +1,45 @@
 {
   "name": "@nats-io/kv",
-  "version": "3.4.0",
+  "version": "3.5.0-0",
   "files": [
     "lib/",
     "LICENSE",
     "README.md"
   ],
-  "types": "./lib/mod.d.js",
+  "sideEffects": false,
+  "types": "./lib/mod.d.ts",
   "exports": {
-    ".": "./lib/mod.js",
-    "./internal": "./lib/internal_mod.js"
+    ".": {
+      "import": {
+        "types": "./lib/esm/mod.d.ts",
+        "default": "./lib/esm/mod.js"
+      },
+      "require": {
+        "types": "./lib/mod.d.ts",
+        "default": "./lib/mod.js"
+      }
+    },
+    "./internal": {
+      "import": {
+        "types": "./lib/esm/internal_mod.d.ts",
+        "default": "./lib/esm/internal_mod.js"
+      },
+      "require": {
+        "types": "./lib/internal_mod.d.ts",
+        "default": "./lib/internal_mod.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "internal": [
+        "./lib/internal_mod.d.ts"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 22"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -20,12 +50,12 @@
   "scripts": {
     "real-clean": "npm run clean && shx rm -Rf ./node_modules",
     "clean": "shx rm -Rf ./build ./lib",
-    "pre-process": "npm run clean && deno run -A ../bin/cjs-fix-imports.ts -o ./build/src ./src",
-    "build-cjs": "npm run pre-process && tsc",
-    "build": "npm run build-cjs",
+    "build-cjs": "npm run clean && tsc",
+    "build": "npm run build-cjs && npm run build-esm",
     "prepack": "npm run build",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
-    "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version"
+    "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version",
+    "build-esm": "tsc -p tsconfig.esm.json && node -e \"require('fs').writeFileSync('lib/esm/package.json', JSON.stringify({type: 'module', sideEffects: false}) + '\\n')\""
   },
   "keywords": [],
   "author": {
@@ -33,8 +63,8 @@
   },
   "description": "kv library - this library implements all the base functionality for NATS KV javascript clients",
   "dependencies": {
-    "@nats-io/jetstream": "3.4.0",
-    "@nats-io/nats-core": "3.4.0"
+    "@nats-io/jetstream": "3.5.0-0",
+    "@nats-io/nats-core": "3.5.0-0"
   },
   "devDependencies": {
     "@types/node": "^25.6.1",

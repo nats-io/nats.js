@@ -7,9 +7,11 @@
     "sourceMap": true,
     "declaration": true,
     "allowJs": true,
-    "removeComments": false
+    "removeComments": false,
+    "rootDir": "./src",
+    "rewriteRelativeImportExtensions": true
   },
   "include": [
-    "./build/src/**/*"
+    "./src/**/*"
   ]
 }

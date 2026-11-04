@@ -17,7 +17,7 @@ const assert = require("node:assert").strict;
 const {
   connect,
 } = require(
-  "../index",
+  "@nats-io/transport-node",
 );
 const process = require("node:process");
 const { resolve, join } = require("node:path");
