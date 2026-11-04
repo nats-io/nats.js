@@ -17,7 +17,7 @@ const assert = require("node:assert").strict;
 const {
   connect,
 } = require(
-  "../index",
+  "@nats-io/transport-node",
 );
 const { jetstream, jetstreamManager } = require(
   "@nats-io/jetstream",

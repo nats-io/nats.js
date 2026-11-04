@@ -17,7 +17,7 @@ const assert = require("node:assert").strict;
 const {
   connect,
   wsconnect,
-} = require("../index");
+} = require("@nats-io/transport-node");
 const { NatsServer } = require("@nats-io/nst");
 const {
   createInbox,
