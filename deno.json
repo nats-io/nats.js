@@ -1,23 +1,26 @@
 {
+  "minimumDependencyAge": {
+    "exclude": ["jsr:@nats-io/*", "npm:@nats-io/*", "jsr:@aricart/*"]
+  },
   "compilerOptions": {
     "strict": true
   },
   "imports": {
     "nst": "./nst/src/mod.ts",
     "@nats-io/nst": "./nst/src/mod.ts",
-    "@std/cli": "jsr:@std/cli@1.0.27",
-    "@std/path": "jsr:@std/path@1.1.4",
-    "@aricart/cobra": "jsr:@aricart/cobra@0.1.2",
+    "@std/cli": "jsr:@std/cli@1.0.32",
+    "@std/path": "jsr:@std/path@1.1.6",
+    "@aricart/cobra": "jsr:@aricart/cobra@0.1.3",
     "esbuild": "npm:esbuild@0.27.3",
     "@luca/esbuild-deno-loader": "jsr:@luca/esbuild-deno-loader@0.11.1",
     "@nats-io/transport-deno": "jsr:@nats-io/transport-deno@3.5.0-0",
-    "@david/dax": "jsr:@david/dax@0.45.0",
+    "@david/dax": "jsr:@david/dax@0.50.2",
     "license-checker": "npm:license-checker@25.0.1",
-    "@std/assert": "jsr:@std/assert@1.0.18",
-    "@std/async": "jsr:@std/async@1.1.1",
+    "@std/assert": "jsr:@std/assert@1.0.19",
+    "@std/async": "jsr:@std/async@1.5.1",
     "@std/bytes": "jsr:@std/bytes@1.0.6",
-    "@std/fmt": "jsr:@std/fmt@1.0.9",
-    "@std/jsonc": "jsr:@std/jsonc@1.0.2",
+    "@std/fmt": "jsr:@std/fmt@1.0.10",
+    "@std/jsonc": "jsr:@std/jsonc@1.0.3",
     "@std/semver": "jsr:@std/semver@1.0.8",
     "@nats-io/jwt": "jsr:@nats-io/jwt@0.1.0-1",
     "@chiefbiiko/sha256": "https://denopkg.com/chiefbiiko/sha256@v1.0.0/mod.ts",
