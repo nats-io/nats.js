@@ -359,6 +359,10 @@ export class Servers {
   }
 
   update(info: ServerInfo, encrypted?: boolean): ServersChanged {
+    // a bad entry fails the whole info before anything changes
+    // update is only called from processInfo - so it would reject the connection
+    // if this tosses
+    checkConnectUrls(info.connect_urls, encrypted);
     const added: string[] = [];
     let deleted: string[] = [];
 
@@ -410,5 +414,32 @@ export class Servers {
     }
 
     return { added, deleted };
+  }
+}
+
+// connect_urls is applied only when every entry parses, so a bad info
+// fails as a whole, naming the entry
+function checkConnectUrls(urls: unknown, encrypted?: boolean): void {
+  if (urls === undefined || urls === null) {
+    return;
+  }
+  if (!Array.isArray(urls)) {
+    throw new Error(`connect_urls is not an array: ${JSON.stringify(urls)}`);
+  }
+  const urlParseFn = getUrlParseFn();
+  for (const u of urls) {
+    try {
+      if (typeof u !== "string") {
+        throw new Error("not a string");
+      }
+      new ServerImpl(urlParseFn ? urlParseFn(u, encrypted) : u, true);
+    } catch (err) {
+      throw new Error(
+        `invalid connect_urls entry ${JSON.stringify(u)}: ${
+          (err as Error).message
+        }`,
+        { cause: err },
+      );
+    }
   }
 }
