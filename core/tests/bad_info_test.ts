@@ -246,6 +246,8 @@ for (const bad of badInfos.filter((b) => b.name !== "bad version")) {
       assert(types.indexOf("disconnect") < types.indexOf("reconnect"));
       assert(p.connected);
       assertEquals(p.servers.getServers().map((s) => s.listen), servers);
+      // the error doesn't outlive the connection it failed
+      assertEquals(p.lastError, undefined);
     });
   });
 }
@@ -307,4 +309,14 @@ Deno.test("bad info - servers update leaves the pool alone on a bad entry", () =
     'connect_urls is not an array: {"a":1}',
   );
   assertEquals(servers.getServers().map((s) => s.listen), before);
+});
+
+Deno.test("bad info - a retried connect doesn't keep the error", async () => {
+  const bad = fakeTransport(info("{not json"));
+  const good = fakeTransport(handshake);
+  await withTransports([bad, good], async (p) => {
+    await deadline(p.dialLoop(), 1000);
+    assert(p.connected);
+    assertEquals(p.lastError, undefined);
+  }, { waitOnFirstConnect: true });
 });

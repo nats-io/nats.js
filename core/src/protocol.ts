@@ -696,6 +696,11 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       this.raceTimer?.cancel();
       this.connected = true;
       this.connectError = undefined;
+      // a protocol error belongs to the connection that failed, so it
+      // isn't reported as the cause of a later, unrelated disconnect
+      if (this.lastError instanceof errors.ProtocolError) {
+        this.lastError = undefined;
+      }
       this.sendSubscriptions();
       this.connectedOnce = true;
       this.server.didConnect = true;
