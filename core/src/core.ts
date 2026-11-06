@@ -1124,7 +1124,9 @@ export interface ConnectionOptions {
   servers?: Array<string> | string;
   /**
    * Sets the number of milliseconds the client should wait for a server
-   * handshake to be established.
+   * handshake to be established. It also bounds the DNS lookup of a server's
+   * hostname, which gets its own wait of the same length; a lookup that times
+   * out fails that attempt and is retried like any other failed connection.
    *
    * @default 20000 millis
    */

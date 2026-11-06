@@ -661,7 +661,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   async dial(srv: Server): Promise<void> {
     const pong = this.prepare();
     try {
-      this.raceTimer = timeout(this.options.timeout || 20000);
+      this.raceTimer = timeout(this.options.timeout!);
       const t = this.transport;
       const cp = t.connect(srv, this.options);
       await Promise.race([cp, this.raceTimer]);
@@ -714,12 +714,27 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
 
   async _doDial(srv: ServerImpl): Promise<void> {
     const { resolve } = this.options;
-    const alts = await srv.resolve({
-      fn: getResolveFn(),
-      debug: this.options.debug === true,
-      randomize: !this.options.noRandomize,
-      resolve,
-    });
+    // a lookup that never settles would stall the dial loop, so it gets
+    // the same timeout as a dial
+    const dnsTimer = timeout<Server[]>(this.options.timeout!);
+    let alts: Server[];
+    try {
+      alts = await Promise.race([
+        srv.resolve({
+          fn: getResolveFn(),
+          debug: this.options.debug === true,
+          randomize: !this.options.noRandomize,
+          resolve,
+        }),
+        dnsTimer,
+      ]);
+    } finally {
+      dnsTimer.cancel();
+    }
+    // close() was called during the lookup
+    if (this._closing) {
+      throw new errors.ClosedConnectionError();
+    }
 
     let lastErr: Error | null = null;
     for (const a of alts) {
