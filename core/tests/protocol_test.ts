@@ -71,6 +71,30 @@ Deno.test("protocol - mux subscription cancel", async () => {
   assertEquals(mux.size(), 0);
 });
 
+Deno.test("protocol - request cleanup leaves the deferred alone", async () => {
+  const mux = new MuxSubscription();
+  mux.init();
+
+  // a reply resolves the request and removes it, without rejecting it
+  const r = new RequestOne(mux, "");
+  r.token = "a";
+  mux.add(r);
+  r.resolver(null, { subject: "a" } as Msg);
+  assertEquals((await r.deferred).subject, "a");
+  assertEquals(mux.size(), 0);
+
+  // cleanup only stops the timer and removes the request
+  const r2 = new RequestOne(mux, "", { timeout: 50 });
+  r2.token = "b";
+  mux.add(r2);
+  let settled = false;
+  r2.deferred.then(() => settled = true, () => settled = true);
+  r2.cleanup();
+  assertEquals(mux.size(), 0);
+  await delay(100);
+  assertFalse(settled);
+});
+
 Deno.test("protocol - bad dispatch is noop", () => {
   const mux = new MuxSubscription();
   mux.init();
