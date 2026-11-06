@@ -19,7 +19,9 @@ import {
   assertExists,
   assertFalse,
   assertMatch,
+  assertThrows,
 } from "@std/assert";
+import { errors } from "../src/errors.ts";
 
 import type {
   Auth,
@@ -37,7 +39,7 @@ import {
 } from "../src/internal_mod.ts";
 
 import { NatsServer } from "nst";
-import { hasWsProtocol } from "../src/options.ts";
+import { DEFAULT_CONNECT_TIMEOUT, hasWsProtocol } from "../src/options.ts";
 
 Deno.test("properties - VERSION is semver", async () => {
   const ns = await NatsServer.start();
@@ -213,4 +215,26 @@ Deno.test("properties - hasWsProtocol", () => {
       servers: ["nats://127.0.0.1:4222", "ws://127.0.0.1:4222"],
     }),
   );
+});
+
+Deno.test("properties - timeout always has a value", () => {
+  assertEquals(parseOptions().timeout, DEFAULT_CONNECT_TIMEOUT);
+  assertEquals(parseOptions({}).timeout, DEFAULT_CONNECT_TIMEOUT);
+  assertEquals(
+    parseOptions({ timeout: undefined }).timeout,
+    DEFAULT_CONNECT_TIMEOUT,
+  );
+  assertEquals(parseOptions({ timeout: 0 }).timeout, DEFAULT_CONNECT_TIMEOUT);
+  assertEquals(parseOptions({ timeout: 500 }).timeout, 500);
+  assertEquals(defaultOptions().timeout, DEFAULT_CONNECT_TIMEOUT);
+});
+
+Deno.test("properties - timeout rejects invalid values", () => {
+  for (const timeout of [-1, NaN, Infinity, "500"]) {
+    assertThrows(
+      () => parseOptions({ timeout } as unknown as ConnectionOptions),
+      errors.InvalidArgumentError,
+      "'timeout' must be a positive number",
+    );
+  }
 });

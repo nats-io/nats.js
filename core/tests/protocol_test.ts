@@ -365,3 +365,80 @@ Deno.test("protocol - close doesn't mark a closing transport stale", async () =>
     assertEquals(closes, 1);
   }, { timeout: 200 });
 });
+
+Deno.test("protocol - a dns lookup that never settles times out", async () => {
+  const first = fakeTransport();
+  const t = fakeTransport();
+  await withTransports(
+    [first, t],
+    async (p) => {
+      // connected once, so this is a reconnect's lookup
+      await p.dial(p.server);
+      const start = Date.now();
+      await assertRejects(
+        () => deadline(p._doDial(p.server), 2000),
+        errors.TimeoutError,
+      );
+      const elapsed = Date.now() - start;
+      assert(elapsed >= 100 && elapsed < 1000, `elapsed ${elapsed}`);
+      assertFalse(t.dialed);
+    },
+    { servers: ["nats.test:4222"] },
+    { dnsResolveFn: () => new Promise<string[]>(() => {}) },
+  );
+});
+
+Deno.test("protocol - a hung dns lookup is retried", async () => {
+  let lookups = 0;
+  const t = fakeTransport();
+  await withTransports(
+    [t],
+    async (p) => {
+      await deadline(p.dialLoop(), 2000);
+      assert(p.connected);
+      assertEquals(lookups, 2);
+      assert(t.dialed);
+    },
+    {
+      servers: ["nats.test:4222"],
+      waitOnFirstConnect: true,
+      reconnectDelayHandler: () => 10,
+    },
+    {
+      dnsResolveFn: () => {
+        lookups++;
+        // the first lookup hangs, the retry answers
+        return lookups === 1
+          ? new Promise<string[]>(() => {})
+          : Promise.resolve(["127.0.0.1"]);
+      },
+    },
+  );
+});
+
+Deno.test("protocol - close during a dns lookup doesn't dial", async () => {
+  const looking = deferred<void>();
+  const answer = deferred<string[]>();
+  const first = fakeTransport();
+  const t = fakeTransport();
+  await withTransports(
+    [first, t],
+    async (p) => {
+      // connected once, so this is a reconnect's lookup
+      await p.dial(p.server);
+      const dial = p._doDial(p.server);
+      await looking;
+      await deadline(p.close(), 1000);
+      answer.resolve(["127.0.0.1"]);
+      await assertRejects(() => dial, errors.ClosedConnectionError);
+      assertFalse(t.dialed);
+    },
+    { servers: ["nats.test:4222"] },
+    {
+      dnsResolveFn: () => {
+        looking.resolve();
+        return answer;
+      },
+    },
+  );
+});

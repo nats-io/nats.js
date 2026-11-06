@@ -34,6 +34,7 @@ export const DEFAULT_MAX_PING_OUT = 2;
 
 // DISCONNECT Parameters, 2 sec wait, 10 tries
 export const DEFAULT_RECONNECT_TIME_WAIT = 2 * 1000;
+export const DEFAULT_CONNECT_TIMEOUT = 20 * 1000;
 
 export function defaultOptions(): ConnectionOptions {
   return {
@@ -46,6 +47,7 @@ export function defaultOptions(): ConnectionOptions {
     reconnectJitter: DEFAULT_JITTER,
     reconnectJitterTLS: DEFAULT_JITTER_TLS,
     reconnectTimeWait: DEFAULT_RECONNECT_TIME_WAIT,
+    timeout: DEFAULT_CONNECT_TIMEOUT,
     tls: undefined,
     verbose: false,
     waitOnFirstConnect: false,
@@ -115,6 +117,18 @@ export function parseOptions(opts?: ConnectionOptions): ConnectionOptions {
     opts.servers = [dhp];
   }
   const options = extend(defaultOptions(), opts);
+
+  // the connect timeout bounds the dns lookup and each dial, so it
+  // always has a value - 0 or unset means the default
+  if (options.timeout === undefined || options.timeout === 0) {
+    options.timeout = DEFAULT_CONNECT_TIMEOUT;
+  }
+  if (
+    typeof options.timeout !== "number" || !Number.isFinite(options.timeout) ||
+    options.timeout < 0
+  ) {
+    throw InvalidArgumentError.format("timeout", "must be a positive number");
+  }
 
   options.authenticator = buildAuthenticator(options);
 
