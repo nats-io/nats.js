@@ -1134,8 +1134,31 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
         this.processPong();
         break;
       case Kind.INFO:
-        this.processInfo(e.data!);
+        // a bad info fails the connection, rather than ending the reader
+        // and leaving the connection open
+        try {
+          this.processInfo(e.data!);
+        } catch (err) {
+          this.failConnection(err as Error);
+        }
         break;
+    }
+  }
+
+  // an info that can't be parsed or applied fails the connection: an error
+  // status, then the connect attempt rejects, or a live connection drops and
+  // the normal disconnect/reconnect runs
+  failConnection(cause: Error): void {
+    const err = new errors.ProtocolError(
+      `invalid server info: ${cause.message}`,
+      { cause },
+    );
+    this.lastError = err;
+    this.dispatchStatus({ type: "error", error: err });
+    if (this.connectError) {
+      this.connectError(err);
+    } else {
+      this.transport.disconnect();
     }
   }
 
