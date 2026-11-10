@@ -27,13 +27,13 @@ import {
   deferred,
   delay,
   errors,
-  setTransportFactory,
   wsconnect,
   wsUrlParseFn,
 } from "../src/internal_mod.ts";
 import type { ConnectionOptions, Transport } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/nats.ts";
 import { WsTransport } from "../src/ws_transport.ts";
+import { connect } from "./connect.ts";
 import { assertBetween, cleanup, Lock, NatsServer, wsServerConf } from "nst";
 
 Deno.test("ws - connect", async () => {
@@ -325,7 +325,8 @@ Deno.test("ws - late close of a stale transport is ignored", async () => {
   // an abandoned handshake that closes after the client reconnected
   const staleClosed = deferred<void | Error>();
   let dials = 0;
-  setTransportFactory({
+  // the connection keeps the factory it was created with, so set it on it
+  nc.protocol.transportFactory = {
     defaultPort: 443,
     urlParseFn: wsUrlParseFn,
     factory: (): Transport => {
@@ -350,7 +351,7 @@ Deno.test("ws - late close of a stale transport is ignored", async () => {
         discard: () => {},
       } as unknown as Transport;
     },
-  });
+  };
 
   const events: string[] = [];
   const reconnected = deferred<void>();
@@ -578,4 +579,44 @@ Deno.test("ws - forced reconnect on a server that stopped reading", async () => 
     srv.stop();
     await nc.close();
   }
+});
+
+async function reconnected(nc: NatsConnectionImpl): Promise<void> {
+  const done = (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnect") {
+        return;
+      }
+    }
+  })();
+  await nc.reconnect();
+  // a connection using the wrong transport never reconnects
+  await deadline(done, 5000);
+}
+
+Deno.test("ws - a later connect() doesn't change a wsconnect's transport", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const ws = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+  }) as NatsConnectionImpl;
+  const tcp = await connect({ port: ns.port }) as NatsConnectionImpl;
+  await reconnected(ws);
+  assert(ws.protocol.transport instanceof WsTransport);
+  await reconnected(tcp);
+  assertFalse(tcp.protocol.transport instanceof WsTransport);
+  await cleanup(ns, ws, tcp);
+});
+
+Deno.test("ws - a later wsconnect() doesn't change a connect's transport", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const tcp = await connect({ port: ns.port }) as NatsConnectionImpl;
+  const ws = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+  }) as NatsConnectionImpl;
+  await reconnected(tcp);
+  assertFalse(tcp.protocol.transport instanceof WsTransport);
+  // its server list still parses as tcp, not as ws urls
+  tcp.setServers([`127.0.0.1:${ns.port}`]);
+  assertEquals(tcp.getServers()[0].src, `127.0.0.1:${ns.port}`);
+  await cleanup(ns, ws, tcp);
 });

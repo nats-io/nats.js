@@ -20,6 +20,7 @@ import type {
   Server,
   ServerInfo,
   ServersChanged,
+  URLParseFn,
 } from "./core.ts";
 import { DEFAULT_PORT } from "./core.ts";
 import { InvalidArgumentError } from "./errors.ts";
@@ -193,12 +194,18 @@ export class Servers {
   private currentServer!: ServerImpl;
   private tlsName: string;
   private randomize: boolean;
+  // fixed when the servers are created, so a later wsconnect() or connect()
+  // in the same process doesn't change how this connection parses urls
+  private urlParseFn?: URLParseFn;
 
-  constructor(opts: Partial<{ randomize: boolean }> = {}) {
+  constructor(
+    opts: Partial<{ randomize: boolean; urlParseFn: URLParseFn }> = {},
+  ) {
     this.firstSelect = true;
     this.servers = [];
     this.tlsName = "";
     this.randomize = opts.randomize || false;
+    this.urlParseFn = "urlParseFn" in opts ? opts.urlParseFn : getUrlParseFn();
   }
 
   /**
@@ -214,7 +221,7 @@ export class Servers {
     if (!Array.isArray(listens) || listens.length === 0) {
       throw InvalidArgumentError.format("servers", "cannot be empty");
     }
-    const urlParseFn = getUrlParseFn();
+    const urlParseFn = this.urlParseFn;
     const existing = new Map<string, ServerImpl>();
     for (const s of this.servers) existing.set(s.listen, s);
 
@@ -265,7 +272,7 @@ export class Servers {
   }
 
   addServer(u: string, implicit = false): void {
-    const urlParseFn = getUrlParseFn();
+    const urlParseFn = this.urlParseFn;
     u = urlParseFn ? urlParseFn(u) : u;
     const s = new ServerImpl(u, implicit);
     if (isIP(s.hostname)) {
@@ -362,11 +369,11 @@ export class Servers {
     // a bad entry fails the whole info before anything changes
     // update is only called from processInfo - so it would reject the connection
     // if this tosses
-    checkConnectUrls(info.connect_urls, encrypted);
+    checkConnectUrls(info.connect_urls, encrypted, this.urlParseFn);
     const added: string[] = [];
     let deleted: string[] = [];
 
-    const urlParseFn = getUrlParseFn();
+    const urlParseFn = this.urlParseFn;
     const discovered = new Map<string, ServerImpl>();
     if (info.connect_urls && info.connect_urls.length > 0) {
       info.connect_urls.forEach((hp) => {
@@ -419,14 +426,17 @@ export class Servers {
 
 // connect_urls is applied only when every entry parses, so a bad info
 // fails as a whole, naming the entry
-function checkConnectUrls(urls: unknown, encrypted?: boolean): void {
+function checkConnectUrls(
+  urls: unknown,
+  encrypted?: boolean,
+  urlParseFn?: URLParseFn,
+): void {
   if (urls === undefined || urls === null) {
     return;
   }
   if (!Array.isArray(urls)) {
     throw new Error(`connect_urls is not an array: ${JSON.stringify(urls)}`);
   }
-  const urlParseFn = getUrlParseFn();
   for (const u of urls) {
     try {
       if (typeof u !== "string") {
