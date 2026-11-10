@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 import { decode, Empty, encode, TE } from "./encoders.ts";
-import type { Transport } from "./transport.ts";
-import { CR_LF, CRLF, getResolveFn, newTransport } from "./transport.ts";
+import type { Transport, TransportFactory } from "./transport.ts";
+import { CR_LF, CRLF, getTransportFactory } from "./transport.ts";
 import type { Deferred, Delay, Timeout } from "./util.ts";
 import { deferred, delay, extend, timeout } from "./util.ts";
 import { DataBuffer } from "./databuffer.ts";
@@ -449,6 +449,9 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   pongs: Array<Deferred<void>>;
   subscriptions: Subscriptions;
   transport!: Transport;
+  // fixed when the connection is created, so a later wsconnect() or
+  // connect() in the same process doesn't change how this one dials
+  transportFactory: TransportFactory;
   noMorePublishing: boolean;
   connectError?: (err?: Error) => void;
   publisher: Publisher;
@@ -521,8 +524,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       ? [options.servers]
       : options.servers;
 
+    this.transportFactory = getTransportFactory();
     this.servers = new Servers({
       randomize: !options.noRandomize,
+      urlParseFn: this.transportFactory?.urlParseFn,
     });
     this.servers.setServers(servers as string[]);
     this.closed = deferred<Error | void>();
@@ -580,7 +585,10 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       pong.reject(err);
     };
 
-    const t = newTransport();
+    if (typeof this.transportFactory?.factory !== "function") {
+      throw new Error("transport fn is not set");
+    }
+    const t = this.transportFactory.factory();
     this.transport = t;
     t.closed()
       .then(async (_err?) => {
@@ -726,7 +734,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     try {
       alts = await Promise.race([
         srv.resolve({
-          fn: getResolveFn(),
+          fn: this.transportFactory?.dnsResolveFn,
           debug: this.options.debug === true,
           randomize: !this.options.noRandomize,
           resolve,
