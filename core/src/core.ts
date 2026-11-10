@@ -608,9 +608,10 @@ export interface NatsConnection {
 
   /**
    * Replace the client's server pool with the provided list of `host:port`
-   * entries. The new pool is used for subsequent reconnect attempts. The
-   * live connection is not dropped — call {@link reconnect} afterwards to
-   * force the client to switch onto the new pool immediately.
+   * entries, handled as the `servers` option is. If the client is connected
+   * to a server that is on the new list, the connection is kept; if its
+   * server isn't on the list, the client reconnects onto the new list. Call
+   * {@link reconnect} only to move off a server that is still on the list.
    *
    * Throws if `servers` is empty or contains invalid entries. Removing all
    * reachable servers from the pool can leave the client unable to reconnect.

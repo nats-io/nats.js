@@ -231,9 +231,11 @@ export class Servers {
       const { listen } = hostPort(hp);
       const surviving = existing.get(listen);
       if (surviving) {
-        // user-supplied = not gossiped. otherwise a later cluster update()
-        // could remove an entry the user explicitly asked for.
+        // the list is configured, as the servers option is: not gossiped
+        // (a later cluster update() can't remove it) and no tls name
+        // inherited from the cluster. the connection state is kept
         surviving.gossiped = false;
+        surviving.tlsName = "";
         merged.push(surviving);
       } else {
         merged.push(new ServerImpl(hp));
