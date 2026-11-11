@@ -308,6 +308,12 @@ export class NodeTransport implements Transport {
       servername: this.tlsName,
       rejectUnauthorized: true,
     };
+    // the socket has no error listener after peekInfo: a reset while the
+    // cert files load would be an unhandled error that exits the process
+    let socketError: Error | undefined;
+    this.socket.on("error", (err) => {
+      socketError = err;
+    });
     if (typeof this.options.tls === "object") {
       try {
         const certOpts = await this.loadClientCerts() || {};
@@ -319,6 +325,14 @@ export class NodeTransport implements Transport {
           }),
         );
       }
+    }
+    if (socketError || this.socket.destroyed) {
+      return Promise.reject(
+        new errors.ConnectionError(
+          socketError?.message ?? "connection closed",
+          { cause: socketError },
+        ),
+      );
     }
     const d = deferred<TLSSocket>();
     try {
