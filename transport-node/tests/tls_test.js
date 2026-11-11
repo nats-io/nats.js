@@ -21,7 +21,9 @@ const {
 );
 const process = require("node:process");
 const { resolve, join } = require("node:path");
-const { readFileSync } = require("node:fs");
+const fs = require("node:fs");
+const { readFileSync } = fs;
+const net = require("node:net");
 const { Lock } = require("@nats-io/nst");
 const { NatsServer } = require("@nats-io/nst");
 const { buildAuthenticator, extend, Connect } = require(
@@ -338,5 +340,37 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     await nc.flush();
     await nc.close();
     await ns.stop();
+  });
+});
+
+describe("tls upgrade", () => {
+  it("reset while loading cert files rejects the connect", async () => {
+    // hold the ca file read open so the reset lands before the upgrade
+    const caFile = resolve(join(dir, "./tests/certs/ca.pem"));
+    const readFile = fs.readFile;
+    fs.readFile = (fn, ...args) => {
+      const delay = fn === caFile ? 300 : 0;
+      setTimeout(() => readFile(fn, ...args), delay);
+    };
+    const srv = net.createServer((s) => {
+      s.write(
+        'INFO {"server_id":"x","version":"2.11.0","proto":1,"max_payload":1048576,"tls_required":true}\r\n',
+      );
+      setTimeout(() => s.resetAndDestroy(), 50);
+    });
+    await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    try {
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.address().port}`,
+          tls: { caFile },
+          reconnect: false,
+        }),
+        /ECONNRESET/,
+      );
+    } finally {
+      fs.readFile = readFile;
+      srv.close();
+    }
   });
 });
