@@ -193,3 +193,23 @@ Deno.test("servers - gossip update shuffles new servers", () => {
     `expected gossip-shuffle to produce multiple orders, got ${orders.size}`,
   );
 });
+
+Deno.test("servers - setServers treats a gossiped entry as configured", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["h:1"]);
+  servers.addServer("127.1.0.0", true);
+  servers.updateTLSName();
+  const ip = servers.getServers().find((s) => s.listen === "127.1.0.0:4222")!;
+  assertEquals(ip.tlsName, "h");
+  ip.reconnects = 2;
+
+  // listed by the user: configured, no inherited name, state kept
+  servers.setServers(["h:1", "127.1.0.0:4222"]);
+  const again = servers.getServers().find((s) =>
+    s.listen === "127.1.0.0:4222"
+  )!;
+  assertEquals(again, ip);
+  assertEquals(again.gossiped, false);
+  assertEquals(again.tlsName, "");
+  assertEquals(again.reconnects, 2);
+});

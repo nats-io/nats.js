@@ -495,7 +495,17 @@ export class NatsConnectionImpl implements NatsConnection {
   }
 
   setServers(servers: string[]): void {
+    const current = this.protocol.server;
     this.protocol.servers.setServers(servers);
+    // connected to a server that isn't on the new list: move onto the list
+    if (
+      this.protocol.connected && current &&
+      !this.protocol.servers.getServers().includes(current)
+    ) {
+      this.reconnect().catch(() => {
+        // closed or draining: nothing to move
+      });
+    }
   }
 
   getServers(): ReadonlyArray<Server> {

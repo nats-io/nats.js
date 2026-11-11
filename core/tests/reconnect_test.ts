@@ -865,3 +865,56 @@ Deno.test("reconnect - outage emits one disconnect and one reconnect", async () 
   await nc.close();
   await ns.stop();
 });
+
+Deno.test("setServers - without the current server reconnects onto the list", async () => {
+  await using ns0 = await NatsServer.start();
+  await using ns1 = await NatsServer.start();
+  const nc = await connect({
+    port: ns0.port,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+  const events: { type: string; server?: string }[] = [];
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push({ type: s.type, server: (s as { server?: string }).server });
+      if (s.type === "reconnect") {
+        reconnected.resolve();
+      }
+    }
+  })().then();
+
+  // no reconnect() call: the current server isn't on the new list
+  nc.setServers([`127.0.0.1:${ns1.port}`]);
+  await deadline(reconnected, 5000);
+
+  assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
+  const disconnect = events.find((e) => e.type === "disconnect");
+  assertEquals(disconnect?.server, `127.0.0.1:${ns0.port}`);
+  await nc.close();
+});
+
+Deno.test("setServers - with the current server keeps the connection", async () => {
+  await using ns0 = await NatsServer.start();
+  await using ns1 = await NatsServer.start();
+  const nc = await connect({
+    port: ns0.port,
+    reconnectTimeWait: 100,
+    maxReconnectAttempts: -1,
+  });
+  const events: string[] = [];
+  (async () => {
+    for await (const s of nc.status()) {
+      events.push(s.type);
+    }
+  })().then();
+
+  nc.setServers([`127.0.0.1:${ns1.port}`, `127.0.0.1:${ns0.port}`]);
+  await delay(500);
+  await nc.flush();
+
+  assertEquals(events.filter((e) => e === "disconnect").length, 0);
+  assertEquals(nc.getServer(), `127.0.0.1:${ns0.port}`);
+  await nc.close();
+});

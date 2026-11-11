@@ -637,7 +637,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     this.dispatchStatus(
       {
         type: "disconnect",
-        server: this.servers.getCurrentServer().toString(),
+        server: (this.server ?? this.servers.getCurrentServer()).toString(),
       },
     );
     if (this.options.reconnect) {
@@ -996,7 +996,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     if (err instanceof errors.AuthorizationError && this.authPendingTs) {
       this.dispatchStatus({
         type: "authenticatorPending",
-        server: this.servers.getCurrentServer().toString(),
+        server: (this.server ?? this.servers.getCurrentServer()).toString(),
         pending: Date.now() - this.authPendingTs,
       });
     }
@@ -1108,7 +1108,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       this.dispatchStatus(
         {
           type: "ldm",
-          server: this.servers.getCurrentServer().toString(),
+          server: (this.server ?? this.servers.getCurrentServer()).toString(),
         },
       );
     }
