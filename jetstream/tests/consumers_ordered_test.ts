@@ -986,6 +986,14 @@ Deno.test("ordered consumers - consume ignores old consumer while recreating", a
       }
     },
   }) as PullConsumerMessagesImpl;
+  const pulls: number[] = [];
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "next") {
+        pulls.push(s.options.batch);
+      }
+    }
+  })().then();
   await last;
 
   // the replacement consumer cannot be created for now
@@ -1018,10 +1026,13 @@ Deno.test("ordered consumers - consume ignores old consumer while recreating", a
   assertEquals(sequences, [1, 2, 3, 4, 5]);
 
   last = deferred();
+  pulls.length = 0;
   unavailable = false;
   await js.publish("a", JSON.stringify(6));
   await deadline(last, 10_000);
   assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
+  // the new consumer is asked for a full batch
+  assertEquals(pulls[0], 10);
   iter.stop();
 
   await cleanup(ns, nc);
@@ -1393,8 +1404,23 @@ Deno.test("ordered - next stream not found and no responders", async () => {
   await jsm.streams.add({ name: "messages", subjects: ["m"] });
   await jsm.jetstream().publish("m");
 
-  const m = await c.next();
+  const oc = c as PullConsumerImpl;
+  let m = await c.next();
   assertExists(m);
+  assertEquals(oc.serial, 2);
+
+  // recreated once, not again on every call
+  await jsm.jetstream().publish("m");
+  m = await c.next();
+  assertEquals(m?.seq, 2);
+  assertEquals(oc.serial, 2);
+
+  // the recreated consumer's deliveries start over
+  oc.orderedConsumerState!.needsReset = true;
+  await jsm.jetstream().publish("m");
+  m = await c.next();
+  assertEquals(m?.seq, 3);
+  assertEquals(oc.serial, 3);
 
   await cleanup(ns, nc);
 });

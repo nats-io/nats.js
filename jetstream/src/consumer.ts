@@ -508,6 +508,10 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
     // reset delivery seq
     ocs.cursor.deliver_seq = 0;
+    // the pulls on the previous consumer are gone with it
+    this.pending.msgs = 0;
+    this.pending.bytes = 0;
+    this.pending.requests = 0;
     // if they do a consumer info, they get the new one.
     this.consumer.name = config.name!;
 
@@ -1083,6 +1087,9 @@ export class PullConsumerImpl implements Consumer {
     const conf = this.getConsumerOpts();
     const ci = await this.api.add(this.stream, conf);
     this._info = ci;
+    const ocs = this.orderedConsumerState!;
+    ocs.cursor.deliver_seq = 0;
+    ocs.needsReset = false;
     return ci;
   }
 
