@@ -963,6 +963,70 @@ Deno.test("ordered consumers - consume reset", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("ordered consumers - consume ignores old consumer while recreating", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  for (let i = 1; i <= 5; i++) {
+    await js.publish("a", JSON.stringify(i));
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const old = c._info;
+  const sequences: number[] = [];
+  let last = deferred();
+  const iter = await c.consume({
+    max_messages: 10,
+    callback: (m) => {
+      sequences.push(m.json());
+      if (m.seq === 5 || m.seq === 6) {
+        last.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+  await last;
+
+  // the replacement consumer cannot be created for now
+  const api = c.api;
+  const add = api.add.bind(api);
+  const del = api.delete.bind(api);
+  let unavailable = true;
+  api.add = (stream, cfg) => {
+    return unavailable
+      ? Promise.reject(new Error("unavailable"))
+      : add(stream, cfg);
+  };
+  api.delete = () => Promise.resolve(true);
+  iter.reset();
+
+  // the old consumer is still there, but it starts over (like a memory
+  // consumer recovered after a server restart)
+  await del("A", old.name);
+  await add("A", old.config);
+
+  // a reconnect while the reset is pending, and a pull that went out to
+  // the old consumer with the new inbox
+  await iter.resetPending();
+  nc.publish(
+    `$JS.API.CONSUMER.MSG.NEXT.A.${old.name}`,
+    JSON.stringify({ batch: 10, expires: nanos(2_000) }),
+    { reply: iter.inbox },
+  );
+  await delay(1_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5]);
+
+  last = deferred();
+  unavailable = false;
+  await js.publish("a", JSON.stringify(6));
+  await deadline(last, 10_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("ordered consumers - next reset", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
@@ -986,6 +1050,27 @@ Deno.test("ordered consumers - next reset", async () => {
   assertExists(m);
   assertEquals(m.json(), 2);
   assertEquals(c.serial, 2);
+
+  // a fetch that stops while its reset can't recreate the consumer
+  const add = c.api.add.bind(c.api);
+  c.api.add = () => Promise.reject(new Error("unavailable"));
+  await js.publish("a", JSON.stringify(3));
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
+  const iter = await c.fetch({ max_messages: 1, expires: 1000 });
+  const done = (async () => {
+    for await (const _ of iter) {
+      // reset - nothing is yielded
+    }
+  })();
+  await delay(500);
+  await iter.close();
+  await done;
+  c.api.add = add;
+
+  // the next fetch recreates it
+  m = await deadline(c.next({ expires: 1000 }), 5_000);
+  assertExists(m);
+  assertEquals(m.json(), 3);
 
   await cleanup(ns, nc);
 });
