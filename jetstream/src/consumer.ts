@@ -337,11 +337,6 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           }
           // if we are ordered, check
           if (this.consumer.ordered) {
-            if (m.info.consumer !== this.consumer.name) {
-              // a message from a previous consumer - its sequences are
-              // not the ones the cursor is tracking
-              return;
-            }
             const cursor = this.consumer.orderedConsumerState!.cursor;
             const dseq = m.info.deliverySequence;
             const sseq = m.info.streamSequence;
@@ -720,21 +715,20 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.pending.requests++;
 
     const nc = this.consumer.api.nc;
-    // the subject and the inbox must belong to the same consumer
-    const { name } = this.consumer._info;
+    // the consumer's name and the inbox change together on a reset, so a
+    // pull and its reply always belong to the same consumer
     const subj =
-      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${name}`;
+      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer.name}`;
     const reply = this.inbox;
+    const serial = this.consumer.serial;
     this._push(() => {
-      if (name !== this.consumer.name) {
-        // the ordered consumer was reset after this pull was queued
+      // the queued pull may run much later: skip it if the consumer was
+      // reset since, which zeroed the pending counts; the new consumer pulls
+      // when it is created
+      if (serial !== this.consumer.serial) {
         return;
       }
-      nc.publish(
-        subj,
-        JSON.stringify(opts),
-        { reply },
-      );
+      nc.publish(subj, JSON.stringify(opts), { reply });
       this.notify({ type: "next", options: opts as PullOptions });
     });
   }

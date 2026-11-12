@@ -1014,14 +1014,10 @@ Deno.test("ordered consumers - consume ignores old consumer while recreating", a
   await del("A", old.name);
   await add("A", old.config);
 
-  // a reconnect while the reset is pending, and a pull that went out to
-  // the old consumer with the new inbox
+  // a reconnect while the reset is pending: the client must not pull the
+  // old consumer into the new inbox, or its deliveries start over as
+  // duplicates
   await iter.resetPending();
-  nc.publish(
-    `$JS.API.CONSUMER.MSG.NEXT.A.${old.name}`,
-    JSON.stringify({ batch: 10, expires: nanos(2_000) }),
-    { reply: iter.inbox },
-  );
   await delay(1_000);
   assertEquals(sequences, [1, 2, 3, 4, 5]);
 
