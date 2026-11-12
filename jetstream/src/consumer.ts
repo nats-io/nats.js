@@ -893,6 +893,8 @@ export class PullConsumerImpl implements Consumer {
   opts: Partial<OrderedConsumerOptions>;
   type: PullConsumerType;
   messages?: PullConsumerMessagesImpl;
+  // an ordered fetch is recreating the consumer before it has its messages
+  fetching = false;
   ordered: boolean;
   serial: number;
   orderedConsumerState?: OrderedConsumerState;
@@ -989,7 +991,7 @@ export class PullConsumerImpl implements Consumer {
           ),
         );
       }
-      if (this.messages?.done === false) {
+      if (this.fetching || this.messages?.done === false) {
         return Promise.reject(
           new errors.InvalidOperationError(
             "ordered consumer doesn't support concurrent fetch",
@@ -1007,7 +1009,13 @@ export class PullConsumerImpl implements Consumer {
         if (
           this.orderedConsumerState?.needsReset === true || this.isResetting()
         ) {
-          await this._reset();
+          // the fetch is in flight until it has its messages
+          this.fetching = true;
+          try {
+            await this._reset();
+          } finally {
+            this.fetching = false;
+          }
         }
       }
 

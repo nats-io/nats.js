@@ -1082,6 +1082,48 @@ Deno.test("ordered consumers - next reset", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("ordered consumers - fetch rejects while another fetch resets", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  await js.publish("a", JSON.stringify(1));
+  await js.publish("a", JSON.stringify(2));
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  let m = await c.next({ expires: 1000 });
+  assertExists(m);
+  assertEquals(m.json(), 1);
+
+  // the first fetch recreates the consumer, the second is concurrent
+  c.orderedConsumerState!.needsReset = true;
+  const first = c.fetch({ max_messages: 1, expires: 1000 });
+  await assertRejects(
+    () => c.fetch({ max_messages: 1, expires: 1000 }),
+    Error,
+    "ordered consumer doesn't support concurrent fetch",
+  );
+  // next is a fetch
+  await assertRejects(
+    () => c.next({ expires: 1000 }),
+    Error,
+    "ordered consumer doesn't support concurrent fetch",
+  );
+  assertEquals(c.serial, 2);
+
+  // the first fetch is unaffected
+  const iter = await first;
+  m = null;
+  for await (const jm of iter) {
+    m = jm;
+  }
+  assertExists(m);
+  assertEquals(m.json(), 2);
+  assertEquals(c._info.name, c.name);
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("ordered consumers - reset preserves inactive_threshold", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
