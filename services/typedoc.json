@@ -2,5 +2,5 @@
   "readme": "./README.md",
   "theme": "default",
   "out": "./docs/",
-  "entryPoints": ["build/src/mod.ts"]
+  "entryPoints": ["src/mod.ts"]
 }
