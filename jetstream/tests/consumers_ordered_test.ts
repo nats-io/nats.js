@@ -29,7 +29,15 @@ import {
 } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
-import { deadline, deferred, delay, nanos } from "@nats-io/nats-core";
+import {
+  deadline,
+  deferred,
+  delay,
+  Empty,
+  headers,
+  nanos,
+} from "@nats-io/nats-core";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
@@ -963,6 +971,165 @@ Deno.test("ordered consumers - consume reset", async () => {
   await cleanup(ns, nc);
 });
 
+Deno.test("ordered consumers - consume ignores old consumer while recreating", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  for (let i = 1; i <= 5; i++) {
+    await js.publish("a", JSON.stringify(i));
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const old = c._info;
+  const sequences: number[] = [];
+  let last = deferred();
+  const iter = await c.consume({
+    max_messages: 10,
+    callback: (m) => {
+      sequences.push(m.json());
+      if (m.seq === 5 || m.seq === 6) {
+        last.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+  const pulls: number[] = [];
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "next") {
+        pulls.push(s.options.batch);
+      }
+    }
+  })().then();
+  await last;
+
+  // the replacement consumer cannot be created for now
+  const api = c.api;
+  const add = api.add.bind(api);
+  const del = api.delete.bind(api);
+  let unavailable = true;
+  api.add = (stream, cfg) => {
+    return unavailable
+      ? Promise.reject(new Error("unavailable"))
+      : add(stream, cfg);
+  };
+  api.delete = () => Promise.resolve(true);
+  iter.reset();
+
+  // the old consumer is still there, but it starts over (like a memory
+  // consumer recovered after a server restart)
+  await del("A", old.name);
+  await add("A", old.config);
+
+  // a reconnect while the reset is pending: the client must not pull the
+  // old consumer into the new inbox, or its deliveries start over as
+  // duplicates
+  await iter.resetPending();
+  await delay(1_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5]);
+
+  last = deferred();
+  pulls.length = 0;
+  unavailable = false;
+  await js.publish("a", JSON.stringify(6));
+  await deadline(last, 10_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
+  // the new consumer is asked for a full batch
+  assertEquals(pulls[0], 10);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
+// injects a fake idle heartbeat on the consume's current inbox
+function fakeHeartbeat(
+  nc: NatsConnection,
+  iter: PullConsumerMessagesImpl,
+  lastConsumer: number,
+) {
+  const h = headers(100, "Idle Heartbeat");
+  h.set("Nats-Last-Consumer", `${lastConsumer}`);
+  h.set("Nats-Last-Stream", `${lastConsumer}`);
+  nc.publish(iter.inbox, Empty, { headers: h });
+}
+
+Deno.test("ordered consumers - consume recovers from heartbeat sequence mismatch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  const N = 100;
+  for (let i = 0; i < N; i++) {
+    await js.publish("a");
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const sequences: number[] = [];
+  const done = deferred();
+  const iter = await c.consume({
+    max_messages: 10,
+    callback: (m) => {
+      sequences.push(m.seq);
+      // while the server is still delivering
+      if (m.seq === 5) {
+        fakeHeartbeat(nc, iter, 999_999);
+      }
+      if (m.seq === N) {
+        done.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+
+  await deadline(done, 10_000);
+  assertEquals(sequences, Array.from({ length: N }, (_, i) => i + 1));
+  // the ordered consumer was reset
+  assertEquals(c.serial, 2);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - consume ignores matching heartbeats", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  for (let i = 0; i < 5; i++) {
+    await js.publish("a");
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const sequences: number[] = [];
+  let last = deferred();
+  let want = 5;
+  const iter = await c.consume({
+    callback: (m) => {
+      sequences.push(m.seq);
+      if (m.seq === want) {
+        last.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+  await deadline(last, 5_000);
+
+  fakeHeartbeat(nc, iter, 5);
+  await delay(500);
+
+  last = deferred();
+  want = 6;
+  await js.publish("a");
+  await deadline(last, 5_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
+  // no reset
+  assertEquals(c.serial, 1);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
 Deno.test("ordered consumers - next reset", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
   const jsm = await jetstreamManager(nc);
@@ -986,6 +1153,69 @@ Deno.test("ordered consumers - next reset", async () => {
   assertExists(m);
   assertEquals(m.json(), 2);
   assertEquals(c.serial, 2);
+
+  // a fetch that stops while its reset can't recreate the consumer
+  const add = c.api.add.bind(c.api);
+  c.api.add = () => Promise.reject(new Error("unavailable"));
+  await js.publish("a", JSON.stringify(3));
+  c.orderedConsumerState!.cursor.deliver_seq = 100;
+  const iter = await c.fetch({ max_messages: 1, expires: 1000 });
+  const done = (async () => {
+    for await (const _ of iter) {
+      // reset - nothing is yielded
+    }
+  })();
+  await delay(500);
+  await iter.close();
+  await done;
+  c.api.add = add;
+
+  // the next fetch recreates it
+  m = await deadline(c.next({ expires: 1000 }), 5_000);
+  assertExists(m);
+  assertEquals(m.json(), 3);
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - fetch rejects while another fetch resets", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  await js.publish("a", JSON.stringify(1));
+  await js.publish("a", JSON.stringify(2));
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  let m = await c.next({ expires: 1000 });
+  assertExists(m);
+  assertEquals(m.json(), 1);
+
+  // the first fetch recreates the consumer, the second is concurrent
+  c.orderedConsumerState!.needsReset = true;
+  const first = c.fetch({ max_messages: 1, expires: 1000 });
+  await assertRejects(
+    () => c.fetch({ max_messages: 1, expires: 1000 }),
+    Error,
+    "ordered consumer doesn't support concurrent fetch",
+  );
+  // next is a fetch
+  await assertRejects(
+    () => c.next({ expires: 1000 }),
+    Error,
+    "ordered consumer doesn't support concurrent fetch",
+  );
+  assertEquals(c.serial, 2);
+
+  // the first fetch is unaffected
+  const iter = await first;
+  m = null;
+  for await (const jm of iter) {
+    m = jm;
+  }
+  assertExists(m);
+  assertEquals(m.json(), 2);
+  assertEquals(c._info.name, c.name);
 
   await cleanup(ns, nc);
 });
@@ -1308,8 +1538,23 @@ Deno.test("ordered - next stream not found and no responders", async () => {
   await jsm.streams.add({ name: "messages", subjects: ["m"] });
   await jsm.jetstream().publish("m");
 
-  const m = await c.next();
+  const oc = c as PullConsumerImpl;
+  let m = await c.next();
   assertExists(m);
+  assertEquals(oc.serial, 2);
+
+  // recreated once, not again on every call
+  await jsm.jetstream().publish("m");
+  m = await c.next();
+  assertEquals(m?.seq, 2);
+  assertEquals(oc.serial, 2);
+
+  // the recreated consumer's deliveries start over
+  oc.orderedConsumerState!.needsReset = true;
+  await jsm.jetstream().publish("m");
+  m = await c.next();
+  assertEquals(m?.seq, 3);
+  assertEquals(oc.serial, 3);
 
   await cleanup(ns, nc);
 });

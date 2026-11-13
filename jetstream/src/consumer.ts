@@ -254,6 +254,16 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const hb = status.parseHeartbeat();
           if (hb) {
             this.notify(hb);
+            if (
+              this.consumer.ordered &&
+              hb.lastConsumerSequence !==
+                this.consumer.orderedConsumerState!.cursor.deliver_seq
+            ) {
+              // the server sent messages we didn't get (ie the tail of what
+              // it delivered was lost) - no message will reveal the gap, so
+              // reset
+              this.reset();
+            }
             return;
           }
           const code = status.code;
@@ -342,7 +352,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             const sseq = m.info.streamSequence;
             const expected_dseq = cursor.deliver_seq + 1;
             if (
-              dseq !== expected_dseq
+              dseq !== expected_dseq || sseq <= cursor.stream_seq
             ) {
               // got a message out of order, have to recreate
               this.reset();
@@ -499,9 +509,14 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
     // serial is updated here
     const config = this.consumer.getConsumerOpts();
+    const current = config.name!;
     this.inbox = `${this.inboxPrefix}.${this.consumer.serial}`;
     // reset delivery seq
     ocs.cursor.deliver_seq = 0;
+    // the pulls on the previous consumer are gone with it
+    this.pending.msgs = 0;
+    this.pending.bytes = 0;
+    this.pending.requests = 0;
     // if they do a consumer info, they get the new one.
     this.consumer.name = config.name!;
 
@@ -512,12 +527,20 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.consumer.stream,
       config,
     ).then((ci) => {
+      if (current !== this.consumer.name) {
+        // a later reset superseded this one
+        return;
+      }
       ocs.createFails = 0;
       this.consumer._info = ci;
       this.notify({ type: "ordered_consumer_recreated", name: ci.name });
       this.monitor?.restart();
       this.pull(this.pullOptions());
     }).catch((err) => {
+      if (current !== this.consumer.name) {
+        // a later reset superseded this one
+        return;
+      }
       ocs.createFails++;
       if (err.message === "stream not found") {
         this.notify({
@@ -599,7 +622,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   async resetPending(): Promise<boolean> {
-    if (this.inReset) {
+    if (this.inReset || this.consumer.isResetting()) {
+      // if the ordered consumer is being recreated, it will pull when done
       return Promise.resolve(true);
     }
     this.inReset = true;
@@ -692,20 +716,29 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   }
 
   pull(opts: Partial<PullOptions>) {
+    if (this.consumer.isResetting()) {
+      // the ordered consumer is being recreated, it will pull when done
+      return;
+    }
     this.pending.bytes += opts.max_bytes ?? 0;
     this.pending.msgs += opts.batch ?? 0;
     this.pending.requests++;
 
     const nc = this.consumer.api.nc;
-    //@ts-ignore: iterator will pull
+    // the consumer's name and the inbox change together on a reset, so a
+    // pull and its reply always belong to the same consumer
     const subj =
-      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer._info.name}`;
+      `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer.name}`;
+    const reply = this.inbox;
+    const serial = this.consumer.serial;
     this._push(() => {
-      nc.publish(
-        subj,
-        JSON.stringify(opts),
-        { reply: this.inbox },
-      );
+      // the queued pull may run much later: skip it if the consumer was
+      // reset since, which zeroed the pending counts; the new consumer pulls
+      // when it is created
+      if (serial !== this.consumer.serial) {
+        return;
+      }
+      nc.publish(subj, JSON.stringify(opts), { reply });
       this.notify({ type: "next", options: opts as PullOptions });
     });
   }
@@ -870,6 +903,8 @@ export class PullConsumerImpl implements Consumer {
   opts: Partial<OrderedConsumerOptions>;
   type: PullConsumerType;
   messages?: PullConsumerMessagesImpl;
+  // an ordered fetch is recreating the consumer before it has its messages
+  fetching = false;
   ordered: boolean;
   serial: number;
   orderedConsumerState?: OrderedConsumerState;
@@ -966,7 +1001,7 @@ export class PullConsumerImpl implements Consumer {
           ),
         );
       }
-      if (this.messages?.done === false) {
+      if (this.fetching || this.messages?.done === false) {
         return Promise.reject(
           new errors.InvalidOperationError(
             "ordered consumer doesn't support concurrent fetch",
@@ -979,8 +1014,18 @@ export class PullConsumerImpl implements Consumer {
           this._info.config.opt_start_seq! =
             this.orderedConsumerState?.cursor.stream_seq + 1;
         }
-        if (this.orderedConsumerState?.needsReset === true) {
-          await this._reset();
+        // a previous fetch may have stopped before its reset could
+        // recreate the consumer
+        if (
+          this.orderedConsumerState?.needsReset === true || this.isResetting()
+        ) {
+          // the fetch is in flight until it has its messages
+          this.fetching = true;
+          try {
+            await this._reset();
+          } finally {
+            this.fetching = false;
+          }
         }
       }
 
@@ -1018,6 +1063,14 @@ export class PullConsumerImpl implements Consumer {
     return this.api.delete(stream_name, name);
   }
 
+  /**
+   * True while an ordered consumer is being recreated: the name for the
+   * new consumer is set, but the server hasn't created it yet.
+   */
+  isResetting(): boolean {
+    return this.ordered && this._info.name !== this.name;
+  }
+
   getConsumerOpts(): ConsumerConfig {
     const ocs = this.orderedConsumerState!;
     this.serial++;
@@ -1046,6 +1099,9 @@ export class PullConsumerImpl implements Consumer {
     const conf = this.getConsumerOpts();
     const ci = await this.api.add(this.stream, conf);
     this._info = ci;
+    const ocs = this.orderedConsumerState!;
+    ocs.cursor.deliver_seq = 0;
+    ocs.needsReset = false;
     return ci;
   }
 
@@ -1054,8 +1110,12 @@ export class PullConsumerImpl implements Consumer {
       return Promise.resolve(this._info);
     }
     const { stream_name, name } = this._info;
-    this._info = await this.api.info(stream_name, name);
-    return this._info;
+    const ci = await this.api.info(stream_name, name);
+    // an ordered consumer may have been recreated while we waited
+    if (ci.name === this._info.name) {
+      this._info = ci;
+    }
+    return ci;
   }
 }
 
