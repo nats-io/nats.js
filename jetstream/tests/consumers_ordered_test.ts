@@ -29,7 +29,15 @@ import {
 } from "../src/mod.ts";
 import type { ConsumerMessages, JsMsg } from "../src/mod.ts";
 import { cleanup, jetstreamServerConf, notCompatible, setup } from "nst";
-import { deadline, deferred, delay, nanos } from "@nats-io/nats-core";
+import {
+  deadline,
+  deferred,
+  delay,
+  Empty,
+  headers,
+  nanos,
+} from "@nats-io/nats-core";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type {
   PullConsumerImpl,
   PullConsumerMessagesImpl,
@@ -1029,6 +1037,94 @@ Deno.test("ordered consumers - consume ignores old consumer while recreating", a
   assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
   // the new consumer is asked for a full batch
   assertEquals(pulls[0], 10);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
+// injects a fake idle heartbeat on the consume's current inbox
+function fakeHeartbeat(
+  nc: NatsConnection,
+  iter: PullConsumerMessagesImpl,
+  lastConsumer: number,
+) {
+  const h = headers(100, "Idle Heartbeat");
+  h.set("Nats-Last-Consumer", `${lastConsumer}`);
+  h.set("Nats-Last-Stream", `${lastConsumer}`);
+  nc.publish(iter.inbox, Empty, { headers: h });
+}
+
+Deno.test("ordered consumers - consume recovers from heartbeat sequence mismatch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  const N = 100;
+  for (let i = 0; i < N; i++) {
+    await js.publish("a");
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const sequences: number[] = [];
+  const done = deferred();
+  const iter = await c.consume({
+    max_messages: 10,
+    callback: (m) => {
+      sequences.push(m.seq);
+      // while the server is still delivering
+      if (m.seq === 5) {
+        fakeHeartbeat(nc, iter, 999_999);
+      }
+      if (m.seq === N) {
+        done.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+
+  await deadline(done, 10_000);
+  assertEquals(sequences, Array.from({ length: N }, (_, i) => i + 1));
+  // the ordered consumer was reset
+  assertEquals(c.serial, 2);
+  iter.stop();
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("ordered consumers - consume ignores matching heartbeats", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  const js = jetstream(nc);
+  for (let i = 0; i < 5; i++) {
+    await js.publish("a");
+  }
+
+  const c = await js.consumers.get("A") as PullConsumerImpl;
+  const sequences: number[] = [];
+  let last = deferred();
+  let want = 5;
+  const iter = await c.consume({
+    callback: (m) => {
+      sequences.push(m.seq);
+      if (m.seq === want) {
+        last.resolve();
+      }
+    },
+  }) as PullConsumerMessagesImpl;
+  await deadline(last, 5_000);
+
+  fakeHeartbeat(nc, iter, 5);
+  await delay(500);
+
+  last = deferred();
+  want = 6;
+  await js.publish("a");
+  await deadline(last, 5_000);
+  assertEquals(sequences, [1, 2, 3, 4, 5, 6]);
+  // no reset
+  assertEquals(c.serial, 1);
   iter.stop();
 
   await cleanup(ns, nc);

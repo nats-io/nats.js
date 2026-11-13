@@ -254,6 +254,16 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
           const hb = status.parseHeartbeat();
           if (hb) {
             this.notify(hb);
+            if (
+              this.consumer.ordered &&
+              hb.lastConsumerSequence !==
+                this.consumer.orderedConsumerState!.cursor.deliver_seq
+            ) {
+              // the server sent messages we didn't get (ie the tail of what
+              // it delivered was lost) - no message will reveal the gap, so
+              // reset
+              this.reset();
+            }
             return;
           }
           const code = status.code;
