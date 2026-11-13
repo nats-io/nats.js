@@ -3,5 +3,5 @@
   "theme": "default",
   "out": "./docs/",
   "excludeInternal": true,
-  "entryPoints": ["build/src/mod.ts"]
+  "entryPoints": ["src/mod.ts"]
 }
