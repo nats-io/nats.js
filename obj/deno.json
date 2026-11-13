@@ -35,6 +35,6 @@
   "imports": {
     "@nats-io/nats-core": "jsr:@nats-io/nats-core@3.5.0-0",
     "@nats-io/jetstream": "jsr:@nats-io/jetstream@3.5.0-0",
-    "js-sha256": "npm:js-sha256@0.11.1"
+    "js-sha256": "npm:js-sha256@1.0.0"
   }
 }
