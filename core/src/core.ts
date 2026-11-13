@@ -455,8 +455,10 @@ export interface NatsConnection {
 
   /**
    * Close will close the connection to the server. This call will terminate
-   * all pending requests and subscriptions. The returned promise resolves when
-   * the connection closes.
+   * all pending requests and subscriptions. Data pending to be sent is
+   * flushed first, but a connection that won't drain (for example, the
+   * server stopped reading) is closed after 2 seconds without waiting
+   * further. The returned promise resolves when the connection closes.
    */
   close(): Promise<void>;
 
@@ -1008,6 +1010,10 @@ export type Auth = NoAuth | TokenAuth | UserPass | NKeyAuth | JwtAuth;
  * connect, `connect()` rejects with the server's error. Two auth errors in a
  * row stop reconnecting unless {@link ConnectionOptions.ignoreAuthErrorAbort}
  * is set.
+ *
+ * If the authenticator throws or its promise rejects, the connection closes
+ * with that error and isn't retried;
+ * {@link ConnectionOptions.ignoreAuthErrorAbort} doesn't apply.
  *
  * The `signal` is aborted when the connection attempt the authenticator was
  * called for is abandoned (the client closed or moved on to another attempt).

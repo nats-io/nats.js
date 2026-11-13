@@ -460,7 +460,10 @@ export type ConsumerAPI = {
 
   /**
    * Updates the consumer configuration for the specified consumer on the specified
-   * stream that has the specified durable name.
+   * stream that has the specified durable name. The update is applied to the
+   * consumer's current configuration, so fields that are not set keep their
+   * values. Setting either `filter_subject` or `filter_subjects` replaces the
+   * consumer's filter, whichever of the two it had.
    * @param stream
    * @param durable
    * @param cfg
@@ -1166,7 +1169,10 @@ export type Batch = {
   ): Promise<void>;
   /**
    * Commits the batch. This will publish the last message on the batch
-   * and will remove the batch from the client.
+   * and will remove the batch from the client. If the server rejects the
+   * batch (for example, a wrong last sequence or an incomplete batch), it
+   * rejects with a `JetStreamApiError` carrying the server's code and
+   * description.
    * @param subj
    * @param payload
    * @param opts
@@ -1345,6 +1351,9 @@ export type DirectStreamAPI = {
    * Retrieves the message matching the specified query. Messages can be
    * retrieved by sequence number or by last sequence matching a subject, or
    * by looking for the next message sequence that matches a subject.
+   * Resolves to null if the message is not found. Rejects with a
+   * `NoRespondersError` if direct get can't answer: JetStream is not
+   * enabled, the stream doesn't exist, or the stream doesn't allow direct get.
    *
    * This API is Non-Stable and subject to change.
    */
@@ -1356,6 +1365,8 @@ export type DirectStreamAPI = {
   /**
    * Retrieves a batch of messages with an optional filter starting at a specific
    * sequence or start time. Note that only a single subject filter is supported.
+   * As with {@link getMessage}, if direct get can't answer, the iterator stops
+   * with a `NoRespondersError`.
    *
    * This API is Non-Stable and subject to change.
    */
@@ -1425,7 +1436,8 @@ export type StoredMsg = {
   /**
    * Convenience method to parse the message payload as JSON. This method
    * will throw an exception if there's a parsing error;
-   * @param reviver
+   * @param reviver an optional function, as for `JSON.parse()`, that can
+   * transform the parsed values
    */
   json<T>(reviver?: ReviverFn): T;
 
