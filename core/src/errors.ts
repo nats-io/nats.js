@@ -297,15 +297,16 @@ function describeThrown(v: unknown): string {
 
 /**
  * UnhandledCallbackError wraps a value thrown or rejected by user code the
- * client called - a callback or a provider such as an authenticator - that
- * the user's code didn't handle. The client contains it: the message says
- * where it failed and what was thrown, and the `cause` is the original
- * value, as thrown, even if it is not an Error.
+ * client called - a callback, or one that returns a value the client must
+ * act on, such as an authenticator - that the user's code didn't handle. The
+ * client contains it: the message says where it failed and what was thrown,
+ * and the `cause` is the original value, as thrown, even if it is not an
+ * Error.
  *
- * Callbacks that fail are printed as an UnhandledCallbackError and the
- * client continues. Providers the client needs a value from fail the
- * operation, with the error thrown, or an UnhandledCallbackError if what was
- * thrown is not an Error.
+ * Callbacks that fail are printed to the console as an
+ * UnhandledCallbackError and the client continues. Callbacks that return a
+ * value the client must act on fail the operation, with the error thrown, or
+ * an UnhandledCallbackError if what was thrown is not an Error.
  */
 export class UnhandledCallbackError extends Error {
   constructor(where: string, cause: unknown) {
