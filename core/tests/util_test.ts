@@ -18,12 +18,15 @@ import {
   deadline,
   debugDeferred,
   deferred,
+  MAX_QUOTED_LINE,
   millis,
   nanos,
+  quoteServerLine,
   randomToken,
   SimpleMutex,
+  tlsUpgradeError,
 } from "../src/util.ts";
-import { TimeoutError } from "../src/errors.ts";
+import { ConnectionError, TimeoutError } from "../src/errors.ts";
 
 Deno.test("util - simple mutex", () => {
   const r = new SimpleMutex(1);
@@ -94,4 +97,48 @@ Deno.test("util - randomToken uniqueness", () => {
   const seen = new Set<string>();
   for (let i = 0; i < 10000; i++) seen.add(randomToken());
   assert(seen.size > 9990, `near-unique expected, got ${seen.size}/10000`);
+});
+
+Deno.test("util - quote server line", () => {
+  const te = new TextEncoder();
+  const q = (s: string) => quoteServerLine(te.encode(s));
+  // only the first line, without its line ending
+  assertEquals(
+    q("-ERR 'maximum connections exceeded'\r\nPING\r\n"),
+    `"-ERR 'maximum connections exceeded'"`,
+  );
+  assertEquals(q("no line ending"), `"no line ending"`);
+  // control characters and terminal escapes are escaped
+  assertEquals(
+    q("a\tb\x1b[31mred\x00\x7f\u009b\r\n"),
+    `"a\\tb\\x1b[31mred\\x00\\x7f\\x9b"`,
+  );
+  // a lone cr inside the line is escaped too
+  assertEquals(q("a\rb\n"), `"a\\rb"`);
+  // quotes and backslashes can't fake the end of the quote
+  assertEquals(q(`a"b\\"c`), `"a\\"b\\\\\\"c"`);
+  // cut at MAX_QUOTED_LINE bytes
+  const long = "x".repeat(MAX_QUOTED_LINE + 100);
+  assertEquals(q(long), `"${"x".repeat(MAX_QUOTED_LINE)}"...`);
+  assertEquals(
+    q("x".repeat(MAX_QUOTED_LINE)),
+    `"${"x".repeat(MAX_QUOTED_LINE)}"`,
+  );
+});
+
+Deno.test("util - tls upgrade error", () => {
+  const cause = new Error("handshake failed");
+  // nothing was dropped - the error is unchanged
+  assertEquals(tlsUpgradeError(cause, new Uint8Array(0)), cause);
+  const err = tlsUpgradeError(
+    cause,
+    new TextEncoder().encode("-ERR 'maximum connections exceeded'\r\n"),
+  );
+  assert(err instanceof ConnectionError);
+  assertEquals(err.cause, cause);
+  assert(err.message.includes("(untrusted)"), err.message);
+  assert(
+    err.message.endsWith(`"-ERR 'maximum connections exceeded'"`),
+    err.message,
+  );
 });

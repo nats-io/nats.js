@@ -595,6 +595,67 @@ describe(
       );
       await srv.close();
     });
+
+    // a server that sends a plaintext info asking for tls, then the given
+    // bytes, and closes the connection - as a full nats-server does
+    async function closingServer(after) {
+      const info = JSON.stringify({
+        server_id: "FAKE",
+        version: "2.10.0",
+        proto: 1,
+        max_payload: 1048576,
+        tls_required: true,
+      });
+      const srv = net.createServer((sock) => {
+        sock.on("error", () => {});
+        // read until the client closes, so the socket closes too
+        sock.resume();
+        sock.end(`INFO ${info}\r\n${after}`);
+      });
+      await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+      return {
+        port: srv.address().port,
+        close: () => new Promise((r) => srv.close(() => r())),
+      };
+    }
+
+    it("failed upgrade quotes the dropped line", async () => {
+      const srv = await closingServer(
+        "-ERR 'maximum connections exceeded'\r\n",
+      );
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.port}`,
+          tls: { ca },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.ok(err.message.includes("(untrusted)"), err.message);
+          assert.ok(
+            err.message.endsWith(`"-ERR 'maximum connections exceeded'"`),
+            err.message,
+          );
+          return true;
+        },
+      );
+      await srv.close();
+    });
+
+    it("failed upgrade without dropped bytes keeps the error", async () => {
+      const srv = await closingServer("");
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.port}`,
+          tls: { ca },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.ok(!err.message.includes("(untrusted)"), err.message);
+          return true;
+        },
+      );
+      await srv.close();
+    });
   },
 );
 

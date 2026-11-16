@@ -25,6 +25,7 @@ import {
   INFO,
   protoLen,
   ServerInfo,
+  tlsUpgradeError,
   Transport,
 } from "./nats-base-client.ts";
 import { createConnection, isIP, Socket } from "node:net";
@@ -88,8 +89,14 @@ export class NodeTransport implements Transport {
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
         // only the plaintext info line is kept across the upgrade
+        const read = DataBuffer.concat(...this.yields);
+        const dropped = read.subarray(this.infoLine?.length ?? read.length);
         this.yields = this.infoLine ? [this.infoLine] : [];
-        this.socket = await this.startTLS();
+        try {
+          this.socket = await this.startTLS();
+        } catch (err) {
+          throw tlsUpgradeError(err as Error, dropped);
+        }
       }
 
       this.checkAbandoned();

@@ -340,3 +340,57 @@ Deno.test("tls - rejects non info first op", async () => {
   );
   srv.close();
 });
+
+// a server that sends a plaintext info asking for tls, then the given
+// bytes, and closes the connection - as a full nats-server does
+function closingServer(after: string) {
+  const plain = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  (async () => {
+    for await (const c of plain) {
+      const info = JSON.stringify({
+        server_id: "FAKE",
+        version: "2.10.0",
+        proto: 1,
+        max_payload: 1048576,
+        tls_required: true,
+      });
+      await writeAll(c, new TextEncoder().encode(`INFO ${info}\r\n${after}`))
+        .catch(() => {});
+      c.close();
+    }
+  })().catch(() => {});
+  return {
+    port: (plain.addr as Deno.NetAddr).port,
+    close: () => plain.close(),
+  };
+}
+
+Deno.test("tls - failed upgrade quotes the dropped line", async () => {
+  const srv = closingServer("-ERR 'maximum connections exceeded'\r\n");
+  const err = await assertRejects(() =>
+    connect({
+      servers: `127.0.0.1:${srv.port}`,
+      tls: { caFile: upgradeCaFile },
+      reconnect: false,
+    })
+  ) as Error;
+  assert(err.message.includes("(untrusted)"), err.message);
+  assert(
+    err.message.endsWith(`"-ERR 'maximum connections exceeded'"`),
+    err.message,
+  );
+  srv.close();
+});
+
+Deno.test("tls - failed upgrade without dropped bytes keeps the error", async () => {
+  const srv = closingServer("");
+  const err = await assertRejects(() =>
+    connect({
+      servers: `127.0.0.1:${srv.port}`,
+      tls: { caFile: upgradeCaFile },
+      reconnect: false,
+    })
+  ) as Error;
+  assert(!err.message.includes("(untrusted)"), err.message);
+  srv.close();
+});
