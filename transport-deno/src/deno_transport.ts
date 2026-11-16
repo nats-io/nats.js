@@ -76,15 +76,12 @@ export class DenoTransport implements Transport {
 
     try {
       if (handshakeFirst === true) {
-        const opts = await this.loadTlsOptions(hp.hostname);
-        const ctls = {
-          caCerts: opts.caCerts,
-          hostname: hp.hostname,
-          port: hp.port,
-        };
-        this.conn = await Deno.connectTls(ctls);
-        this.encrypted = true;
-        // do nothing yet.
+        // dial, then start tls before reading anything, so the name
+        // verified is the inherited tls name or the host, not the address
+        this.conn = await Deno.connect(hp);
+        await this.startTLS(
+          stripTrailingDot(hp.tlsName ? hp.tlsName : hp.hostname),
+        );
       } else {
         this.conn = await Deno.connect(hp);
       }
