@@ -29,23 +29,22 @@ import { INFO } from "./protocol.ts";
 import { NatsConnectionImpl } from "./nats.ts";
 import { version } from "./version.ts";
 import { errors, InvalidArgumentError } from "./errors.ts";
+import { applyWssOnly } from "./servers.ts";
 
 const VERSION = version;
 const LANG = "nats.ws";
 
 /**
- * WsSocketFactory is a factory that returns a WebSocket and a boolean
- * indicating if the connection is encrypted. Client code is responsible
- * for creating a W3C WebSocket compliant transport.
+ * WsSocketFactory is a factory that returns a WebSocket. Client code is
+ * responsible for creating a W3C WebSocket compliant transport. Whether the
+ * connection is encrypted is taken from the socket's `url`.
  *
  * @param u the url to connect to
  * @param opts the connection options
- * @returns a promise that resolves to a WebSocket and a boolean indicating if
- * the connection is encrypted
+ * @returns a promise that resolves to a WebSocket
  */
 export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
   socket: WebSocket;
-  encrypted: boolean;
 }>;
 
 /**
@@ -54,6 +53,11 @@ export type WsSocketFactory = (u: string, opts: ConnectionOptions) => Promise<{
  */
 export interface WsConnectionOptions extends ConnectionOptions {
   wsFactory?: WsSocketFactory;
+  /**
+   * `true`: every server is wss. `null`: every server is ws. Unset: the
+   * protocol in each server's URL (a plain `host:port` is wss).
+   */
+  wssOnly?: boolean | null;
 }
 
 export class WsTransport implements Transport {
@@ -69,7 +73,6 @@ export class WsTransport implements Transport {
   socketClosed: boolean;
   // the wait between checks while close() drains the socket
   drainWait?: Delay;
-  encrypted: boolean;
   peeked: boolean;
 
   yields: Uint8Array[];
@@ -82,7 +85,6 @@ export class WsTransport implements Transport {
     this.connected = false;
     this.done = false;
     this.socketClosed = false;
-    this.encrypted = false;
     this.peeked = false;
     this.yields = [];
     this.signal = deferred();
@@ -99,15 +101,30 @@ export class WsTransport implements Transport {
     this.options = options;
     const u = server.src;
     if (options.wsFactory) {
-      const { socket, encrypted } = await options.wsFactory(
-        server.src,
-        options,
-      );
+      const { socket } = await options.wsFactory(server.src, options);
       this.socket = socket;
-      this.encrypted = encrypted;
     } else {
-      this.encrypted = u.indexOf("wss://") === 0;
       this.socket = new WebSocket(u);
+    }
+    const { wssOnly } = options;
+    if (
+      (wssOnly === true && !this.encrypted) ||
+      (wssOnly === null && this.encrypted)
+    ) {
+      const err = new errors.ConnectionError(
+        `'wssOnly' requires ${
+          wssOnly ? "wss" : "ws"
+        }: the socket's url is "${this.socket.url}"`,
+      );
+      this.done = true;
+      this.closeError = err;
+      try {
+        this.socket.close();
+      } catch (_) {
+        // nothing
+      }
+      this._cleanup();
+      throw err;
     }
     this.socket.binaryType = "arraybuffer";
 
@@ -275,6 +292,14 @@ export class WsTransport implements Transport {
     }
   }
 
+  // the socket's own url, also for a socket from a wsFactory
+  get encrypted(): boolean {
+    const u = this.socket?.url?.toLowerCase() ?? "";
+    // a factory may produce an https:// (or http://) url, which the node ws
+    // library dials as wss (or ws), so both tls spellings count as encrypted
+    return u.startsWith("wss://") || u.startsWith("https://");
+  }
+
   isEncrypted(): boolean {
     return this.connected && this.encrypted;
   }
@@ -313,15 +338,19 @@ export class WsTransport implements Transport {
   }
 }
 
-export function wsUrlParseFn(u: string, encrypted?: boolean): string {
+export function wsUrlParseFn(
+  u: string,
+  encrypted?: boolean,
+  bareTls = true,
+): string {
   const ut = /^(.*:\/\/)(.*)/;
   if (typeof encrypted === "boolean") {
     // a gossiped entry is a host:port, dialed with the protocol of the
     // connection that reported it, never a scheme of its own
     u = `${encrypted ? "wss" : "ws"}://${u}`;
   } else if (!ut.test(u)) {
-    // no protocol, assume encrypted
-    u = `https://${u}`;
+    // no protocol: wss, or ws when wssOnly is null
+    u = `${bareTls ? "https" : "http"}://${u}`;
   }
   let url = new URL(u);
   const srcProto = url.protocol.toLowerCase();
@@ -372,19 +401,45 @@ export function wsUrlParseFn(u: string, encrypted?: boolean): string {
 export function wsconnect(
   opts: ConnectionOptions | WsConnectionOptions = {},
 ): Promise<NatsConnection> {
+  if (opts.tls) {
+    return Promise.reject(InvalidArgumentError.format(
+      "tls",
+      "is not configurable on w3c websocket connections",
+    ));
+  }
+  // only exactly true, false or null: a truthy string or number would
+  // otherwise be taken as unset
+  const w = (opts as WsConnectionOptions).wssOnly;
+  if (w !== undefined && w !== null && typeof w !== "boolean") {
+    return Promise.reject(InvalidArgumentError.format(
+      "wssOnly",
+      "must be true, false or null",
+    ));
+  }
+  const { wssOnly } = opts as WsConnectionOptions;
+  // under wssOnly null a plain host:port (the default server and the port
+  // option included) is ws
+  const ws = wssOnly === null;
+  const urlParseFn = ws
+    ? (u: string, encrypted?: boolean) => wsUrlParseFn(u, encrypted, false)
+    : wsUrlParseFn;
   setTransportFactory({
-    defaultPort: 443,
-    urlParseFn: wsUrlParseFn,
+    defaultPort: ws ? 80 : 443,
+    urlParseFn,
     factory: (): Transport => {
-      if (opts.tls) {
-        throw InvalidArgumentError.format(
-          "tls",
-          "is not configurable on w3c websocket connections",
-        );
-      }
       return new WsTransport();
     },
   } as TransportFactory);
-
+  if (opts.servers) {
+    try {
+      applyWssOnly(
+        Array.isArray(opts.servers) ? opts.servers : [opts.servers],
+        wssOnly,
+        urlParseFn,
+      );
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
   return NatsConnectionImpl.connect(opts);
 }

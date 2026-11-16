@@ -653,3 +653,213 @@ Deno.test("ws - a later wsconnect() doesn't change a connect's transport", async
   assertEquals(tcp.getServers()[0].src, `127.0.0.1:${ns.port}`);
   await cleanup(ns, ws, tcp);
 });
+
+// a websocket to a plain ws server whose url says wss, so a connection can
+// run under wssOnly without a tls server
+function wssShim(u: string): WebSocket {
+  const ws = new WebSocket(u.replace("wss://", "ws://"));
+  return new Proxy(ws, {
+    get(t, p) {
+      if (p === "url") {
+        return t.url.replace("ws://", "wss://");
+      }
+      const v = Reflect.get(t, p);
+      return typeof v === "function" ? v.bind(t) : v;
+    },
+    set(t, p, v) {
+      return Reflect.set(t, p, v);
+    },
+  });
+}
+
+Deno.test("ws - wssOnly rejects servers that map to ws", async () => {
+  for (const u of ["ws://127.0.0.1:1", "nats://127.0.0.1:1", "http://h:1"]) {
+    await assertRejects(
+      () => wsconnect({ servers: [u], wssOnly: true }),
+      errors.InvalidArgumentError,
+      `'wssOnly' requires wss: "${u}" maps to "ws://`,
+    );
+  }
+});
+
+Deno.test("ws - wssOnly refuses a socket that isn't wss", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const err = await assertRejects(() =>
+    wsconnect({
+      servers: `wss://127.0.0.1:${ns.websocket}`,
+      wssOnly: true,
+      // a factory that didn't dial the wss url it was given
+      wsFactory: (u: string) =>
+        Promise.resolve({
+          socket: new WebSocket(u.replace("wss://", "ws://")),
+        }),
+    })
+  );
+  assert(
+    (err as Error).message.includes("'wssOnly' requires wss") ||
+      ((err as Error).cause as Error)?.message?.includes(
+        "'wssOnly' requires wss",
+      ),
+    (err as Error).message,
+  );
+  await ns.stop();
+});
+
+Deno.test("ws - wssOnly checks setServers", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `wss://127.0.0.1:${ns.websocket}`,
+    wssOnly: true,
+    wsFactory: (u: string) => Promise.resolve({ socket: wssShim(u) }),
+  }) as NatsConnectionImpl;
+  assert(nc.protocol.transport.isEncrypted());
+  const before = nc.getServers().map((s) => s.src);
+  let err: Error | undefined;
+  try {
+    nc.setServers(["wss://h:1", "ws://h:2"]);
+  } catch (e) {
+    err = e as Error;
+  }
+  assert(err instanceof errors.InvalidArgumentError);
+  assertEquals(nc.getServers().map((s) => s.src), before);
+  // bare host:port maps to wss
+  nc.setServers(["h:1", "wss://h:2"]);
+  assertEquals(nc.getServers().length, 2);
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - encrypted comes from the socket's url", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const plain = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}`,
+  }) as NatsConnectionImpl;
+  assertFalse(plain.protocol.transport.isEncrypted());
+  // a factory's socket is judged by its url, not by anything it reports
+  const shim = await wsconnect({
+    servers: `wss://127.0.0.1:${ns.websocket}`,
+    wsFactory: (u: string) =>
+      Promise.resolve({ socket: wssShim(u), encrypted: false }),
+  }) as NatsConnectionImpl;
+  assert(shim.protocol.transport.isEncrypted());
+  await plain.close();
+  await cleanup(ns, shim);
+});
+
+Deno.test("ws - wssOnly null rejects servers that map to wss", async () => {
+  for (const u of ["wss://127.0.0.1:1", "tls://127.0.0.1:1", "https://h:1"]) {
+    await assertRejects(
+      () => wsconnect({ servers: [u], wssOnly: null }),
+      errors.InvalidArgumentError,
+      `'wssOnly' is null, requires ws: "${u}" maps to "wss://`,
+    );
+  }
+});
+
+Deno.test("ws - wssOnly null dials a plain host:port with ws", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `127.0.0.1:${ns.websocket}`,
+    wssOnly: null,
+  }) as NatsConnectionImpl;
+  assertFalse(nc.protocol.transport.isEncrypted());
+  assert(nc.getServers()[0].src.startsWith("ws://"));
+  // setServers: a plain host:port is ws, a wss url is an error
+  nc.setServers(["h:1"]);
+  assertEquals(nc.getServers()[0].src, "ws://h:1/");
+  let err: Error | undefined;
+  try {
+    nc.setServers(["wss://h:2"]);
+  } catch (e) {
+    err = e as Error;
+  }
+  assert(err instanceof errors.InvalidArgumentError);
+  assertEquals(nc.getServers()[0].src, "ws://h:1/");
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - wssOnly null refuses a socket that is wss", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const err = await assertRejects(() =>
+    wsconnect({
+      servers: `ws://127.0.0.1:${ns.websocket}`,
+      wssOnly: null,
+      wsFactory: (u: string) =>
+        Promise.resolve({ socket: wssShim(u.replace("ws://", "wss://")) }),
+    })
+  );
+  assert(
+    (err as Error).message.includes("'wssOnly' requires ws") ||
+      ((err as Error).cause as Error)?.message?.includes(
+        "'wssOnly' requires ws",
+      ),
+    (err as Error).message,
+  );
+  await ns.stop();
+});
+
+Deno.test("ws - wssOnly false is like unset", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: [`ws://127.0.0.1:${ns.websocket}`, "wss://h:1"],
+    wssOnly: false,
+    noRandomize: true,
+  });
+  nc.setServers([`ws://127.0.0.1:${ns.websocket}`, "wss://h:1", "h:2"]);
+  assertEquals(nc.getServers().length, 3);
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - wssOnly must be true, false or null", async () => {
+  for (const v of ["true", 1, "null", 0, {}]) {
+    await assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => wsconnect({ servers: "ws://127.0.0.1:1", wssOnly: v as any }),
+      errors.InvalidArgumentError,
+      "'wssOnly' must be true, false or null",
+    );
+  }
+});
+
+Deno.test("ws - wssOnly null keeps a server's url on a listen round trip", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    servers: `ws://127.0.0.1:${ns.websocket}/nats`,
+    wssOnly: null,
+  }) as NatsConnectionImpl;
+  const before = nc.protocol.servers.getServers()[0];
+  before.reconnects = 3;
+  nc.setServers(nc.getServers().map((s) => s.listen));
+  const after = nc.protocol.servers.getServers()[0];
+  assertEquals(after, before);
+  assertEquals(after.src, `ws://127.0.0.1:${ns.websocket}/nats`);
+  assertEquals(after.reconnects, 3);
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - wssOnly null makes the port option ws", async () => {
+  const ns = await NatsServer.start(wsServerConf());
+  const nc = await wsconnect({
+    port: ns.websocket,
+    wssOnly: null,
+  }) as NatsConnectionImpl;
+  assertFalse(nc.protocol.transport.isEncrypted());
+  assertEquals(nc.getServers()[0].src, `ws://127.0.0.1:${ns.websocket}/`);
+  await cleanup(ns, nc);
+});
+
+Deno.test("ws - encrypted accepts both tls spellings of the socket url", () => {
+  for (
+    const [url, encrypted] of [
+      ["wss://h:443/", true],
+      ["WSS://h:443/", true],
+      ["https://h:443/", true],
+      ["ws://h:80/", false],
+      ["http://h:80/", false],
+    ] as [string, boolean][]
+  ) {
+    const t = new WsTransport();
+    // deno-lint-ignore no-explicit-any
+    (t as any).socket = { url };
+    assertEquals(t.encrypted, encrypted, url);
+  }
+});

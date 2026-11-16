@@ -115,6 +115,31 @@ function isBareHostPort(u: string): boolean {
   return !/[/?#]/.test(u);
 }
 
+// the websocket wssOnly option: with true every server given must map to
+// wss, with null to ws (the connection's parser maps a bare host:port to
+// that). the servers are only checked, never rewritten
+export function applyWssOnly(
+  servers: string[],
+  wssOnly: boolean | null | undefined,
+  urlParseFn?: URLParseFn,
+): string[] {
+  if ((wssOnly !== true && wssOnly !== null) || !Array.isArray(servers)) {
+    return servers;
+  }
+  return servers.map((s) => {
+    const u = urlParseFn ? urlParseFn(s) : s;
+    if (!u.startsWith(wssOnly ? "wss://" : "ws://")) {
+      throw InvalidArgumentError.format(
+        "wssOnly",
+        wssOnly
+          ? `requires wss: "${s}" maps to "${u}"`
+          : `is null, requires ws: "${s}" maps to "${u}"`,
+      );
+    }
+    return s;
+  });
+}
+
 export class ServerImpl implements Server {
   src: string;
   listen: string;
