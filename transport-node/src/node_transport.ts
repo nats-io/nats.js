@@ -86,6 +86,13 @@ export class NodeTransport implements Transport {
       this.checkAbandoned();
       checkOptions(info, options);
       const { tls_required, tls_available: tlsAvailable } = info;
+      // tls: null never uses tls, so a server that requires it is refused
+      // before anything is sent
+      if (options.tls === null && !!tls_required) {
+        throw new errors.ConnectionError(
+          "client disabled tls ('tls: null'), but server requires tls",
+        );
+      }
       // tls option makes tls mandatory
       const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;
@@ -276,7 +283,7 @@ export class NodeTransport implements Transport {
     if (this.socket) {
       tlsOpts.socket = this.socket;
     }
-    if (typeof this.options.tls === "object") {
+    if (this.options.tls && typeof this.options.tls === "object") {
       try {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);
@@ -344,7 +351,7 @@ export class NodeTransport implements Transport {
     this.socket.on("error", (err) => {
       socketError = err;
     });
-    if (typeof this.options.tls === "object") {
+    if (this.options.tls && typeof this.options.tls === "object") {
       try {
         const certOpts = await this.loadClientCerts() || {};
         tlsOpts = extend(tlsOpts, this.options.tls, certOpts);

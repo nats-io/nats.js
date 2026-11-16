@@ -12,10 +12,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { connect } from "./connect.ts";
 import { errors } from "../src/internal_mod.ts";
 import type { NatsConnectionImpl } from "../src/internal_mod.ts";
+import { dialError } from "../src/protocol.ts";
 import { cleanup, NatsServer } from "nst";
 
 Deno.test("tls - fail if server doesn't support TLS", async () => {
@@ -129,4 +130,101 @@ Deno.test("tls - a configured name with a trailing dot connects", async () => {
   await nc.close();
   ns.certsDir = tlsConfig.certsDir;
   await ns.stop(true);
+});
+
+Deno.test("tls - null refuses a server that requires tls", async () => {
+  const tlsConfig = await NatsServer.tlsConfig();
+  const ns = await NatsServer.start({ host: "127.0.0.1", tls: tlsConfig.tls });
+  await assertRejects(
+    () =>
+      connect({
+        servers: `127.0.0.1:${ns.port}`,
+        tls: null,
+        reconnect: false,
+      }),
+    errors.ConnectionError,
+    "client disabled tls ('tls: null'), but server requires tls",
+  );
+  ns.certsDir = tlsConfig.certsDir;
+  await ns.stop(true);
+});
+
+Deno.test("tls - null refusal is reported when localhost has other addresses", async () => {
+  // localhost is ::1 and 127.0.0.1, tried in random order: ::1 is refused,
+  // 127.0.0.1 refuses for tls. the refusal is the error every time
+  const tlsConfig = await NatsServer.tlsConfig();
+  const ns = await NatsServer.start({ host: "127.0.0.1", tls: tlsConfig.tls });
+  for (let i = 0; i < 10; i++) {
+    const err = await assertRejects(
+      () =>
+        connect({
+          servers: `localhost:${ns.port}`,
+          tls: null,
+          reconnect: false,
+        }),
+      errors.ConnectionError,
+      "client disabled tls ('tls: null'), but server requires tls",
+    );
+    // the other addresses' errors are chained, and it serializes
+    JSON.stringify(err);
+    const others = (err as Error & { errors?: { server: string }[] }).errors;
+    if (others) {
+      assert(others.every((o) => o.server !== `127.0.0.1:${ns.port}`));
+    }
+  }
+  ns.certsDir = tlsConfig.certsDir;
+  await ns.stop(true);
+});
+
+Deno.test("tls - dialError prefers a reason over a refused dial", () => {
+  const refused = new errors.ConnectionError("connection refused");
+  const reason = new errors.ConnectionError("a reason");
+  for (
+    const failed of [
+      [{ server: "::1:1", error: refused }, {
+        server: "127.0.0.1:1",
+        error: reason,
+      }],
+      [{ server: "127.0.0.1:1", error: reason }, {
+        server: "::1:1",
+        error: refused,
+      }],
+    ]
+  ) {
+    const err = dialError(failed, failed[1].error)!;
+    assertEquals(err, reason);
+    assertEquals(
+      (err as Error & { errors: unknown[] }).errors,
+      [{ server: "::1:1", error: refused }],
+    );
+    JSON.stringify(err);
+  }
+
+  // every address refused: the last error, with the others chained
+  const r2 = new errors.ConnectionError("connection refused (os error 61)");
+  const err = dialError(
+    [{ server: "::1:1", error: refused }, { server: "127.0.0.1:1", error: r2 }],
+    r2,
+  )!;
+  assertEquals(err, r2);
+  assertEquals((err as Error & { errors: unknown[] }).errors.length, 1);
+
+  // one address: as it was
+  const one = new errors.ConnectionError("connection refused");
+  assertEquals(dialError([{ server: "h:1", error: one }], one), one);
+  assertEquals(
+    (one as Error & { errors?: unknown[] }).errors,
+    undefined,
+  );
+
+  // an error that isn't a dial's, such as a waitOnFirstConnect callback that
+  // threw, is reported as it is
+  const cb = new Error("callback");
+  assertEquals(
+    dialError([{ server: "::1:1", error: refused }, {
+      server: "h:1",
+      error: reason,
+    }], cb),
+    cb,
+  );
 });
