@@ -384,23 +384,27 @@ export class Servers {
   }
 
   update(info: ServerInfo, encrypted?: boolean): ServersChanged {
-    // a bad entry fails the whole info before anything changes
-    // update is only called from processInfo - so it would reject the connection
-    // if this tosses
-    checkConnectUrls(info.connect_urls, encrypted, this.urlParseFn);
+    checkConnectUrls(info.connect_urls);
     const added: string[] = [];
     let deleted: string[] = [];
 
     const urlParseFn = this.urlParseFn;
     const discovered = new Map<string, ServerImpl>();
-    if (info.connect_urls && info.connect_urls.length > 0) {
-      info.connect_urls.forEach((hp) => {
-        hp = urlParseFn ? urlParseFn(hp, encrypted) : hp;
+    (info.connect_urls ?? []).forEach((u) => {
+      // an entry that can't be parsed is skipped; anything else wrong with
+      // one fails the dial
+      if (typeof u !== "string") {
+        return;
+      }
+      try {
+        const hp = urlParseFn ? urlParseFn(u, encrypted) : u;
         const s = new ServerImpl(hp, true);
         // keyed as the list is, by host:port, not by the parsed url
         discovered.set(s.listen, s);
-      });
-    }
+      } catch {
+        // skipped
+      }
+    });
     // remove gossiped servers that are no longer reported
     const toDelete: number[] = [];
     this.servers.forEach((s, index) => {
@@ -462,32 +466,9 @@ export class Servers {
   }
 }
 
-// connect_urls is applied only when every entry parses, so a bad info
-// fails as a whole, naming the entry
-export function checkConnectUrls(
-  urls: unknown,
-  encrypted?: boolean,
-  urlParseFn: URLParseFn | undefined = getUrlParseFn(),
-): void {
-  if (urls === undefined || urls === null) {
-    return;
-  }
-  if (!Array.isArray(urls)) {
+// a connect_urls that isn't an array fails the info
+export function checkConnectUrls(urls: unknown): void {
+  if (urls !== undefined && urls !== null && !Array.isArray(urls)) {
     throw new Error(`connect_urls is not an array: ${JSON.stringify(urls)}`);
-  }
-  for (const u of urls) {
-    try {
-      if (typeof u !== "string") {
-        throw new Error("not a string");
-      }
-      new ServerImpl(urlParseFn ? urlParseFn(u, encrypted) : u, true);
-    } catch (err) {
-      throw new Error(
-        `invalid connect_urls entry ${JSON.stringify(u)}: ${
-          (err as Error).message
-        }`,
-        { cause: err },
-      );
-    }
   }
 }

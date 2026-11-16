@@ -510,3 +510,19 @@ Deno.test("servers - tcp setServers keeps the entry by host:port", () => {
   assertEquals(entry(servers, "h:4222"), h);
   assertEquals(h.reconnects, 2);
 });
+
+Deno.test("servers - ws gossip gets the connection's protocol", () => {
+  const servers = wsServers(["wss://a:443"]);
+  servers.update(
+    Object.assign(servInfo(), {
+      connect_urls: ["h:4222", "nats://j:4222", "ws://k:80", "user@l:443"],
+    }),
+    true,
+  );
+  // an entry's own scheme never counts: whatever it makes, it's wss
+  const gossiped = servers.getServers().filter((s) => s.gossiped);
+  assertEquals(gossiped.length, 4);
+  gossiped.forEach((s) => assert(s.src.startsWith("wss://"), s.src));
+  assertEquals(gossipedEntry(servers, "h:4222")!.src, "wss://h:4222/");
+  setTransportFactory({ urlParseFn: undefined });
+});
