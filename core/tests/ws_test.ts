@@ -210,6 +210,35 @@ Deno.test("ws - wsURLParseFn", () => {
   assertEquals(wsUrlParseFn("https://localhost"), "wss://localhost:443/");
 });
 
+Deno.test("ws - wsUrlParseFn keeps a given port", () => {
+  const cases: [string, boolean | undefined, string][] = [
+    // a port that is the default of the other scheme
+    ["wss://h:80", undefined, "wss://h:80/"],
+    ["tls://h:80", undefined, "wss://h:80/"],
+    ["ws://h:443", undefined, "ws://h:443/"],
+    ["nats://h:443", undefined, "ws://h:443/"],
+    // defaults when no port is given
+    ["wss://h", undefined, "wss://h:443/"],
+    ["ws://h", undefined, "ws://h:80/"],
+    ["wss://h:443", undefined, "wss://h:443/"],
+    ["ws://h:80", undefined, "ws://h:80/"],
+    // any other scheme follows the hint, and keeps its port
+    ["foo://h:1234", undefined, "ws://h:1234/"],
+    ["foo://h:1234", true, "wss://h:1234/"],
+    ["foo://h:1234", false, "ws://h:1234/"],
+    ["foo://h", true, "wss://h:443/"],
+    ["foo://h", false, "ws://h:80/"],
+    // bare
+    ["h:80", undefined, "wss://h:80/"],
+    ["h:443", false, "ws://h:443/"],
+    // path and query survive
+    ["wss://h:80/nats?x=1", undefined, "wss://h:80/nats?x=1"],
+  ];
+  for (const [u, encrypted, expect] of cases) {
+    assertEquals(wsUrlParseFn(u, encrypted), expect, `${u} ${encrypted}`);
+  }
+});
+
 Deno.test("ws - reconnectToServer invoked on initial connect", async () => {
   const ns = await NatsServer.start(wsServerConf());
   let calls = 0;
