@@ -94,6 +94,13 @@ export class DenoTransport implements Transport {
       const info = await this.peekInfo();
       checkOptions(info, this.options);
       const { tls_required, tls_available: tlsAvailable } = info;
+      // tls: null never uses tls, so a server that requires it is refused
+      // before anything is sent
+      if (options.tls === null && !!tls_required) {
+        throw new errors.ConnectionError(
+          "client disabled tls ('tls: null'), but server requires tls",
+        );
+      }
       // tls option makes tls mandatory
       const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;

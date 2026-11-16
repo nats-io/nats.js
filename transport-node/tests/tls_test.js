@@ -438,6 +438,59 @@ function assertPlainConnect(data) {
 }
 
 describe(
+  "tls null never uses tls",
+  { timeout: 20_000, concurrency: true, forceExit: true },
+  () => {
+    const creds = { user: "u", pass: "p" };
+    it("tls=null tls_required=true fails without sending anything", async () => {
+      const { result, data } = await firstBytes(
+        { tls_required: true },
+        Object.assign({ tls: null }, creds),
+      );
+      assert.equal(result.ok, false);
+      assert.match(
+        result.err.message,
+        /client disabled tls \('tls: null'\), but server requires tls/,
+      );
+      assert.equal(data.length, 0);
+    });
+
+    it("tls=null refusal is reported when localhost has other addresses", async () => {
+      // localhost is ::1 and 127.0.0.1, tried in random order: ::1 is
+      // refused, 127.0.0.1 refuses for tls. the refusal is the error
+      const srv = await fakeServer({ tls_required: true });
+      for (let i = 0; i < 10; i++) {
+        const err = await connect({
+          servers: `localhost:${srv.port}`,
+          tls: null,
+          reconnect: false,
+          ...creds,
+        }).then(() => null, (err) => err);
+        assert.ok(err, "expected a refusal");
+        assert.match(
+          err.message,
+          /client disabled tls \('tls: null'\), but server requires tls/,
+        );
+        // the other addresses' errors are chained, and it serializes
+        JSON.stringify(err);
+        for (const o of err.errors ?? []) {
+          assert.notEqual(o.server, `127.0.0.1:${srv.port}`);
+        }
+      }
+      await srv.stop();
+    });
+
+    it("tls=null tls_available=true connects in plaintext", async () => {
+      const { data } = await firstBytes(
+        { tls_available: true },
+        Object.assign({ tls: null }, creds),
+      );
+      assertPlainConnect(data);
+    });
+  },
+);
+
+describe(
   "tls option makes tls mandatory",
   { timeout: 20_000, concurrency: true, forceExit: true },
   () => {

@@ -451,6 +451,37 @@ export function parseInfo(
   return info;
 }
 
+type DialFailure = { server: string; error: Error };
+
+function isRefusedDial(err: Error): boolean {
+  return err instanceof errors.ConnectionError &&
+    err.message.startsWith("connection refused");
+}
+
+// a refused dial says nothing about the server. when another address of the
+// same name was reached and failed for a reason, such as localhost refused
+// on ::1 and refusing tls on 127.0.0.1, that reason is the error, whichever
+// order the addresses were tried in. the other addresses' errors are chained
+// on it as `errors`, without the reason itself, so it isn't circular
+export function dialError(
+  failed: DialFailure[],
+  lastErr: Error | null,
+): Error | null {
+  // an error that isn't from a dial, such as a waitOnFirstConnect callback
+  // that threw, is reported as it is
+  if (!lastErr || !failed.some((f) => f.error === lastErr)) {
+    return lastErr;
+  }
+  if (failed.length < 2) {
+    return lastErr;
+  }
+  const reason = failed.find((f) => !isRefusedDial(f.error))?.error ??
+    lastErr;
+  return Object.assign(reason, {
+    errors: failed.filter((f) => f.error !== reason),
+  });
+}
+
 export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
   connected: boolean;
   connectedOnce: boolean;
@@ -767,6 +798,8 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     }
 
     let lastErr: Error | null = null;
+    // the error of each address tried, for the error reported
+    const failed: DialFailure[] = [];
     for (const a of alts) {
       try {
         lastErr = null;
@@ -778,6 +811,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
         return;
       } catch (err) {
         lastErr = err as Error;
+        failed.push({ server: a.toString(), error: lastErr });
         // closing - stop dialing
         if (this._closing) {
           break;
@@ -803,7 +837,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     }
     // if we are here, we failed, and we have no additional
     // alternatives for this server
-    throw lastErr;
+    throw dialError(failed, lastErr);
   }
 
   dialLoop(): Promise<void> {
