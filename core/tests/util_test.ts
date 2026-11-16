@@ -24,6 +24,7 @@ import {
   quoteServerLine,
   randomToken,
   SimpleMutex,
+  stripTrailingDot,
   tlsUpgradeError,
 } from "../src/util.ts";
 import { ConnectionError, TimeoutError } from "../src/errors.ts";
@@ -141,4 +142,12 @@ Deno.test("util - tls upgrade error", () => {
     err.message.endsWith(`"-ERR 'maximum connections exceeded'"`),
     err.message,
   );
+});
+
+Deno.test("util - stripTrailingDot", () => {
+  assertEquals(stripTrailingDot("nats.example.com."), "nats.example.com");
+  assertEquals(stripTrailingDot("nats.example.com"), "nats.example.com");
+  // only one dot
+  assertEquals(stripTrailingDot("a.."), "a.");
+  assertEquals(stripTrailingDot(""), "");
 });

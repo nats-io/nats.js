@@ -24,6 +24,7 @@ import {
   extractProtocolMessage,
   INFO,
   protoLen,
+  stripTrailingDot,
   tlsUpgradeError,
 } from "@nats-io/nats-core/internal";
 
@@ -101,7 +102,7 @@ export class DenoTransport implements Transport {
         const dropped = this.buf.subarray(protoLen(this.buf));
         this.buf = this.buf.slice(0, protoLen(this.buf));
         this.tlsUpgraded = true;
-        const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
+        const tlsn = stripTrailingDot(hp.tlsName ? hp.tlsName : hp.hostname);
         try {
           await this.startTLS(tlsn);
         } catch (err) {

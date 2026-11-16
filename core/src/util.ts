@@ -107,6 +107,12 @@ export function quoteServerLine(bytes: Uint8Array): string {
   return `"${line}"${cut ? "..." : ""}`;
 }
 
+// a tls name is verified and sent as sni without one trailing dot: sni
+// can't carry it (rfc 6066), and nats-server refuses such a handshake
+export function stripTrailingDot(name: string): string {
+  return name.endsWith(".") ? name.slice(0, -1) : name;
+}
+
 // the error for a tls upgrade that failed after the server sent bytes past
 // the plaintext info. the bytes were dropped, the error quotes them as
 // untrusted text so the user can see what the server (or the path) sent

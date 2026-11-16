@@ -49,6 +49,7 @@ export {
   quoteServerLine,
   render,
   SimpleMutex,
+  stripTrailingDot,
   timeout,
   tlsUpgradeError,
 } from "./util.ts";

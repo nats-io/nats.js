@@ -115,3 +115,18 @@ Deno.test("tls - available connects with or without", async () => {
 
   await cleanup(ns, ...conns);
 });
+
+Deno.test("tls - a configured name with a trailing dot connects", async () => {
+  const tlsConfig = await NatsServer.tlsConfig();
+  const config = { host: "127.0.0.1", tls: tlsConfig.tls };
+  const ns = await NatsServer.start(config);
+  // sni can't carry the dot, nats-server refuses a handshake with it
+  const nc = await connect({
+    servers: `localhost.:${ns.port}`,
+    tls: { caFile: config.tls.ca_file },
+  });
+  await nc.flush();
+  await nc.close();
+  ns.certsDir = tlsConfig.certsDir;
+  await ns.stop(true);
+});
