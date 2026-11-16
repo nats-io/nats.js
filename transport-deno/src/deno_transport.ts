@@ -24,6 +24,7 @@ import {
   extractProtocolMessage,
   INFO,
   protoLen,
+  tlsUpgradeError,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -96,9 +97,14 @@ export class DenoTransport implements Transport {
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
         // only the plaintext info line is kept across the upgrade
+        const dropped = this.buf.subarray(protoLen(this.buf));
         this.buf = this.buf.slice(0, protoLen(this.buf));
         const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
-        await this.startTLS(tlsn);
+        try {
+          await this.startTLS(tlsn);
+        } catch (err) {
+          throw tlsUpgradeError(err as Error, dropped);
+        }
       }
       if (this.done) {
         this.conn.close();
@@ -111,6 +117,11 @@ export class DenoTransport implements Transport {
       }
     } catch (err) {
       this.conn?.close();
+      // already a connection error, it may quote server text that must
+      // stay as it was sent
+      if (err instanceof errors.ConnectionError) {
+        throw err;
+      }
       const _err = err as Error;
       throw new errors.ConnectionError(_err.message.toLowerCase(), {
         cause: err,

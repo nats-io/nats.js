@@ -15,7 +15,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { TD } from "./encoders.ts";
 import type { DebugFn, Nanos } from "./core.ts";
-import { TimeoutError } from "./errors.ts";
+import { ConnectionError, TimeoutError } from "./errors.ts";
 
 /**
  * Allows derived type structures to show through
@@ -71,6 +71,55 @@ export function render(frame: Uint8Array): string {
   return TD.decode(frame)
     .replace(/\n/g, lf)
     .replace(/\r/g, cr);
+}
+
+// the most of a server line that is quoted in an error
+export const MAX_QUOTED_LINE = 256;
+
+// quotes the first line of bytes sent by the server for an error message.
+// the bytes are untrusted, so the line is cut at MAX_QUOTED_LINE bytes and
+// control characters (which includes terminal escape sequences) are escaped
+export function quoteServerLine(bytes: Uint8Array): string {
+  let end = bytes.indexOf(10);
+  if (end === -1) {
+    end = bytes.length;
+  }
+  if (end > 0 && bytes[end - 1] === 13) {
+    end--;
+  }
+  const cut = end > MAX_QUOTED_LINE;
+  const line = TD.decode(bytes.subarray(0, Math.min(end, MAX_QUOTED_LINE)))
+    .replace(/\\/g, "\\\\")
+    // deno-lint-ignore no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => {
+      switch (c) {
+        case "\r":
+          return "\\r";
+        case "\n":
+          return "\\n";
+        case "\t":
+          return "\\t";
+        default:
+          return `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`;
+      }
+    })
+    .replace(/"/g, '\\"');
+  return `"${line}"${cut ? "..." : ""}`;
+}
+
+// the error for a tls upgrade that failed after the server sent bytes past
+// the plaintext info. the bytes were dropped, the error quotes them as
+// untrusted text so the user can see what the server (or the path) sent
+export function tlsUpgradeError(err: Error, dropped: Uint8Array): Error {
+  if (dropped.length === 0) {
+    return err;
+  }
+  return new ConnectionError(
+    `tls handshake failed - before the handshake the server sent (untrusted): ${
+      quoteServerLine(dropped)
+    }`,
+    { cause: err },
+  );
 }
 
 // handles a frame for the debug option. a custom function gets a copy, so it

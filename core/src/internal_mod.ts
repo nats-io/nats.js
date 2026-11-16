@@ -46,9 +46,11 @@ export {
   extend,
   millis,
   nanos,
+  quoteServerLine,
   render,
   SimpleMutex,
   timeout,
+  tlsUpgradeError,
 } from "./util.ts";
 export { canonicalMIMEHeaderKey, headers, MsgHdrsImpl } from "./headers.ts";
 export { Heartbeat } from "./heartbeats.ts";
