@@ -35,7 +35,7 @@ const tlsConfig = {
 };
 
 describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
-  it("reconnect via tls by ip", async () => {
+  it("reconnect to gossiped ip inherits tls name", async () => {
     if (process.env.CI) {
       console.log("skipped test");
       return;
@@ -44,7 +44,8 @@ describe("tls", { timeout: 20_000, concurrency: true, forceExit: true }, () => {
     const servers = await NatsServer.cluster(3, tlsConfig);
     const nc = await connect(
       {
-        port: servers[0].port,
+        // cert has no ip san, gossiped ips inherit the tls name
+        servers: `localhost:${servers[0].port}`,
         reconnectTimeWait: 250,
         tls: {
           caFile: resolve(join(dir, "/tests/certs/ca.pem")),

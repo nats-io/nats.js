@@ -27,7 +27,7 @@ import {
   ServerInfo,
   Transport,
 } from "./nats-base-client.ts";
-import { createConnection, Socket } from "node:net";
+import { createConnection, isIP, Socket } from "node:net";
 import { connect as tlsConnect, TlsOptions, TLSSocket } from "node:tls";
 import { resolve } from "node:path";
 import { existsSync, readFile } from "node:fs";
@@ -49,6 +49,7 @@ export class NodeTransport implements Transport {
   options!: ConnectionOptions;
   connected = false;
   tlsName = "";
+  hostname = "";
   done = false;
   closeError?: Error;
   stale?: boolean;
@@ -65,6 +66,7 @@ export class NodeTransport implements Transport {
     options: NodeConnectionOptions,
   ): Promise<void> {
     this.tlsName = hp.tlsName;
+    this.hostname = hp.hostname;
     this.options = options;
     const { tls } = this.options;
     const handshakeFirst = tls?.handshakeFirst === true;
@@ -310,11 +312,22 @@ export class NodeTransport implements Transport {
 
   async startTLS(): Promise<TLSSocket> {
     let tlsError: Error;
-    let tlsOpts = {
+    // verify against the tls name or the dialed host
+    const host = this.tlsName || this.hostname;
+    let tlsOpts: {
+      socket: Socket;
+      host: string;
+      servername?: string;
+      rejectUnauthorized: boolean;
+    } = {
       socket: this.socket,
-      servername: this.tlsName,
+      host,
       rejectUnauthorized: true,
     };
+    // sni cannot carry an ip address
+    if (host && !isIP(host)) {
+      tlsOpts.servername = host;
+    }
     // the socket has no error listener after peekInfo: a reset while the
     // cert files load would be an unhandled error that exits the process
     let socketError: Error | undefined;
