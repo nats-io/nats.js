@@ -347,7 +347,7 @@ export function wsUrlParseFn(
   if (typeof encrypted === "boolean") {
     // a gossiped entry is a host:port, dialed with the protocol of the
     // connection that reported it, never a scheme of its own
-    u = `${encrypted ? "wss" : "ws"}://${u}`;
+    u = `${encrypted ? "wss" : "ws"}://${u.replace(/^[^:/?#]*:\/\//, "")}`;
   } else if (!ut.test(u)) {
     // no protocol: wss, or ws when wssOnly is null
     u = `${bareTls ? "https" : "http"}://${u}`;
