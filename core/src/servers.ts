@@ -192,7 +192,6 @@ export class Servers {
   private firstSelect: boolean;
   private servers: ServerImpl[];
   private currentServer!: ServerImpl;
-  private tlsName: string;
   private randomize: boolean;
   // fixed when the servers are created, so a later wsconnect() or connect()
   // in the same process doesn't change how this connection parses urls
@@ -203,7 +202,6 @@ export class Servers {
   ) {
     this.firstSelect = true;
     this.servers = [];
-    this.tlsName = "";
     this.randomize = opts.randomize || false;
     this.urlParseFn = "urlParseFn" in opts ? opts.urlParseFn : getUrlParseFn();
   }
@@ -257,15 +255,18 @@ export class Servers {
     this.servers.length = 0;
   }
 
-  updateTLSName(): void {
-    const cs = this.getCurrentServer();
-    if (!isIP(cs.hostname)) {
-      this.tlsName = cs.hostname;
-      this.servers.forEach((s) => {
-        if (s.gossiped) {
-          s.tlsName = this.tlsName;
-        }
-      });
+  // a gossiped ip verifies against the name the server that reported it was
+  // verified under, over any number of hops: its inherited name, or else its
+  // hostname. a reporting server verified under an ip has no name to pass on.
+  // set once when the entry is added, never changed after.
+  private inheritTLSName(s: ServerImpl): void {
+    const cs = this.currentServer;
+    if (!cs || !isIP(s.hostname)) {
+      return;
+    }
+    const name = cs.tlsName || (isIP(cs.hostname) ? "" : cs.hostname);
+    if (name) {
+      s.tlsName = name;
     }
   }
 
@@ -277,8 +278,8 @@ export class Servers {
     const urlParseFn = this.urlParseFn;
     u = urlParseFn ? urlParseFn(u) : u;
     const s = new ServerImpl(u, implicit);
-    if (isIP(s.hostname)) {
-      s.tlsName = this.tlsName;
+    if (implicit) {
+      this.inheritTLSName(s);
     }
     this.servers.push(s);
   }
@@ -381,11 +382,6 @@ export class Servers {
       info.connect_urls.forEach((hp) => {
         hp = urlParseFn ? urlParseFn(hp, encrypted) : hp;
         const s = new ServerImpl(hp, true);
-        // an ip learned after the first info verifies against the tls name
-        // of the pool, as addServer() does
-        if (isIP(s.hostname)) {
-          s.tlsName = this.tlsName;
-        }
         discovered.set(hp, s);
       });
     }
@@ -413,6 +409,11 @@ export class Servers {
 
     // remaining servers are new
     discovered.forEach((v, k) => {
+      // only a server reached over tls was verified under its name, so
+      // gossip over plaintext passes no name on: the ip verifies as itself
+      if (encrypted === true) {
+        this.inheritTLSName(v);
+      }
       this.servers.push(v);
       added.push(k);
     });

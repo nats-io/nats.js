@@ -104,7 +104,6 @@ Deno.test("servers - save tls name", () => {
   servers.setServers(["h:1", "h:2"]);
   servers.addServer("127.1.0.0", true);
   servers.addServer("127.1.2.0", true);
-  servers.updateTLSName();
   assertEquals(servers.length(), 4);
   assertEquals(servers.getServers().length, 4);
   assertEquals(servers.getCurrentServer().listen, "h:1");
@@ -118,17 +117,137 @@ Deno.test("servers - save tls name", () => {
   });
 });
 
-Deno.test("servers - ips gossiped after the first info get the tls name", () => {
+function gossip(servers: Servers, connectURLs: string[]) {
+  servers.update({ connect_urls: connectURLs } as ServerInfo, true);
+}
+
+function tlsNameOf(servers: Servers, listen: string): string | undefined {
+  return servers.getServers().find((s) => s.listen === listen)?.tlsName;
+}
+
+function connectTo(servers: Servers, listen: string) {
+  const s = servers.getServers().find((s) => s.listen === listen);
+  assert(s, listen);
+  servers.setCurrent(s);
+}
+
+Deno.test("servers - tls name gossiped ip named after current hostname", () => {
   const servers = new Servers({ randomize: false });
-  servers.setServers(["h:1"]);
-  // the first info names the pool, before any gossip arrives
-  servers.updateTLSName();
-  servers.update({ connect_urls: ["127.1.0.0:4222", "g:4222"] } as ServerInfo);
-  const gossiped = servers.getServers().filter((s) => s.gossiped);
-  assertEquals(gossiped.length, 2);
-  // an ip inherits the name, a hostname is verified against its own name
-  assertEquals(gossiped.find((s) => s.hostname === "127.1.0.0")?.tlsName, "h");
-  assertEquals(gossiped.find((s) => s.hostname === "g")?.tlsName, "");
+  servers.setServers(["seed.example:4222"]);
+  // first info
+  gossip(servers, ["10.0.0.1:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "seed.example");
+  // async info while still on the seed
+  gossip(servers, ["10.0.0.1:4222", "10.0.0.2:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.2:4222"), "seed.example");
+  // explicit seed never gets a name
+  assertEquals(tlsNameOf(servers, "seed.example:4222"), "");
+});
+
+Deno.test("servers - tls name carries over hops through an ip", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  gossip(servers, ["10.0.0.1:4222"]);
+  connectTo(servers, "10.0.0.1:4222");
+  // 10.0.0.1 was verified as seed.example, so what it reports is too
+  gossip(servers, ["10.0.0.1:4222", "10.0.0.3:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.3:4222"), "seed.example");
+  connectTo(servers, "10.0.0.3:4222");
+  gossip(servers, ["10.0.0.1:4222", "10.0.0.3:4222", "10.0.0.4:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.4:4222"), "seed.example");
+  // existing entry keeps its name
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "seed.example");
+});
+
+Deno.test("servers - tls name never changes once set", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  gossip(servers, ["10.0.0.1:4222", "other.example:4222"]);
+  connectTo(servers, "other.example:4222");
+  // re-gossip under a different current hostname
+  gossip(servers, ["10.0.0.1:4222", "other.example:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "seed.example");
+});
+
+Deno.test("servers - tls name from current gossiped hostname", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  gossip(servers, ["other.example:4222"]);
+  connectTo(servers, "other.example:4222");
+  gossip(servers, ["other.example:4222", "10.0.0.4:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.4:4222"), "other.example");
+});
+
+Deno.test("servers - tls name not set on gossiped hostname", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  gossip(servers, ["other.example:4222"]);
+  gossip(servers, ["other.example:4222", "another.example:4222"]);
+  assertEquals(tlsNameOf(servers, "other.example:4222"), "");
+  assertEquals(tlsNameOf(servers, "another.example:4222"), "");
+});
+
+Deno.test("servers - tls name gossiped ipv6", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  gossip(servers, ["[::1]:4222"]);
+  assertEquals(tlsNameOf(servers, "[::1]:4222"), "seed.example");
+  gossip(servers, ["[::1]:4222", "[fe80::1]:4222"]);
+  assertEquals(tlsNameOf(servers, "[fe80::1]:4222"), "seed.example");
+  connectTo(servers, "[::1]:4222");
+  gossip(servers, ["[::1]:4222", "[fe80::1]:4222", "[fe80::2]:4222"]);
+  assertEquals(tlsNameOf(servers, "[fe80::2]:4222"), "seed.example");
+  assertEquals(tlsNameOf(servers, "[::1]:4222"), "seed.example");
+});
+
+Deno.test("servers - tls name not inherited over plaintext", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  // the seed was reached in plaintext, so its hostname was never verified
+  servers.update(
+    { connect_urls: ["10.0.0.1:4222", "[::1]:4222"] } as ServerInfo,
+    false,
+  );
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "");
+  assertEquals(tlsNameOf(servers, "[::1]:4222"), "");
+  // the name is set when the entry is added, so a later info over tls
+  // doesn't name entries added before it
+  gossip(servers, ["10.0.0.1:4222", "[::1]:4222", "10.0.0.2:4222"]);
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "");
+  assertEquals(tlsNameOf(servers, "[::1]:4222"), "");
+  assertEquals(tlsNameOf(servers, "10.0.0.2:4222"), "seed.example");
+});
+
+Deno.test("servers - tls name not inherited when unknown if encrypted", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["seed.example:4222"]);
+  servers.update({ connect_urls: ["10.0.0.1:4222"] } as ServerInfo);
+  assertEquals(tlsNameOf(servers, "10.0.0.1:4222"), "");
+});
+
+Deno.test("servers - tls name not set when seed is ip", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["127.0.0.1:4222"]);
+  gossip(servers, ["10.0.0.1:4222", "other.example:4222", "[::1]:4222"]);
+  gossip(servers, [
+    "10.0.0.1:4222",
+    "other.example:4222",
+    "[::1]:4222",
+    "10.0.0.2:4222",
+  ]);
+  // a server verified under an ip has no name to pass on, over any hop
+  connectTo(servers, "10.0.0.1:4222");
+  gossip(servers, [
+    "10.0.0.1:4222",
+    "other.example:4222",
+    "[::1]:4222",
+    "10.0.0.2:4222",
+    "10.0.0.5:4222",
+  ]);
+  assertEquals(servers.length(), 6);
+  servers.getServers().forEach((s) => {
+    assertEquals(s.tlsName, "", s.listen);
+  });
 });
 
 Deno.test("servers - port 80", () => {
@@ -211,7 +330,6 @@ Deno.test("servers - setServers treats a gossiped entry as configured", () => {
   const servers = new Servers({ randomize: false });
   servers.setServers(["h:1"]);
   servers.addServer("127.1.0.0", true);
-  servers.updateTLSName();
   const ip = servers.getServers().find((s) => s.listen === "127.1.0.0:4222")!;
   assertEquals(ip.tlsName, "h");
   ip.reconnects = 2;
