@@ -315,14 +315,13 @@ export class WsTransport implements Transport {
 
 export function wsUrlParseFn(u: string, encrypted?: boolean): string {
   const ut = /^(.*:\/\/)(.*)/;
-  if (!ut.test(u)) {
-    // if we have no hint to encrypted and no protocol, assume encrypted
-    // else we fix the url from the update to match
-    if (typeof encrypted === "boolean") {
-      u = `${encrypted === true ? "https" : "http"}://${u}`;
-    } else {
-      u = `https://${u}`;
-    }
+  if (typeof encrypted === "boolean") {
+    // a gossiped entry is a host:port, dialed with the protocol of the
+    // connection that reported it, never a scheme of its own
+    u = `${encrypted ? "wss" : "ws"}://${u}`;
+  } else if (!ut.test(u)) {
+    // no protocol, assume encrypted
+    u = `https://${u}`;
   }
   let url = new URL(u);
   const srcProto = url.protocol.toLowerCase();

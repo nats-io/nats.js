@@ -222,12 +222,16 @@ Deno.test("ws - wsUrlParseFn keeps a given port", () => {
     ["ws://h", undefined, "ws://h:80/"],
     ["wss://h:443", undefined, "wss://h:443/"],
     ["ws://h:80", undefined, "ws://h:80/"],
-    // any other scheme follows the hint, and keeps its port
+    // any other scheme is plaintext, and keeps its port
     ["foo://h:1234", undefined, "ws://h:1234/"],
-    ["foo://h:1234", true, "wss://h:1234/"],
-    ["foo://h:1234", false, "ws://h:1234/"],
-    ["foo://h", true, "wss://h:443/"],
-    ["foo://h", false, "ws://h:80/"],
+    ["foo://h", undefined, "ws://h:80/"],
+    // gossip (the hint is given) is a host:port with the hint's protocol
+    ["h:1234", true, "wss://h:1234/"],
+    ["h:1234", false, "ws://h:1234/"],
+    ["h", true, "wss://h:443/"],
+    // an entry's own scheme is dropped
+    ["nats://h:4222", true, "wss://h:4222/"],
+    ["ws://h:80", true, "wss://h:80/"],
     // bare
     ["h:80", undefined, "wss://h:80/"],
     ["h:443", false, "ws://h:443/"],

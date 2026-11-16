@@ -440,14 +440,13 @@ function traceHeaders(options?: PublishOptions): MsgHdrs | undefined {
 export function parseInfo(
   m: Uint8Array,
   ignoreClusterUpdates: boolean,
-  encrypted?: boolean,
 ): ServerInfo {
   const info = JSON.parse(decode(m)) as ServerInfo;
   parseSemVer(info.version);
   if (ignoreClusterUpdates) {
     delete info.connect_urls;
   } else {
-    checkConnectUrls(info.connect_urls, encrypted);
+    checkConnectUrls(info.connect_urls);
   }
   return info;
 }
@@ -1179,11 +1178,7 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
         // a bad info fails the connection, rather than ending the reader
         // and leaving the connection open. nothing from it is applied
         try {
-          const info = parseInfo(
-            e.data!,
-            ignoreClusterUpdates,
-            this.transport.isEncrypted(),
-          );
+          const info = parseInfo(e.data!, ignoreClusterUpdates);
           this.processInfo(info, ignoreClusterUpdates);
         } catch (err) {
           this.failConnection(err as Error);

@@ -72,11 +72,6 @@ const badInfos: { name: string; info: string; mentions: string }[] = [
     mentions: 'connect_urls is not an array: "host:4222"',
   },
   {
-    name: "unparseable connect_urls entry",
-    info: JSON.stringify({ ...goodInfo, connect_urls: ["a b:4222"] }),
-    mentions: 'invalid connect_urls entry "a b:4222"',
-  },
-  {
     name: "bad version",
     info: JSON.stringify({ ...goodInfo, version: "garbage" }),
     mentions: "'garbage' is not a semver value",
@@ -270,11 +265,11 @@ Deno.test("bad info - on a live connection without reconnect closes", async () =
   await withTransports([t], async (p) => {
     await p.dial(p.server);
     const good = p.info;
-    t.feed(info({ ...goodInfo, connect_urls: ["a b:4222"] }));
+    t.feed(info({ ...goodInfo, connect_urls: "host:4222" }));
     const err = await deadline(p.closed, 1000);
     assertEquals(p.info, good);
     assert(err instanceof errors.ProtocolError);
-    assertStringIncludes(err.message, 'invalid connect_urls entry "a b:4222"');
+    assertStringIncludes(err.message, "connect_urls is not an array");
     assert(p.isClosed());
   }, { reconnect: false });
 });
@@ -298,32 +293,51 @@ Deno.test("bad info - a good info still applies", async () => {
   });
 });
 
-Deno.test("bad info - servers update leaves the pool alone on a bad entry", () => {
+Deno.test("bad info - servers update skips bad entries", () => {
   const servers = new Servers();
   servers.setServers(["127.0.0.1:4222"]);
   servers.selectServer();
-  servers.update({ connect_urls: ["127.0.0.2:4222"] } as never);
+  servers.update(
+    { connect_urls: ["127.0.0.3:4222", "a b:4222", 7] } as never,
+  );
+  assertEquals(
+    servers.getServers().map((s) => s.listen).sort(),
+    ["127.0.0.1:4222", "127.0.0.3:4222"],
+  );
+  // connect_urls that isn't an array still fails, and changes nothing
   const before = servers.getServers().map((s) => s.listen);
-
-  assertThrows(
-    () =>
-      servers.update(
-        { connect_urls: ["127.0.0.3:4222", "a b:4222", 7] } as never,
-      ),
-    Error,
-    'invalid connect_urls entry "a b:4222"',
-  );
-  assertThrows(
-    () => servers.update({ connect_urls: ["127.0.0.3:4222", 7] } as never),
-    Error,
-    "invalid connect_urls entry 7: not a string",
-  );
   assertThrows(
     () => servers.update({ connect_urls: { a: 1 } } as never),
     Error,
     'connect_urls is not an array: {"a":1}',
   );
   assertEquals(servers.getServers().map((s) => s.listen), before);
+});
+
+Deno.test("bad info - bad connect_urls entries don't fail the connection", async () => {
+  const t = fakeTransport(handshake);
+  await withTransports([t], async (p, statuses) => {
+    await p.dial(p.server);
+    t.feed(info({
+      ...goodInfo,
+      connect_urls: ["a b:4222", "[nats://h]:4222", "127.0.0.2:4222", 7],
+    }));
+    await deadline(
+      (async () => {
+        while (
+          !p.servers.getServers().some((s) => s.listen === "127.0.0.2:4222")
+        ) {
+          await new Promise((r) => setTimeout(r, 5));
+        }
+      })(),
+      1000,
+    );
+    assert(p.connected);
+    const listens = p.servers.getServers().map((s) => s.listen);
+    assert(listens.includes("127.0.0.2:4222"));
+    assertFalse(listens.includes("a b:4222"));
+    assertFalse(statuses.some((s) => s.type === "error"));
+  });
 });
 
 Deno.test("bad info - a retried connect doesn't keep the error", async () => {
