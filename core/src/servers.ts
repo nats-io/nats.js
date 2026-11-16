@@ -222,7 +222,6 @@ export class ServerImpl implements Server {
  * @hidden
  */
 export class Servers {
-  private firstSelect: boolean;
   private servers: ServerImpl[];
   private currentServer!: ServerImpl;
   private randomize: boolean;
@@ -233,7 +232,6 @@ export class Servers {
   constructor(
     opts: Partial<{ randomize: boolean; urlParseFn: URLParseFn }> = {},
   ) {
-    this.firstSelect = true;
     this.servers = [];
     this.randomize = opts.randomize || false;
     this.urlParseFn = "urlParseFn" in opts ? opts.urlParseFn : getUrlParseFn();
@@ -287,7 +285,6 @@ export class Servers {
       !merged.includes(this.currentServer)
     ) {
       this.currentServer = merged[0];
-      this.firstSelect = true;
     }
   }
 
@@ -325,11 +322,6 @@ export class Servers {
   }
 
   selectServer(): ServerImpl | undefined {
-    // allow using select without breaking the order of the servers
-    if (this.firstSelect) {
-      this.firstSelect = false;
-      return this.currentServer;
-    }
     const t = this.servers.shift();
     if (t) {
       this.servers.push(t);
