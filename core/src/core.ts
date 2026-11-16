@@ -607,11 +607,22 @@ export interface NatsConnection {
   reconnect(): Promise<void>;
 
   /**
-   * Replace the client's server pool with the provided list of `host:port`
-   * entries, handled as the `servers` option is. If the client is connected
-   * to a server that is on the new list, the connection is kept; if its
-   * server isn't on the list, the client reconnects onto the new list. Call
-   * {@link reconnect} only to move off a server that is still on the list.
+   * Replace the client's server pool with the provided list, handled as
+   * the `servers` option is. If the client is connected to a server that is
+   * on the new list, the connection is kept; if its server isn't on the
+   * list, the client reconnects onto the new list. Call {@link reconnect}
+   * only to move off a server that is still on the list.
+   *
+   * Over TCP the entries are `host:port`, and TLS comes from the `tls`
+   * option. With `wsconnect` an entry is a URL as in the `servers` option
+   * (`wss://host:port/path`, `ws://host:port`); a bare `host:port` that is
+   * already in the pool keeps that entry's URL, and a new one is `wss`.
+   *
+   * A server already in the pool keeps its state (reconnect count, last
+   * connect) when it is listed again as the same server: the same
+   * `host:port` over TCP, the same URL or a bare `host:port` with
+   * `wsconnect`. A different URL for the same `host:port` is a new
+   * endpoint and starts over.
    *
    * Throws if `servers` is empty or contains invalid entries. Removing all
    * reachable servers from the pool can leave the client unable to reconnect.
@@ -623,8 +634,10 @@ export interface NatsConnection {
    * from the cluster. Each entry exposes `gossiped`, `reconnects`,
    * `lastConnect`, and `didConnect` for filtering and diagnostics.
    *
-   * To round-trip with {@link setServers}, map to listens:
-   * `nc.getServers().map(s => s.listen)`.
+   * To modify the pool, pass it back to {@link setServers} as listens:
+   * `nc.setServers(nc.getServers().map((s) => s.listen))`. The servers are
+   * unchanged and keep their state; with `wsconnect`, a listen keeps its
+   * entry's URL (scheme and path). `s.src` is the full URL.
    */
   getServers(): ReadonlyArray<Server>;
 }
