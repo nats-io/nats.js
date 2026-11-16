@@ -118,6 +118,19 @@ Deno.test("servers - save tls name", () => {
   });
 });
 
+Deno.test("servers - ips gossiped after the first info get the tls name", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["h:1"]);
+  // the first info names the pool, before any gossip arrives
+  servers.updateTLSName();
+  servers.update({ connect_urls: ["127.1.0.0:4222", "g:4222"] } as ServerInfo);
+  const gossiped = servers.getServers().filter((s) => s.gossiped);
+  assertEquals(gossiped.length, 2);
+  // an ip inherits the name, a hostname is verified against its own name
+  assertEquals(gossiped.find((s) => s.hostname === "127.1.0.0")?.tlsName, "h");
+  assertEquals(gossiped.find((s) => s.hostname === "g")?.tlsName, "");
+});
+
 Deno.test("servers - port 80", () => {
   function t(hp: string, port: number) {
     const servers = new Servers();

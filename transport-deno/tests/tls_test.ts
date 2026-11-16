@@ -18,6 +18,7 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { fromFileUrl } from "@std/path";
 import { writeAll } from "@std/io";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
+import { delay } from "@nats-io/nats-core/internal";
 
 // fake server that sends a plaintext INFO and records the first bytes
 // the client writes back, then drops the connection.
@@ -392,5 +393,52 @@ Deno.test("tls - failed upgrade without dropped bytes keeps the error", async ()
     })
   ) as Error;
   assert(!err.message.includes("(untrusted)"), err.message);
+  srv.close();
+});
+
+Deno.test("tls - cleartext info doesn't replace the discovered servers", async () => {
+  const info = (urls: string[]) =>
+    `INFO ${
+      JSON.stringify({
+        server_id: "FAKE",
+        server_name: "fake",
+        version: "2.10.0",
+        proto: 1,
+        max_payload: 1048576,
+        tls_required: true,
+        connect_urls: urls,
+      })
+    }\r\n`;
+  // connect_urls in the cleartext info are unauthenticated
+  const srv = await upgradeServer({
+    tls: true,
+    first: info(["cleartext.example.com:4222"]),
+  });
+  const nc = await connect({
+    servers: `127.0.0.1:${srv.port}`,
+    tls: { caFile: upgradeCaFile },
+  });
+  await nc.flush();
+  const listens = () => nc.getServers().map((s) => s.listen);
+  assert(
+    !listens().some((s) => s.startsWith("cleartext.example.com")),
+    `server from the cleartext info in pool: ${listens()}`,
+  );
+  // and they are cleared from the info the client keeps
+  assertEquals(nc.info?.connect_urls, undefined);
+
+  // an info received over tls is applied
+  await writeAll(
+    srv.conns[0],
+    new TextEncoder().encode(info(["tls.example.com:4222"])),
+  );
+  for (let i = 0; i < 40 && !listens().some((s) => s.startsWith("tls.")); i++) {
+    await delay(50);
+  }
+  assert(
+    listens().some((s) => s.startsWith("tls.example.com")),
+    `server from the tls info missing: ${listens()}`,
+  );
+  await nc.close();
   srv.close();
 });

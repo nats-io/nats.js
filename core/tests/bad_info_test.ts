@@ -37,6 +37,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import { errors } from "../src/errors.ts";
+import { parseInfo } from "../src/protocol.ts";
 
 const te = new TextEncoder();
 
@@ -213,12 +214,13 @@ for (const bad of badInfos) {
       assertStringIncludes(err.message, bad.mentions);
       assertFalse(p.connected);
       assert(t.isClosed);
+      assertEquals(p.info, undefined);
       assertEquals(errorStatus(statuses), err);
     });
   });
 }
 
-for (const bad of badInfos.filter((b) => b.name !== "bad version")) {
+for (const bad of badInfos) {
   Deno.test(`bad info - ${bad.name} on a live connection reconnects`, async () => {
     const first = fakeTransport(handshake);
     const second = fakeTransport(handshake);
@@ -226,6 +228,15 @@ for (const bad of badInfos.filter((b) => b.name !== "bad version")) {
       await p.dial(p.server);
       assert(p.connected);
       const servers = p.servers.getServers().map((s) => s.listen);
+      const good = p.info;
+      assert(good);
+      // the info when the connection fails, before the reconnect replaces it
+      let failedWith: unknown = "unset";
+      const fail = p.failConnection.bind(p);
+      p.failConnection = (err: Error) => {
+        failedWith = p.info;
+        fail(err);
+      };
 
       first.feed(info(bad.info));
       await deadline(
@@ -241,6 +252,8 @@ for (const bad of badInfos.filter((b) => b.name !== "bad version")) {
       assert(err instanceof errors.ProtocolError);
       assertStringIncludes(err.message, bad.mentions);
       assertEquals(first.disconnects, 1);
+      // the bad info wasn't kept
+      assert(failedWith === good);
       const types = statuses.map((s) => s.type);
       assert(types.indexOf("error") < types.indexOf("disconnect"));
       assert(types.indexOf("disconnect") < types.indexOf("reconnect"));
@@ -256,8 +269,10 @@ Deno.test("bad info - on a live connection without reconnect closes", async () =
   const t = fakeTransport(handshake);
   await withTransports([t], async (p) => {
     await p.dial(p.server);
+    const good = p.info;
     t.feed(info({ ...goodInfo, connect_urls: ["a b:4222"] }));
     const err = await deadline(p.closed, 1000);
+    assertEquals(p.info, good);
     assert(err instanceof errors.ProtocolError);
     assertStringIncludes(err.message, 'invalid connect_urls entry "a b:4222"');
     assert(p.isClosed());
@@ -319,4 +334,44 @@ Deno.test("bad info - a retried connect doesn't keep the error", async () => {
     assert(p.connected);
     assertEquals(p.lastError, undefined);
   }, { waitOnFirstConnect: true });
+});
+
+Deno.test("bad info - a bad version doesn't apply the info's connect_urls", async () => {
+  const t = fakeTransport(info({
+    ...goodInfo,
+    version: "garbage",
+    connect_urls: ["127.0.0.2:4222"],
+  }));
+  await withTransports([t], async (p) => {
+    const before = p.servers.getServers().map((s) => s.listen);
+    await assertRejects(
+      () => deadline(p.dial(p.server), 1000),
+      errors.ProtocolError,
+      "'garbage' is not a semver value",
+    );
+    assertEquals(p.servers.getServers().map((s) => s.listen), before);
+    assertEquals(p.info, undefined);
+  });
+});
+
+Deno.test("bad info - parseInfo checks the whole info", () => {
+  const good = info({ ...goodInfo, connect_urls: ["127.0.0.2:4222"] });
+  const frame = (b: Uint8Array) => b.subarray(5, b.length - 2);
+  assertEquals(
+    parseInfo(frame(good), false).connect_urls,
+    ["127.0.0.2:4222"],
+  );
+  for (const bad of badInfos) {
+    assertThrows(
+      () => parseInfo(frame(info(bad.info)), false),
+      Error,
+    );
+  }
+});
+
+Deno.test("bad info - parseInfo with ignoreClusterUpdates drops connect_urls", () => {
+  const b = info({ ...goodInfo, connect_urls: ["a b:4222"] });
+  const parsed = parseInfo(b.subarray(5, b.length - 2), true);
+  assertEquals(parsed.connect_urls, undefined);
+  assertEquals(parsed.server_id, "test");
 });

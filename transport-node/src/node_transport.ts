@@ -57,6 +57,7 @@ export class NodeTransport implements Transport {
   // socket of a dial or tls handshake in progress
   pending?: Socket;
   infoLine?: Uint8Array;
+  tlsUpgraded = false;
 
   constructor() {
     this.lang = LANG;
@@ -92,6 +93,7 @@ export class NodeTransport implements Transport {
         const read = DataBuffer.concat(...this.yields);
         const dropped = read.subarray(this.infoLine?.length ?? read.length);
         this.yields = this.infoLine ? [this.infoLine] : [];
+        this.tlsUpgraded = true;
         try {
           this.socket = await this.startTLS();
         } catch (err) {

@@ -381,6 +381,11 @@ export class Servers {
       info.connect_urls.forEach((hp) => {
         hp = urlParseFn ? urlParseFn(hp, encrypted) : hp;
         const s = new ServerImpl(hp, true);
+        // an ip learned after the first info verifies against the tls name
+        // of the pool, as addServer() does
+        if (isIP(s.hostname)) {
+          s.tlsName = this.tlsName;
+        }
         discovered.set(hp, s);
       });
     }
@@ -428,10 +433,10 @@ export class Servers {
 
 // connect_urls is applied only when every entry parses, so a bad info
 // fails as a whole, naming the entry
-function checkConnectUrls(
+export function checkConnectUrls(
   urls: unknown,
   encrypted?: boolean,
-  urlParseFn?: URLParseFn,
+  urlParseFn: URLParseFn | undefined = getUrlParseFn(),
 ): void {
   if (urls === undefined || urls === null) {
     return;
