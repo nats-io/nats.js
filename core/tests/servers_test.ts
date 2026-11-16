@@ -16,6 +16,7 @@ import {
   isIPV4OrHostname,
   Servers,
   setTransportFactory,
+  wsUrlParseFn,
 } from "../src/internal_mod.ts";
 import type { ServerInfo } from "../src/internal_mod.ts";
 import { assert, assertEquals } from "@std/assert";
@@ -343,4 +344,94 @@ Deno.test("servers - setServers treats a gossiped entry as configured", () => {
   assertEquals(again.gossiped, false);
   assertEquals(again.tlsName, "");
   assertEquals(again.reconnects, 2);
+});
+
+function wsServers(configured: string[]): Servers {
+  setTransportFactory({ urlParseFn: wsUrlParseFn });
+  const servers = new Servers({ randomize: false });
+  servers.setServers(configured);
+  servers.selectServer();
+  return servers;
+}
+
+function gossipedEntry(servers: Servers, listen: string) {
+  return servers.getServers().find((s) => s.gossiped && s.listen === listen);
+}
+
+Deno.test("servers - ws gossip reported again is kept", () => {
+  const servers = wsServers(["wss://a:443"]);
+  const info = Object.assign(servInfo(), {
+    connect_urls: ["a:443", "h:443"],
+  });
+  let ce = servers.update(info, true);
+  assertEquals(ce.added, ["h:443"]);
+  const h = gossipedEntry(servers, "h:443")!;
+  h.reconnects = 3;
+
+  // the same report again changes nothing: the current server isn't
+  // added again, and the gossiped entry keeps its reconnect count
+  ce = servers.update(info, true);
+  assertEquals(ce.added, []);
+  assertEquals(ce.deleted, []);
+  assertEquals(servers.length(), 2);
+  assertEquals(gossipedEntry(servers, "h:443"), h);
+  assertEquals(h.reconnects, 3);
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - ws gossip gains tls when reported over tls", () => {
+  const servers = wsServers(["ws://a:80"]);
+  const info = Object.assign(servInfo(), { connect_urls: ["h:443"] });
+  servers.update(info, false);
+  const h = gossipedEntry(servers, "h:443")!;
+  assertEquals(h.src, "ws://h:443/");
+  h.reconnects = 2;
+  h.didConnect = true;
+  h.lastConnect = 1;
+
+  // the counts were for ws attempts; nothing was tried over wss yet
+  servers.update(info, true);
+  assertEquals(gossipedEntry(servers, "h:443"), h);
+  assertEquals(h.src, "wss://h:443/");
+  assertEquals(h.reconnects, 0);
+  assertEquals(h.didConnect, false);
+  assertEquals(h.lastConnect, 0);
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - ws gossip never loses tls", () => {
+  const servers = wsServers(["wss://a:443"]);
+  const info = Object.assign(servInfo(), { connect_urls: ["h:443"] });
+  servers.update(info, true);
+  assertEquals(gossipedEntry(servers, "h:443")!.src, "wss://h:443/");
+
+  servers.update(info, false);
+  assertEquals(gossipedEntry(servers, "h:443")!.src, "wss://h:443/");
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - gossip doesn't change a configured server", () => {
+  const servers = wsServers(["wss://a:443", "ws://c:80"]);
+  servers.update(
+    Object.assign(servInfo(), { connect_urls: ["c:80"] }),
+    true,
+  );
+  const c = servers.getServers().filter((s) => s.listen === "c:80");
+  assertEquals(c.length, 1);
+  assertEquals(c[0].gossiped, false);
+  assertEquals(c[0].src, "ws://c:80/");
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - gossip of a configured server adds no duplicate", () => {
+  const servers = wsServers(["wss://a:443", "wss://c:443"]);
+  servers.update(
+    Object.assign(servInfo(), { connect_urls: ["a:443", "c:443", "d:443"] }),
+    true,
+  );
+  const listens = servers.getServers().map((s) => s.listen).sort();
+  assertEquals(listens, ["a:443", "c:443", "d:443"]);
+  const c = servers.getServers().find((s) => s.listen === "c:443")!;
+  assertEquals(c.gossiped, false);
+  setTransportFactory({ urlParseFn: undefined });
 });

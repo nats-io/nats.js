@@ -382,19 +382,34 @@ export class Servers {
       info.connect_urls.forEach((hp) => {
         hp = urlParseFn ? urlParseFn(hp, encrypted) : hp;
         const s = new ServerImpl(hp, true);
-        discovered.set(hp, s);
+        // keyed as the list is, by host:port, not by the parsed url
+        discovered.set(s.listen, s);
       });
     }
     // remove gossiped servers that are no longer reported
     const toDelete: number[] = [];
     this.servers.forEach((s, index) => {
       const u = s.listen;
+      const reported = discovered.get(u);
       if (
         s.gossiped && this.currentServer.listen !== u &&
-        discovered.get(u) === undefined
+        reported === undefined
       ) {
         // server was removed
         toDelete.push(index);
+      }
+      // the first report decides a gossiped entry, except that one
+      // reported again over tls gains it: a ws entry never stays plaintext
+      // once a server told us about it over tls, and never loses tls
+      if (
+        reported && s.gossiped && s.src.startsWith("ws://") &&
+        reported.src.startsWith("wss://")
+      ) {
+        // nothing was tried over wss yet, so its history starts over
+        s.src = reported.src;
+        s.reconnects = 0;
+        s.didConnect = false;
+        s.lastConnect = 0;
       }
       // remove this entry from reported
       discovered.delete(u);
