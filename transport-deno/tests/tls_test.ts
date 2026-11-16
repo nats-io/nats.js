@@ -19,6 +19,8 @@ import { fromFileUrl } from "@std/path";
 import { writeAll } from "@std/io";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
 import { delay } from "@nats-io/nats-core/internal";
+import { DenoTransport } from "../src/deno_transport.ts";
+import { NatsServer } from "./nst.ts";
 
 // fake server that sends a plaintext INFO and records the first bytes
 // the client writes back, then drops the connection.
@@ -441,4 +443,49 @@ Deno.test("tls - cleartext info doesn't replace the discovered servers", async (
   );
   await nc.close();
   srv.close();
+});
+
+// tls first: the name verified is the inherited tls name, not the address
+// dialed. the server certificate has only DNS:localhost
+async function tlsFirstServer() {
+  const certs = (f: string) =>
+    fromFileUrl(
+      new URL(`../../transport-node/tests/certs/${f}`, import.meta.url),
+    );
+  const ns = await NatsServer.start({
+    host: "127.0.0.1",
+    tls: {
+      handshake_first: true,
+      cert_file: certs("server_noip.pem"),
+      key_file: certs("key_noip.pem"),
+      ca_file: certs("ca.pem"),
+    },
+  });
+  return { ns, ca: certs("ca.pem") };
+}
+
+Deno.test("tls - tls first verifies against the inherited name", async () => {
+  const { ns, ca } = await tlsFirstServer();
+  const t = new DenoTransport();
+  await t.connect(
+    { hostname: "127.0.0.1", port: ns.port, tlsName: "localhost" },
+    { tls: { handshakeFirst: true, caFile: ca } },
+  );
+  assert(t.isEncrypted());
+  await t.close();
+  await ns.stop();
+});
+
+Deno.test("tls - tls first without an inherited name verifies the host", async () => {
+  const { ns, ca } = await tlsFirstServer();
+  for (const tlsName of ["", "nats.example.com"]) {
+    const t = new DenoTransport();
+    await assertRejects(() =>
+      t.connect(
+        { hostname: "127.0.0.1", port: ns.port, tlsName },
+        { tls: { handshakeFirst: true, caFile: ca } },
+      )
+    );
+  }
+  await ns.stop();
 });
