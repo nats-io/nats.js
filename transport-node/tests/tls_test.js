@@ -24,6 +24,7 @@ const { resolve, join } = require("node:path");
 const fs = require("node:fs");
 const { readFileSync } = fs;
 const net = require("node:net");
+const { Buffer } = require("node:buffer");
 const { Lock } = require("@nats-io/nst");
 const { NatsServer } = require("@nats-io/nst");
 const { buildAuthenticator, extend, Connect } = require(
@@ -374,3 +375,135 @@ describe("tls upgrade", () => {
     }
   });
 });
+
+// fake server that sends a plaintext INFO and records the first bytes
+// the client writes back, then drops the connection.
+function fakeServer(info) {
+  let resolveFirst;
+  const first = new Promise((r) => {
+    resolveFirst = r;
+  });
+  const srv = net.createServer((s) => {
+    s.on("error", () => {});
+    s.once("data", (d) => {
+      resolveFirst(Buffer.from(d));
+      s.destroy();
+    });
+    s.once("close", () => resolveFirst(Buffer.alloc(0)));
+    s.write(
+      `INFO ${
+        JSON.stringify(Object.assign({
+          server_id: "fake",
+          version: "2.10.0",
+          proto: 1,
+          max_payload: 1024 * 1024,
+          host: "127.0.0.1",
+        }, info))
+      }\r\n`,
+    );
+  });
+  return new Promise((r) => {
+    srv.listen(0, "127.0.0.1", () => {
+      r({
+        port: srv.address().port,
+        first,
+        stop: () => new Promise((rr) => srv.close(() => rr())),
+      });
+    });
+  });
+}
+
+async function firstBytes(info, opts) {
+  const srv = await fakeServer(info);
+  const p = connect(
+    Object.assign({ servers: `127.0.0.1:${srv.port}`, reconnect: false }, opts),
+  );
+  const result = await p.then(
+    (nc) => nc.close().then(() => ({ ok: true })),
+    (err) => ({ ok: false, err }),
+  );
+  const d = await srv.first;
+  await srv.stop();
+  return { result, data: d };
+}
+
+function assertTlsAttempt(data) {
+  assert.equal(data[0], 0x16, "expected a tls handshake record");
+  assert.equal(data.toString("latin1").indexOf("CONNECT"), -1);
+}
+
+function assertPlainConnect(data) {
+  assert.ok(data.toString("latin1").startsWith("CONNECT"));
+}
+
+describe(
+  "tls option makes tls mandatory",
+  { timeout: 20_000, concurrency: true, forceExit: true },
+  () => {
+    const caFile = resolve(join(dir, "./tests/certs/ca.pem"));
+    const creds = { user: "u", pass: "p" };
+    for (const v of [1, "true", {}]) {
+      for (const tls of [{}, { caFile }]) {
+        const tn = tls.caFile ? "{caFile}" : "{}";
+        it(`tls_available=${JSON.stringify(v)} tls=${tn}`, async () => {
+          const { result, data } = await firstBytes(
+            { tls_available: v },
+            Object.assign({ tls }, creds),
+          );
+          assert.equal(result.ok, false);
+          assertTlsAttempt(data);
+        });
+      }
+    }
+
+    it("tls_required=false tls_available=1 tls={}", async () => {
+      const { result, data } = await firstBytes(
+        { tls_required: false, tls_available: 1 },
+        Object.assign({ tls: {} }, creds),
+      );
+      assert.equal(result.ok, false);
+      assertTlsAttempt(data);
+    });
+
+    it("tls={handshakeFirst:1} tls_available=1", async () => {
+      const { result, data } = await firstBytes(
+        { tls_available: 1 },
+        Object.assign({ tls: { handshakeFirst: 1 } }, creds),
+      );
+      assert.equal(result.ok, false);
+      assertTlsAttempt(data);
+    });
+
+    it("tls unset tls_required=1 upgrades", async () => {
+      const { data } = await firstBytes({ tls_required: 1 }, creds);
+      assertTlsAttempt(data);
+    });
+
+    it("tls_available=true tls={} upgrades", async () => {
+      const { result, data } = await firstBytes(
+        { tls_available: true },
+        Object.assign({ tls: {} }, creds),
+      );
+      assert.equal(result.ok, false);
+      assertTlsAttempt(data);
+    });
+
+    it("tls unset tls_available=true upgrades", async () => {
+      const { data } = await firstBytes({ tls_available: true }, creds);
+      assertTlsAttempt(data);
+    });
+
+    it("tls unset tls_available=1 unchanged", async () => {
+      const { data } = await firstBytes({ tls_available: 1 }, creds);
+      assertPlainConnect(data);
+    });
+
+    it("tls null tls_available=true unchanged", async () => {
+      const { data } = await firstBytes(
+        { tls_available: true },
+        Object.assign({ tls: null }, creds),
+      );
+      assertPlainConnect(data);
+    });
+  },
+);

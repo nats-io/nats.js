@@ -65,7 +65,7 @@ export class NodeTransport implements Transport {
     this.tlsName = hp.tlsName;
     this.options = options;
     const { tls } = this.options;
-    const { handshakeFirst } = tls || {};
+    const handshakeFirst = tls?.handshakeFirst === true;
     try {
       if (handshakeFirst === true) {
         this.socket = await this.tlsFirst(hp);
@@ -78,7 +78,9 @@ export class NodeTransport implements Transport {
       const info = await this.peekInfo();
       this.checkAbandoned();
       checkOptions(info, options);
-      const { tls_required: tlsRequired, tls_available: tlsAvailable } = info;
+      const { tls_required, tls_available: tlsAvailable } = info;
+      // tls option makes tls mandatory
+      const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
         this.socket = await this.startTLS();
