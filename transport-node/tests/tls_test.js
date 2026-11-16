@@ -656,6 +656,58 @@ describe(
       );
       await srv.close();
     });
+
+    it("cleartext info doesn't replace the discovered servers", async () => {
+      const info = (urls) =>
+        `INFO ${
+          JSON.stringify({
+            server_id: "FAKE",
+            server_name: "fake",
+            version: "2.10.0",
+            proto: 1,
+            max_payload: 1048576,
+            tls_required: true,
+            connect_urls: urls,
+          })
+        }\r\n`;
+      // connect_urls in the cleartext info are unauthenticated
+      let sock;
+      const srv = await upgradeServer({
+        tls: true,
+        first: info(["cleartext.example.com:4222"]),
+        onLine: (_line, s) => {
+          sock = s;
+        },
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: { ca },
+      });
+      await nc.flush();
+      const listens = () => nc.getServers().map((s) => s.listen);
+      assert.ok(
+        !listens().some((s) => s.startsWith("cleartext.example.com")),
+        `server from the cleartext info in pool: ${listens()}`,
+      );
+      // and they are cleared from the info the client keeps
+      assert.equal(nc.info?.connect_urls, undefined);
+
+      // an info received over tls is applied
+      sock.write(info(["tls.example.com:4222"]));
+      for (
+        let i = 0;
+        i < 40 && !listens().some((s) => s.startsWith("tls."));
+        i++
+      ) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(
+        listens().some((s) => s.startsWith("tls.example.com")),
+        `server from the tls info missing: ${listens()}`,
+      );
+      await nc.close();
+      await srv.close();
+    });
   },
 );
 

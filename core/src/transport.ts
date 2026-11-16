@@ -74,6 +74,10 @@ export interface Transport extends AsyncIterable<Uint8Array> {
   // set when the connection is stale (the server stopped responding).
   // closing a stale transport doesn't flush pending data, as it may never drain
   stale?: boolean;
+  // set when the connection was upgraded to tls after its first info was
+  // read in cleartext. gossip from infos is ignored until an info arrives
+  // over the upgraded connection
+  readonly tlsUpgraded?: boolean;
 
   connect(
     server: Server,

@@ -48,6 +48,7 @@ export class DenoTransport implements Transport {
   lang: string = LANG;
   closeError?: Error;
   stale?: boolean;
+  tlsUpgraded = false;
   private options!: ConnectionOptions;
   private buf: Uint8Array;
   private encrypted = false;
@@ -99,6 +100,7 @@ export class DenoTransport implements Transport {
         // only the plaintext info line is kept across the upgrade
         const dropped = this.buf.subarray(protoLen(this.buf));
         this.buf = this.buf.slice(0, protoLen(this.buf));
+        this.tlsUpgraded = true;
         const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
         try {
           await this.startTLS(tlsn);

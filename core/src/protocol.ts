@@ -19,7 +19,7 @@ import type { Deferred, Delay, Timeout } from "./util.ts";
 import { deferred, delay, extend, timeout } from "./util.ts";
 import { DataBuffer } from "./databuffer.ts";
 import type { ServerImpl } from "./servers.ts";
-import { Servers } from "./servers.ts";
+import { checkConnectUrls, Servers } from "./servers.ts";
 import { QueuedIteratorImpl } from "./queued_iterator.ts";
 import { MsgHdrsImpl } from "./headers.ts";
 import { MuxSubscription } from "./muxsubscription.ts";
@@ -432,6 +432,24 @@ function traceHeaders(options?: PublishOptions): MsgHdrs | undefined {
     h.set("Nats-Trace-Dest", options!.traceDestination!);
   }
   return h;
+}
+
+// parses a server info and checks all of it, so it either fails before
+// anything is applied, or applies whole. with ignoreClusterUpdates its
+// connect_urls are dropped, since they aren't used
+export function parseInfo(
+  m: Uint8Array,
+  ignoreClusterUpdates: boolean,
+  encrypted?: boolean,
+): ServerInfo {
+  const info = JSON.parse(decode(m)) as ServerInfo;
+  parseSemVer(info.version);
+  if (ignoreClusterUpdates) {
+    delete info.connect_urls;
+  } else {
+    checkConnectUrls(info.connect_urls, encrypted);
+  }
+  return info;
 }
 
 export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
@@ -1043,13 +1061,19 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     }
   }
 
-  processInfo(m: Uint8Array) {
-    const info = JSON.parse(decode(m));
+  // the info was checked whole by parseInfo, so applying it can't fail
+  // part way
+  processInfo(info: ServerInfo, ignoreClusterUpdates: boolean) {
+    // infoReceived is set below, so this is the connection's first info
+    const firstInfo = !this.infoReceived;
     this.info = info;
-    const updates = this.options && this.options.ignoreClusterUpdates
+    // an info without connect_urls removes the servers gossiped earlier, so
+    // an ignored info doesn't update the servers: on a reconnect, the ones
+    // learned over tls on the previous connection are kept
+    const updates = ignoreClusterUpdates
       ? undefined
       : this.servers.update(info, this.transport.isEncrypted());
-    if (!this.infoReceived) {
+    if (firstInfo) {
       this.features.update(parseSemVer(info.version));
       this.infoReceived = true;
       if (this.transport.isEncrypted()) {
@@ -1146,15 +1170,29 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
       case Kind.PONG:
         this.processPong();
         break;
-      case Kind.INFO:
+      case Kind.INFO: {
+        // on a connection upgraded to tls, the first info was read in
+        // cleartext, so its connect_urls are untrusted and ignored, nc.info
+        // included. cluster updates are then taken only from infos that
+        // arrive over the upgraded connection. a connection that never uses
+        // tls uses every info
+        const ignoreClusterUpdates =
+          this.options.ignoreClusterUpdates === true ||
+          (!this.infoReceived && this.transport.tlsUpgraded === true);
         // a bad info fails the connection, rather than ending the reader
-        // and leaving the connection open
+        // and leaving the connection open. nothing from it is applied
         try {
-          this.processInfo(e.data!);
+          const info = parseInfo(
+            e.data!,
+            ignoreClusterUpdates,
+            this.transport.isEncrypted(),
+          );
+          this.processInfo(info, ignoreClusterUpdates);
         } catch (err) {
           this.failConnection(err as Error);
         }
         break;
+      }
     }
   }
 
