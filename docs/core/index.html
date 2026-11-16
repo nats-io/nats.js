@@ -1,4 +1,14 @@
-<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>@nats-io/nats-core</title><meta name="description" content="Documentation for @nats-io/nats-core"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script><script async src="assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar"><div class="tsd-toolbar-contents container"><a href="index.html" class="title">@nats-io/nats-core</a><div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/><ul role="listbox" id="tsd-search-results"></ul><div id="tsd-search-status" aria-live="polite" aria-atomic="true"><div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header><div class="container container-main"><div class="col-content"><div class="tsd-page-title"><h1>@nats-io/nats-core</h1></div><div class="tsd-panel tsd-typography"><p><a href="./LICENSE"><img src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg" alt="License"></a>
+<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>@nats-io/nats-core</title><meta name="description" content="Documentation for @nats-io/nats-core"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script><script async src="assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="index.html" class="title">@nats-io/nats-core</a>
+<div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<h1>@nats-io/nats-core</h1></div>
+<div class="tsd-panel tsd-typography"><p><a href="./LICENSE"><img src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg" alt="License"></a>
 <a href="https://github.com/nats-io/nats.js/actions/workflows/test.yml"><img src="https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg" alt="nats-core"></a>
 <a href="https://nats-io.github.io/nats.js/core/index.html"><img src="https://img.shields.io/badge/JSDoc-reference-blue" alt="JSDoc"></a></p>
 <p><a href="https://jsr.io/@nats-io/nats-core"><img src="https://jsr.io/badges/@nats-io/nats-core" alt="JSR"></a>
@@ -181,6 +191,28 @@ subscriptions in a queue group.</p>
 </code><button type="button">Copy</button></pre>
 
 <p>Run it and publish a request to the subject <code>echo</code> to see what happens.</p>
+<h3 id="responding-with-a-request" class="tsd-anchor-link">Responding with a Request<a href="#responding-with-a-request" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<p><code>respond()</code> publishes a reply and forgets about it. Sometimes the responder
+needs to know the requester got the reply, or needs more input from it. A
+message's <code>respondRequest()</code> publishes the reply as a request, and resolves with
+the first response to it. It rejects if no one responds within the <code>timeout</code>
+(default 2 seconds), if there are no responders, or if the message has no reply
+subject.</p>
+<p>The requester must expect a request on its reply subject (typically its inbox),
+and respond to it. A plain <code>request()</code> won't: it takes the reply as the
+response, and nothing answers the follow up. So <code>respondRequest()</code> is for custom
+protocols over NATS, where both sides agree the exchange takes more than one
+round trip: a reply that must be confirmed, or a responder that needs more
+input. JetStream's <code>ackAck()</code> is one: the client acks, and the server confirms
+it.</p>
+<pre><code class="typescript"><span class="hl-3">import</span><span class="hl-1"> { </span><span class="hl-5">connect</span><span class="hl-1">, </span><span class="hl-5">createInbox</span><span class="hl-1"> } </span><span class="hl-3">from</span><span class="hl-1"> </span><span class="hl-2">&quot;@nats-io/transport-deno&quot;</span><span class="hl-1">;</span><br/><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">nc</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">connect</span><span class="hl-1">({ </span><span class="hl-5">servers:</span><span class="hl-1"> </span><span class="hl-2">&quot;demo.nats.io&quot;</span><span class="hl-1"> });</span><br/><br/><span class="hl-6">// the worker hands out a job and waits for the requester to confirm it</span><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">sub</span><span class="hl-1"> = </span><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">subscribe</span><span class="hl-1">(</span><span class="hl-2">&quot;jobs&quot;</span><span class="hl-1">, { </span><span class="hl-5">max:</span><span class="hl-1"> </span><span class="hl-8">1</span><span class="hl-1"> });</span><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">worker</span><span class="hl-1"> = (</span><span class="hl-4">async</span><span class="hl-1"> () </span><span class="hl-4">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-3">for</span><span class="hl-1"> </span><span class="hl-3">await</span><span class="hl-1"> (</span><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">m</span><span class="hl-1"> </span><span class="hl-4">of</span><span class="hl-1"> </span><span class="hl-5">sub</span><span class="hl-1">) {</span><br/><span class="hl-1">    </span><span class="hl-3">try</span><span class="hl-1"> {</span><br/><span class="hl-1">      </span><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">r</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-5">m</span><span class="hl-1">.</span><span class="hl-0">respondRequest</span><span class="hl-1">(</span><span class="hl-2">&quot;job-42&quot;</span><span class="hl-1">, { </span><span class="hl-5">timeout:</span><span class="hl-1"> </span><span class="hl-8">5000</span><span class="hl-1"> });</span><br/><span class="hl-1">      </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">`requester confirmed: </span><span class="hl-4">${</span><span class="hl-5">r</span><span class="hl-9">.</span><span class="hl-0">string</span><span class="hl-9">()</span><span class="hl-4">}</span><span class="hl-2">`</span><span class="hl-1">);</span><br/><span class="hl-1">    } </span><span class="hl-3">catch</span><span class="hl-1"> (</span><span class="hl-5">err</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-6">// timeout or no responders - the job wasn&#39;t taken, hand it out again</span><br/><span class="hl-1">      </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">`job not confirmed: </span><span class="hl-4">${</span><span class="hl-9">(</span><span class="hl-5">err</span><span class="hl-9"> </span><span class="hl-3">as</span><span class="hl-9"> </span><span class="hl-10">Error</span><span class="hl-9">).</span><span class="hl-5">message</span><span class="hl-4">}</span><span class="hl-2">`</span><span class="hl-1">);</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">})();</span><br/><br/><span class="hl-6">// the requester gets the job, itself a request, and confirms it</span><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">inbox</span><span class="hl-1"> = </span><span class="hl-0">createInbox</span><span class="hl-1">();</span><br/><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">subscribe</span><span class="hl-1">(</span><span class="hl-5">inbox</span><span class="hl-1">, {</span><br/><span class="hl-1">  </span><span class="hl-5">max:</span><span class="hl-1"> </span><span class="hl-8">1</span><span class="hl-1">,</span><br/><span class="hl-1">  </span><span class="hl-0">callback</span><span class="hl-5">:</span><span class="hl-1"> (</span><span class="hl-5">_err</span><span class="hl-1">, </span><span class="hl-5">m</span><span class="hl-1">) </span><span class="hl-4">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-2">`got </span><span class="hl-4">${</span><span class="hl-5">m</span><span class="hl-9">.</span><span class="hl-0">string</span><span class="hl-9">()</span><span class="hl-4">}</span><span class="hl-2">`</span><span class="hl-1">);</span><br/><span class="hl-1">    </span><span class="hl-5">m</span><span class="hl-1">.</span><span class="hl-0">respond</span><span class="hl-1">(</span><span class="hl-2">&quot;ok&quot;</span><span class="hl-1">);</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">});</span><br/><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">publish</span><span class="hl-1">(</span><span class="hl-2">&quot;jobs&quot;</span><span class="hl-1">, </span><span class="hl-2">&quot;&quot;</span><span class="hl-1">, { </span><span class="hl-5">reply:</span><span class="hl-1"> </span><span class="hl-5">inbox</span><span class="hl-1"> });</span><br/><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-5">worker</span><span class="hl-1">;</span><br/><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">close</span><span class="hl-1">();</span>
+</code><button type="button">Copy</button></pre>
+
+<p>If the requester uses an inbox dedicated to the job, that inbox can carry the
+rest of the exchange. For example, the worker replies with <code>respondRequest()</code> to
+say it is working on the job, and starts only once the requester confirms, so it
+knows someone is waiting. Status updates and the result can then be published to
+the same inbox.</p>
 <h2 id="advanced-usage" class="tsd-anchor-link">Advanced Usage<a href="#advanced-usage" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <h3 id="headers" class="tsd-anchor-link">Headers<a href="#headers" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <p>NATS headers are similar to HTTP headers. Headers are enabled automatically if
@@ -240,6 +272,17 @@ where values accessed by fetching a value from a cookie.</p>
 <pre><code class="javascript"><span class="hl-6">// read the creds file as necessary, in the case it</span><br/><span class="hl-6">// is part of the code for illustration purposes (this a partial creds)</span><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">creds</span><span class="hl-1"> = </span><span class="hl-2">`-----BEGIN NATS USER JWT-----</span><br/><span class="hl-2">    eyJ0eXAiOiJqdSDJB....</span><br/><span class="hl-2">  ------END NATS USER JWT------</span><br/><br/><span class="hl-2">************************* IMPORTANT *************************</span><br/><span class="hl-2">  NKEY Seed printed below can be used sign and prove identity.</span><br/><span class="hl-2">  NKEYs are sensitive and should be treated as secrets.</span><br/><br/><span class="hl-2">  -----BEGIN USER NKEY SEED-----</span><br/><span class="hl-2">    SUAIBDPBAUTW....</span><br/><span class="hl-2">  ------END USER NKEY SEED------</span><br/><span class="hl-2">`</span><span class="hl-1">;</span><br/><br/><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">nc</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">connect</span><span class="hl-1">(</span><br/><span class="hl-1">  {</span><br/><span class="hl-1">    </span><span class="hl-5">port:</span><span class="hl-1"> </span><span class="hl-8">4222</span><span class="hl-1">,</span><br/><span class="hl-1">    </span><span class="hl-5">authenticator:</span><span class="hl-1"> </span><span class="hl-0">credsAuthenticator</span><span class="hl-1">(</span><span class="hl-4">new</span><span class="hl-1"> </span><span class="hl-0">TextEncoder</span><span class="hl-1">().</span><span class="hl-0">encode</span><span class="hl-1">(</span><span class="hl-5">creds</span><span class="hl-1">)),</span><br/><span class="hl-1">  },</span><br/><span class="hl-1">);</span>
 </code><button type="button">Copy</button></pre>
 
+<p>An <code>Authenticator</code> can also return a <code>Promise</code> (experimental, subject to change
+or removal) for credentials that can't be computed synchronously, such as
+signing the server's nonce with a non-extractable WebCrypto key. The promise
+must resolve within the server's <code>auth_timeout</code> (2 seconds by default, 1 second
+more than the TLS timeout with TLS), otherwise the server closes the connection.
+If that happens on a reconnect while the promise is pending, the client notifies
+an <code>authenticatorPending</code> status before the server's error; on the first
+connect, <code>connect()</code> rejects with the server's error. Two authentication errors
+in a row stop reconnecting unless <code>ignoreAuthErrorAbort</code> is set. Only do work in
+an async authenticator that depends on the nonce - fetch anything else before
+connecting.</p>
 <h3 id="flush" class="tsd-anchor-link">Flush<a href="#flush" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <p>Flush sends a <code>PING</code> protocol message to the server. When the server responds
 with <code>PONG</code> you are guaranteed that all pending data was sent and received by
@@ -332,6 +375,10 @@ this should onlyl be <code>1</code> under normal operations.</li>
 <li><code>forceReconnect</code> - the client has been instructed to reconnect because of
 user-code (<code>reconnect()</code>)</li>
 <li><code>close</code> - the client has closed, no further reconnects will be attempted.</li>
+<li><code>authenticatorPending</code> (experimental) - the server rejected the connection
+with an authorization error while an async authenticator was still pending
+(likely the server's <code>auth_timeout</code> expired), <code>pending</code> is how long it had
+been waiting in milliseconds.</li>
 </ul>
 <pre><code class="javascript"><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">nc</span><span class="hl-1"> = </span><span class="hl-3">await</span><span class="hl-1"> </span><span class="hl-0">connect</span><span class="hl-1">(</span><span class="hl-5">opts</span><span class="hl-1">);</span><br/><span class="hl-1">(</span><span class="hl-4">async</span><span class="hl-1"> () </span><span class="hl-4">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">  </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">info</span><span class="hl-1">(</span><span class="hl-2">`connected </span><span class="hl-4">${</span><span class="hl-5">nc</span><span class="hl-9">.</span><span class="hl-0">getServer</span><span class="hl-9">()</span><span class="hl-4">}</span><span class="hl-2">`</span><span class="hl-1">);</span><br/><span class="hl-1">  </span><span class="hl-3">for</span><span class="hl-1"> </span><span class="hl-3">await</span><span class="hl-1"> (</span><span class="hl-4">const</span><span class="hl-1"> </span><span class="hl-7">s</span><span class="hl-1"> </span><span class="hl-4">of</span><span class="hl-1"> </span><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">status</span><span class="hl-1">()) {</span><br/><span class="hl-1">    </span><span class="hl-3">switch</span><span class="hl-1"> (</span><span class="hl-5">s</span><span class="hl-1">.</span><span class="hl-5">type</span><span class="hl-1">) {</span><br/><span class="hl-1">      </span><span class="hl-3">case</span><span class="hl-1"> </span><span class="hl-2">&quot;disconnect&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">      </span><span class="hl-3">case</span><span class="hl-1"> </span><span class="hl-2">&quot;reconnect&quot;</span><span class="hl-1">:</span><br/><span class="hl-1">        </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><span class="hl-5">s</span><span class="hl-1">);</span><br/><span class="hl-1">        </span><span class="hl-3">break</span><span class="hl-1">;</span><br/><span class="hl-1">      </span><span class="hl-3">default</span><span class="hl-1">:</span><br/><span class="hl-1">        </span><span class="hl-6">// ignored</span><br/><span class="hl-1">    }</span><br/><span class="hl-1">  }</span><br/><span class="hl-1">})().</span><span class="hl-0">then</span><span class="hl-1">();</span><br/><br/><span class="hl-5">nc</span><span class="hl-1">.</span><span class="hl-0">closed</span><span class="hl-1">()</span><br/><span class="hl-1">  .</span><span class="hl-0">then</span><span class="hl-1">((</span><span class="hl-5">err</span><span class="hl-1">) </span><span class="hl-4">=&gt;</span><span class="hl-1"> {</span><br/><span class="hl-1">    </span><span class="hl-5">console</span><span class="hl-1">.</span><span class="hl-0">log</span><span class="hl-1">(</span><br/><span class="hl-1">      </span><span class="hl-2">`connection closed </span><span class="hl-4">${</span><span class="hl-5">err</span><span class="hl-9"> </span><span class="hl-1">?</span><span class="hl-9"> </span><span class="hl-2">&quot; with error: &quot;</span><span class="hl-9"> </span><span class="hl-1">+</span><span class="hl-9"> </span><span class="hl-5">err</span><span class="hl-9">.</span><span class="hl-5">message</span><span class="hl-9"> </span><span class="hl-1">:</span><span class="hl-9"> </span><span class="hl-2">&quot;&quot;</span><span class="hl-4">}</span><span class="hl-2">`</span><span class="hl-1">,</span><br/><span class="hl-1">    );</span><br/><span class="hl-1">  });</span>
 </code><button type="button">Copy</button></pre>
@@ -381,12 +428,12 @@ more performant or appropriate.</p>
 <tr>
 <td><code>authenticator</code></td>
 <td>none</td>
-<td>Specifies the authenticator function that sets the client credentials.</td>
+<td>An <code>Authenticator</code> function, or an array of them, that sets the client credentials. Created automatically from <code>user</code>/<code>pass</code> or <code>token</code>. A custom authenticator can return a <code>Promise</code> (experimental). If it throws or rejects, the connection closes with that error and is not retried; <code>ignoreAuthErrorAbort</code> doesn't apply.</td>
 </tr>
 <tr>
 <td><code>debug</code></td>
 <td><code>false</code></td>
-<td>If <code>true</code>, the client prints protocol interactions to the console. Useful for debugging.</td>
+<td>If <code>true</code>, the client prints the raw protocol frames it reads (<code>&gt;</code>) and writes (<code>&lt;</code>) to the console, credentials and payloads included. Set a <code>DebugFn</code> to filter or redact them.</td>
 </tr>
 <tr>
 <td><code>ignoreClusterUpdates</code></td>
@@ -396,12 +443,12 @@ more performant or appropriate.</p>
 <tr>
 <td><code>ignoreAuthErrorAbort</code></td>
 <td><code>false</code></td>
-<td>Prevents client connection aborts if the client fails more than twice in a row with an authentication error</td>
+<td>By default the client stops reconnecting if it gets an authentication error twice in a row. If <code>true</code>, it keeps reconnecting as its reconnect options allow.</td>
 </tr>
 <tr>
 <td><code>inboxPrefix</code></td>
 <td><code>&quot;_INBOX&quot;</code></td>
-<td>Sets de prefix for automatically created inboxes - <code>createInbox(prefix)</code></td>
+<td>Sets the prefix for automatically created inboxes - <code>createInbox(prefix)</code>. Must be a valid subject prefix.</td>
 </tr>
 <tr>
 <td><code>maxPingOut</code></td>
@@ -411,7 +458,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>maxReconnectAttempts</code></td>
 <td><code>10</code></td>
-<td>Sets the maximum number of reconnect attempts. The value of <code>-1</code> specifies no limit.</td>
+<td>Sets the maximum number of reconnect attempts per server. The value of <code>-1</code> specifies no limit.</td>
 </tr>
 <tr>
 <td><code>name</code></td>
@@ -426,17 +473,12 @@ more performant or appropriate.</p>
 <tr>
 <td><code>noEcho</code></td>
 <td><code>false</code></td>
-<td>Subscriptions receive messages published by the client. Requires server support (1.2.0). If set to true, and the server does not support the feature, an error with code <code>NO_ECHO_NOT_SUPPORTED</code> is emitted, and the connection is aborted. Note that it is possible for this error to be emitted on reconnect when the server reconnects to a server that does not support the feature.</td>
+<td>If <code>true</code>, messages published by this client are not delivered to its own subscriptions. Requires server support (1.2.0); if the server does not support it, the connection fails with a <code>ConnectionError</code>. This can also happen on reconnect, if the client reconnects to a server that does not support it.</td>
 </tr>
 <tr>
 <td><code>noRandomize</code></td>
 <td><code>false</code></td>
-<td>If set, the order of user-specified servers is randomized.</td>
-</tr>
-<tr>
-<td><code>noResolve</code></td>
-<td>none</td>
-<td>If true, client will not resolve host names.</td>
+<td>If <code>true</code>, the client does not randomize the order of the servers.</td>
 </tr>
 <tr>
 <td><code>pass</code></td>
@@ -446,7 +488,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>pedantic</code></td>
 <td><code>false</code></td>
-<td>Turns on strict subject format checks.</td>
+<td>Asks the server to perform additional checks on protocol messages. Only useful for NATS client development; it affects server performance.</td>
 </tr>
 <tr>
 <td><code>pingInterval</code></td>
@@ -456,7 +498,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>port</code></td>
 <td><code>4222</code></td>
-<td>Port to connect to (only used if <code>servers</code> is not specified).</td>
+<td>Port to connect to on <code>127.0.0.1</code>. Mutually exclusive with <code>servers</code>.</td>
 </tr>
 <tr>
 <td><code>reconnect</code></td>
@@ -466,7 +508,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>reconnectDelayHandler</code></td>
 <td>Generated function</td>
-<td>A function that returns the number of millis to wait before the next connection to a server it connected to <code>()=&gt;number</code>.</td>
+<td>A function <code>() =&gt; number</code> that returns the number of millis to wait before the next reconnect attempt. The default returns <code>reconnectTimeWait</code> plus the jitter.</td>
 </tr>
 <tr>
 <td><code>reconnectJitter</code></td>
@@ -476,7 +518,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>reconnectJitterTLS</code></td>
 <td><code>1000</code></td>
-<td>Number of millis to randomize after <code>reconnectTimeWait</code> when TLS options are specified.</td>
+<td>Number of millis to randomize after <code>reconnectTimeWait</code> when the <code>tls</code> option is set.</td>
 </tr>
 <tr>
 <td><code>reconnectTimeWait</code></td>
@@ -484,24 +526,34 @@ more performant or appropriate.</p>
 <td>If disconnected, the client will wait the specified number of milliseconds between reconnect attempts.</td>
 </tr>
 <tr>
+<td><code>reconnectToServer</code></td>
+<td>none</td>
+<td>A <code>ReconnectToServerHandler</code> called on every connection attempt to choose which server to dial next, optionally with an extra delay.</td>
+</tr>
+<tr>
+<td><code>resolve</code></td>
+<td>runtime dependent</td>
+<td>If <code>false</code>, the client does not resolve hostnames. Defaults to <code>true</code> where the runtime can resolve them; setting <code>true</code> where it can't (such as the WebSocket client) throws.</td>
+</tr>
+<tr>
 <td><code>servers</code></td>
-<td><code>&quot;localhost:4222&quot;</code></td>
-<td>String or Array of hostport for servers.</td>
+<td><code>&quot;127.0.0.1:4222&quot;</code></td>
+<td>String or Array of hostport for servers. Mutually exclusive with <code>port</code>. With <code>wsconnect</code>, the default port is <code>443</code>.</td>
 </tr>
 <tr>
 <td><code>timeout</code></td>
-<td>20000</td>
-<td>Number of milliseconds the client will wait for a connection to be established. If it fails it will emit a <code>connection_timeout</code> event with a NatsError that provides the hostport of the server where the connection was attempted.</td>
+<td><code>20000</code></td>
+<td>Number of milliseconds to wait for each connection attempt to complete its handshake with the server (socket, TLS and protocol handshake). The DNS lookup gets its own wait of the same length. An attempt that runs out fails with a <code>TimeoutError</code> and is retried like any other failed connect. <code>0</code> or unset means the default; a negative or non-numeric value is rejected.</td>
 </tr>
 <tr>
 <td><code>tls</code></td>
 <td>TlsOptions</td>
-<td>A configuration object for requiring a TLS connection (not applicable to <a href="http://nats.ws">nats.ws</a>).</td>
+<td>A configuration object for requiring a TLS connection (can be an empty object). If <code>null</code>, the client won't use TLS: a standard connection is used when the server offers TLS, and the connection fails if the server requires it. When unset, the client uses TLS if the server offers it.</td>
 </tr>
 <tr>
 <td><code>token</code></td>
 <td></td>
-<td>Sets a authorization token for a connection.</td>
+<td>Sets an authorization token for a connection.</td>
 </tr>
 <tr>
 <td><code>user</code></td>
@@ -516,7 +568,7 @@ more performant or appropriate.</p>
 <tr>
 <td><code>waitOnFirstConnect</code></td>
 <td><code>false</code></td>
-<td>If <code>true</code> the client will fall back to a reconnect mode if it fails its first connection attempt.</td>
+<td>If <code>true</code>, <code>maxReconnectAttempts</code> does not apply until the client has connected once; the client keeps trying to connect. A <code>FirstConnectFn</code> is called after every failed attempt and decides whether the client keeps trying.</td>
 </tr>
 </tbody>
 </table>
@@ -585,4 +637,72 @@ returned by this function. No other value will be taken into account.</li>
 <li>If the client didn't specify TLS options, the client will generate a number
 between 0 and <code>reconnectJitter</code> and add it to <code>reconnectTimeWait</code>.</li>
 </ul>
-</div></div><div class="col-sidebar"><div class="page-menu"><div class="tsd-navigation settings"><details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>Settings</h3></summary><div class="tsd-accordion-details"><div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span><ul id="tsd-filter-options"><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li><li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div><div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div><details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg><h3>On This Page</h3></summary><div class="tsd-accordion-details"><a href="#core"><span>Core</span></a><ul><li><a href="#websocket-support"><span>Web<wbr/>Socket <wbr/>Support</span></a></li></ul><a href="#installation"><span>Installation</span></a><ul><li><a href="#npm"><span>NPM</span></a></li><li><a href="#jsr"><span>JSR</span></a></li><li><a href="#referencing-the-library"><span>Referencing the library</span></a></li><li><a href="#basics"><span>Basics</span></a></li><li><ul><li><a href="#connecting-to-a-nats-server"><span>Connecting to a nats-<wbr/>server</span></a></li><li><a href="#publish-and-subscribe"><span>Publish and <wbr/>Subscribe</span></a></li><li><a href="#wildcard-subscriptions"><span>Wildcard <wbr/>Subscriptions</span></a></li><li><a href="#services-requestreply"><span>Services: <wbr/>Request/<wbr/>Reply</span></a></li><li><ul><li><a href="#services"><span>Services</span></a></li><li><a href="#making-requests"><span>Making <wbr/>Requests</span></a></li></ul></li><li><a href="#queue-groups"><span>Queue <wbr/>Groups</span></a></li></ul></li><li><a href="#advanced-usage"><span>Advanced <wbr/>Usage</span></a></li><li><ul><li><a href="#headers"><span>Headers</span></a></li><li><a href="#no-responders"><span>No <wbr/>Responders</span></a></li><li><a href="#authentication"><span>Authentication</span></a></li><li><ul><li><a href="#authenticators"><span>Authenticators</span></a></li></ul></li><li><a href="#flush"><span>Flush</span></a></li><li><a href="#_"><span></span></a></li><li><a href="#_-1"><span></span></a></li><li><ul><li><a href="#auto-unsubscribe"><span>Auto <wbr/>Unsubscribe</span></a></li><li><a href="#timeout-subscriptions"><span>Timeout <wbr/>Subscriptions</span></a></li></ul></li><li><a href="#_-2"><span></span></a></li><li><ul><li><a href="#and"><span> and </span></a></li></ul></li><li><a href="#draining-connections-and-subscriptions"><span>Draining <wbr/>Connections and <wbr/>Subscriptions</span></a></li><li><a href="#lifecycle-and-informational-events"><span>Lifecycle and <wbr/>Informational <wbr/>Events</span></a></li><li><a href="#async-vs-callbacks"><span>Async vs. <wbr/>Callbacks</span></a></li></ul></li><li><a href="#connection-options"><span>Connection <wbr/>Options</span></a></li><li><ul><li><a href="#tlsoptions"><span>Tls<wbr/>Options</span></a></li><li><a href="#jitter"><span>Jitter</span></a></li></ul></li></ul></div></details></div><div class="site-menu"><nav class="tsd-navigation"><a href="modules.html">@nats-io/nats-core</a><ul class="tsd-small-nested-navigation" id="tsd-nav-container"><li>Loading...</li></ul></nav></div></div></div><footer><p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer><div class="overlay"></div></body></html>
+</div></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div>
+<details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>On This Page</h3></summary>
+<div class="tsd-accordion-details"><a href="#core"><span>Core</span></a>
+<ul>
+<li><a href="#websocket-support"><span>Web<wbr/>Socket <wbr/>Support</span></a></li></ul><a href="#installation"><span>Installation</span></a>
+<ul>
+<li><a href="#npm"><span>NPM</span></a></li>
+<li><a href="#jsr"><span>JSR</span></a></li>
+<li><a href="#referencing-the-library"><span>Referencing the library</span></a></li>
+<li><a href="#basics"><span>Basics</span></a></li>
+<li>
+<ul>
+<li><a href="#connecting-to-a-nats-server"><span>Connecting to a nats-<wbr/>server</span></a></li>
+<li><a href="#publish-and-subscribe"><span>Publish and <wbr/>Subscribe</span></a></li>
+<li><a href="#wildcard-subscriptions"><span>Wildcard <wbr/>Subscriptions</span></a></li>
+<li><a href="#services-requestreply"><span>Services: <wbr/>Request/<wbr/>Reply</span></a></li>
+<li>
+<ul>
+<li><a href="#services"><span>Services</span></a></li>
+<li><a href="#making-requests"><span>Making <wbr/>Requests</span></a></li></ul></li>
+<li><a href="#queue-groups"><span>Queue <wbr/>Groups</span></a></li>
+<li><a href="#responding-with-a-request"><span>Responding with a <wbr/>Request</span></a></li></ul></li>
+<li><a href="#advanced-usage"><span>Advanced <wbr/>Usage</span></a></li>
+<li>
+<ul>
+<li><a href="#headers"><span>Headers</span></a></li>
+<li><a href="#no-responders"><span>No <wbr/>Responders</span></a></li>
+<li><a href="#authentication"><span>Authentication</span></a></li>
+<li>
+<ul>
+<li><a href="#authenticators"><span>Authenticators</span></a></li></ul></li>
+<li><a href="#flush"><span>Flush</span></a></li>
+<li><a href="#_"><span></span></a></li>
+<li><a href="#_-1"><span></span></a></li>
+<li>
+<ul>
+<li><a href="#auto-unsubscribe"><span>Auto <wbr/>Unsubscribe</span></a></li>
+<li><a href="#timeout-subscriptions"><span>Timeout <wbr/>Subscriptions</span></a></li></ul></li>
+<li><a href="#_-2"><span></span></a></li>
+<li>
+<ul>
+<li><a href="#and"><span> and </span></a></li></ul></li>
+<li><a href="#draining-connections-and-subscriptions"><span>Draining <wbr/>Connections and <wbr/>Subscriptions</span></a></li>
+<li><a href="#lifecycle-and-informational-events"><span>Lifecycle and <wbr/>Informational <wbr/>Events</span></a></li>
+<li><a href="#async-vs-callbacks"><span>Async vs. <wbr/>Callbacks</span></a></li></ul></li>
+<li><a href="#connection-options"><span>Connection <wbr/>Options</span></a></li>
+<li>
+<ul>
+<li><a href="#tlsoptions"><span>Tls<wbr/>Options</span></a></li>
+<li><a href="#jitter"><span>Jitter</span></a></li></ul></li></ul></div></details></div>
+<div class="site-menu">
+<nav class="tsd-navigation"><a href="modules.html">@nats-io/nats-core</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>
