@@ -526,3 +526,34 @@ Deno.test("servers - ws gossip gets the connection's protocol", () => {
   assertEquals(gossipedEntry(servers, "h:4222")!.src, "wss://h:4222/");
   setTransportFactory({ urlParseFn: undefined });
 });
+
+function selected(servers: Servers, n: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push(servers.selectServer()!.listen);
+  }
+  return out;
+}
+
+Deno.test("servers - select rotates from the first dial", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["a:4222", "b:4222", "c:4222"]);
+  // the first dial is a, so the first redial is b, not a again
+  assertEquals(selected(servers, 4), ["a:4222", "b:4222", "c:4222", "a:4222"]);
+  assertEquals(servers.getCurrentServer().listen, "a:4222");
+});
+
+Deno.test("servers - select with one server", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["a:4222"]);
+  assertEquals(selected(servers, 3), ["a:4222", "a:4222", "a:4222"]);
+});
+
+Deno.test("servers - select after setServers drops the current server", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["a:4222", "b:4222"]);
+  assertEquals(selected(servers, 1), ["a:4222"]);
+  // a is dropped: the list is dialed from its first entry, then rotates
+  servers.setServers(["c:4222", "d:4222"]);
+  assertEquals(selected(servers, 3), ["c:4222", "d:4222", "c:4222"]);
+});

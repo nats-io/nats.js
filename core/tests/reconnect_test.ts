@@ -918,3 +918,38 @@ Deno.test("setServers - with the current server keeps the connection", async () 
   assertEquals(nc.getServer(), `127.0.0.1:${ns0.port}`);
   await nc.close();
 });
+
+Deno.test("reconnect - first reconnect dials the next server", async () => {
+  await using ns0 = await NatsServer.start();
+  await using ns1 = await NatsServer.start();
+  const nc = await connect({
+    servers: [`127.0.0.1:${ns0.port}`, `127.0.0.1:${ns1.port}`],
+    noRandomize: true,
+    reconnectTimeWait: 100,
+    reconnectJitter: 0,
+    maxReconnectAttempts: -1,
+  });
+  assertEquals(nc.getServer(), `127.0.0.1:${ns0.port}`);
+  // past the reconnect wait, so the lost server could be dialed again
+  await delay(500);
+
+  let dials = 0;
+  const reconnected = deferred<void>();
+  (async () => {
+    for await (const s of nc.status()) {
+      if (s.type === "reconnecting") {
+        dials++;
+      } else if (s.type === "reconnect") {
+        reconnected.resolve();
+        break;
+      }
+    }
+  })().then();
+
+  await ns0.stop();
+  await reconnected;
+  // one dial, straight to the other server
+  assertEquals(dials, 1);
+  assertEquals(nc.getServer(), `127.0.0.1:${ns1.port}`);
+  await nc.close();
+});
