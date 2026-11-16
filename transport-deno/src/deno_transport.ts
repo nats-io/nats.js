@@ -23,6 +23,7 @@ import {
   errors,
   extractProtocolMessage,
   INFO,
+  protoLen,
 } from "@nats-io/nats-core/internal";
 
 import type {
@@ -94,6 +95,8 @@ export class DenoTransport implements Transport {
       const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
+        // only the plaintext info line is kept across the upgrade
+        this.buf = this.buf.slice(0, protoLen(this.buf));
         const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
         await this.startTLS(tlsn);
       }

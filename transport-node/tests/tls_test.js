@@ -25,6 +25,7 @@ const fs = require("node:fs");
 const { readFileSync } = fs;
 const net = require("node:net");
 const { Buffer } = require("node:buffer");
+const tls = require("node:tls");
 const { Lock } = require("@nats-io/nst");
 const { NatsServer } = require("@nats-io/nst");
 const { buildAuthenticator, extend, Connect } = require(
@@ -507,3 +508,151 @@ describe(
     });
   },
 );
+describe(
+  "tls upgrade",
+  { timeout: 20_000, concurrency: true, forceExit: true },
+  () => {
+    const ca = readFileSync(resolve(join(dir, "./tests/certs/ca.pem")));
+
+    it("ignores plaintext bytes after info", async () => {
+      const extra = JSON.stringify({
+        server_id: "X",
+        server_name: "OTHER",
+        version: "2.10.0",
+        proto: 1,
+        connect_urls: ["other.example.com:4222"],
+      });
+      const srv = await upgradeServer({
+        tls: true,
+        extra: () => `INFO ${extra}\r\nPING\r\n`,
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: { ca },
+      });
+      await nc.flush();
+      assert.equal(nc.info.server_name, "fake");
+      const listens = nc.getServers().map((s) => s.listen);
+      assert.ok(
+        !listens.some((s) => s.includes("other.example.com")),
+        `unexpected server in pool: ${listens}`,
+      );
+      assert.ok(nc.protocol.transport.isEncrypted());
+      assert.ok(!srv.received.includes("PONG"), "client answered a ping");
+      await nc.close();
+      await srv.close();
+    });
+
+    // an injected INFO shows up in nc.getServers(), but an injected MSG can
+    // only be seen by a subscription that would receive it (S21 delivered a
+    // forged MSG). it has to be a reconnect: on the first connect the
+    // subscription doesn't exist yet when the injected bytes are parsed, so
+    // the MSG would be dropped with or without the fix. the server injects it
+    // after the plaintext INFO of the reconnect, and only the MSG sent over
+    // tls must be delivered.
+    it("ignores plaintext msg after info on reconnect", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        extra: (idx) => idx === 0 ? "" : "MSG foo 1 3\r\nbad\r\n",
+        onLine: (line, sock, idx) => {
+          if (idx > 0 && line.startsWith("SUB foo")) {
+            sock.write("MSG foo 1 2\r\nok\r\n");
+          }
+        },
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: { ca },
+        reconnectTimeWait: 100,
+      });
+      const sub = nc.subscribe("foo", { max: 1 });
+      await nc.flush();
+      srv.sockets[0].destroy();
+      for await (const m of sub) {
+        assert.equal(m.string(), "ok");
+      }
+      assert.equal(srv.conns(), 2);
+      await nc.close();
+      await srv.close();
+    });
+
+    it("plain connection still processes pipelined data", async () => {
+      const srv = await upgradeServer({ tls: false, extra: () => "PING\r\n" });
+      const nc = await connect({ servers: `127.0.0.1:${srv.port}` });
+      await nc.flush();
+      assert.equal(nc.info.server_name, "fake");
+      assert.ok(!nc.protocol.transport.isEncrypted());
+      assert.ok(srv.received.includes("PONG"));
+      await nc.close();
+      await srv.close();
+    });
+
+    it("rejects non info first op", async () => {
+      const srv = await upgradeServer({ tls: false, first: "PING\r\n" });
+      await assert.rejects(
+        connect({ servers: `127.0.0.1:${srv.port}`, reconnect: false }),
+        /unexpected response from server/,
+      );
+      await srv.close();
+    });
+  },
+);
+
+// minimal nats server that sends a plaintext info, optionally followed
+// by extra bytes, then optionally upgrades to tls
+async function upgradeServer(opts) {
+  const key = readFileSync(resolve(join(dir, "./tests/certs/key.pem")));
+  const cert = readFileSync(resolve(join(dir, "./tests/certs/server.pem")));
+  const received = [];
+  const sockets = [];
+  let conns = 0;
+  const srv = net.createServer((raw) => {
+    const idx = conns++;
+    raw.on("error", () => {});
+    const info = {
+      server_id: "FAKE",
+      server_name: "fake",
+      version: "2.10.0",
+      proto: 1,
+      max_payload: 1048576,
+      headers: true,
+    };
+    if (opts.tls) {
+      info.tls_required = true;
+    }
+    const extra = opts.extra ? opts.extra(idx) : "";
+    raw.write(opts.first || `INFO ${JSON.stringify(info)}\r\n${extra}`);
+    const sock = opts.tls
+      ? new tls.TLSSocket(raw, { isServer: true, key, cert })
+      : raw;
+    sockets.push(sock);
+    sock.on("error", () => {});
+    let buf = "";
+    sock.on("data", (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf("\r\n")) !== -1) {
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        received.push(line);
+        if (line.startsWith("PING")) {
+          sock.write("PONG\r\n");
+        }
+        if (opts.onLine) {
+          opts.onLine(line, sock, idx);
+        }
+      }
+    });
+  });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  return {
+    port: srv.address().port,
+    received,
+    sockets,
+    conns: () => conns,
+    close: () => {
+      sockets.forEach((s) => s.destroy());
+      return new Promise((r) => srv.close(() => r()));
+    },
+  };
+}

@@ -23,6 +23,7 @@ import {
   extend,
   extractProtocolMessage,
   INFO,
+  protoLen,
   ServerInfo,
   Transport,
 } from "./nats-base-client.ts";
@@ -53,6 +54,7 @@ export class NodeTransport implements Transport {
   stale?: boolean;
   // socket of a dial or tls handshake in progress
   pending?: Socket;
+  infoLine?: Uint8Array;
 
   constructor() {
     this.lang = LANG;
@@ -83,6 +85,8 @@ export class NodeTransport implements Transport {
       const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
+        // only the plaintext info line is kept across the upgrade
+        this.yields = this.infoLine ? [this.infoLine] : [];
         this.socket = await this.startTLS();
       }
 
@@ -171,6 +175,7 @@ export class NodeTransport implements Transport {
             throw new Error("unexpected response from server");
           }
           const info = JSON.parse(m[1]);
+          this.infoLine = t.subarray(0, protoLen(t));
           d.resolve(info);
         } catch (err) {
           d.reject(err);
