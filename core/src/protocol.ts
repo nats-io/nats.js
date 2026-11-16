@@ -1076,9 +1076,6 @@ export class ProtocolHandler implements Dispatcher<ParserEvent>, Replier {
     if (firstInfo) {
       this.features.update(parseSemVer(info.version));
       this.infoReceived = true;
-      if (this.transport.isEncrypted()) {
-        this.servers.updateTLSName();
-      }
       const ac = new AbortController();
       try {
         const auth = typeof this.options.authenticator === "function"
