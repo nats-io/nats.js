@@ -598,11 +598,81 @@ describe(
   },
 );
 
+describe(
+  "tls upgrade host verification",
+  { timeout: 20_000, concurrency: true, forceExit: true },
+  () => {
+    const ca = readFileSync(resolve(join(dir, "./tests/certs/ca.pem")));
+    // server_iponly.pem only has ip sans (127.0.0.1, ::1)
+
+    it("ip server verifies against ip san", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_iponly.pem",
+        key: "key_iponly.pem",
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: { ca },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.isEncrypted());
+      assert.ok(nc.protocol.transport.socket.authorized);
+      await nc.close();
+      await srv.close();
+    });
+
+    it("ip server rejects localhost only cert", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.port}`,
+          tls: { ca },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.equal(err.code, "ERR_TLS_CERT_ALTNAME_INVALID");
+          assert.match(err.message, /IP: 127\.0\.0\.1/);
+          return true;
+        },
+      );
+      await srv.close();
+    });
+
+    it("localhost server verifies against dns san", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      const nc = await connect({
+        servers: `localhost:${srv.port}`,
+        tls: { ca },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.isEncrypted());
+      assert.ok(nc.protocol.transport.socket.authorized);
+      await nc.close();
+      await srv.close();
+    });
+  },
+);
+
 // minimal nats server that sends a plaintext info, optionally followed
 // by extra bytes, then optionally upgrades to tls
 async function upgradeServer(opts) {
-  const key = readFileSync(resolve(join(dir, "./tests/certs/key.pem")));
-  const cert = readFileSync(resolve(join(dir, "./tests/certs/server.pem")));
+  const key = readFileSync(
+    resolve(join(dir, `./tests/certs/${opts.key || "key.pem"}`)),
+  );
+  const cert = readFileSync(
+    resolve(join(dir, `./tests/certs/${opts.cert || "server.pem"}`)),
+  );
   const received = [];
   const sockets = [];
   let conns = 0;
