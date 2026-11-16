@@ -44,6 +44,7 @@ import type {
   SubscriptionOptions,
 } from "./core.ts";
 import { createInbox } from "./core.ts";
+import { applyWssOnly } from "./servers.ts";
 import { errors, InvalidArgumentError, TimeoutError } from "./errors.ts";
 
 const whitespaceRegex = /[ \n\r\t]/;
@@ -495,8 +496,15 @@ export class NatsConnectionImpl implements NatsConnection {
   }
 
   setServers(servers: string[]): void {
+    const { wssOnly } = this.options as { wssOnly?: boolean | null };
     const current = this.protocol.server;
-    this.protocol.servers.setServers(servers);
+    this.protocol.servers.setServers(
+      applyWssOnly(
+        servers,
+        wssOnly,
+        this.protocol.transportFactory?.urlParseFn,
+      ),
+    );
     // connected to a server that isn't on the new list: move onto the list
     if (
       this.protocol.connected && current &&
