@@ -435,3 +435,78 @@ Deno.test("servers - gossip of a configured server adds no duplicate", () => {
   assertEquals(c.gossiped, false);
   setTransportFactory({ urlParseFn: undefined });
 });
+
+function entry(servers: Servers, listen: string) {
+  return servers.getServers().find((s) => s.listen === listen)!;
+}
+
+Deno.test("servers - ws setServers bare host:port keeps the entry", () => {
+  const servers = wsServers(["wss://proxy:443/nats", "ws://p:80"]);
+  const proxy = entry(servers, "proxy:443");
+  proxy.reconnects = 2;
+  // the documented round-trip: map to listens
+  servers.setServers(servers.getServers().map((s) => s.listen));
+  assertEquals(entry(servers, "proxy:443"), proxy);
+  assertEquals(proxy.src, "wss://proxy:443/nats");
+  assertEquals(proxy.reconnects, 2);
+  assertEquals(entry(servers, "p:80").src, "ws://p:80/");
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - ws setServers same url keeps the entry", () => {
+  const servers = wsServers(["wss://h:443"]);
+  const h = entry(servers, "h:443");
+  h.reconnects = 2;
+  servers.setServers(["wss://h:443"]);
+  assertEquals(entry(servers, "h:443"), h);
+  assertEquals(h.reconnects, 2);
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - ws setServers takes a different url as typed", () => {
+  for (
+    const [from, to, src] of [
+      ["ws://h:443", "wss://h:443", "wss://h:443/"],
+      ["wss://h:443", "ws://h:443", "ws://h:443/"],
+      ["wss://h:443/a", "wss://h:443/b", "wss://h:443/b"],
+    ]
+  ) {
+    const servers = wsServers([from]);
+    const old = entry(servers, "h:443");
+    old.reconnects = 2;
+    old.didConnect = true;
+    old.lastConnect = 1;
+    servers.setServers([to]);
+    const h = entry(servers, "h:443");
+    assert(h !== old, `${from} -> ${to}`);
+    assertEquals(h.src, src);
+    assertEquals(h.reconnects, 0);
+    assertEquals(h.didConnect, false);
+    assertEquals(h.lastConnect, 0);
+    assertEquals(h.gossiped, false);
+  }
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - ws setServers on a gossiped entry", () => {
+  const servers = wsServers(["wss://a:443"]);
+  servers.update(Object.assign(servInfo(), { connect_urls: ["h:443"] }), true);
+  const h = entry(servers, "h:443");
+  h.reconnects = 1;
+  // listed again as is: kept, now configured
+  servers.setServers(["wss://a:443", "h:443"]);
+  assertEquals(entry(servers, "h:443"), h);
+  assertEquals(h.gossiped, false);
+  assertEquals(h.reconnects, 1);
+  setTransportFactory({ urlParseFn: undefined });
+});
+
+Deno.test("servers - tcp setServers keeps the entry by host:port", () => {
+  const servers = new Servers({ randomize: false });
+  servers.setServers(["h:4222"]);
+  const h = entry(servers, "h:4222");
+  h.reconnects = 2;
+  servers.setServers(["h:4222", "j:4222"]);
+  assertEquals(entry(servers, "h:4222"), h);
+  assertEquals(h.reconnects, 2);
+});

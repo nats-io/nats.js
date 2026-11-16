@@ -107,6 +107,14 @@ export function hostPort(
 /**
  * @hidden
  */
+// a server entry with no scheme, path, query or fragment
+function isBareHostPort(u: string): boolean {
+  // no "/", "?" or "#": no path, query or fragment, and no scheme, since a
+  // scheme needs "://". "a:443" and "[::1]:443" are bare, "wss://a:443",
+  // "a:443/nats" and "a:443?x=1" are not
+  return !/[/?#]/.test(u);
+}
+
 export class ServerImpl implements Server {
   src: string;
   listen: string;
@@ -224,11 +232,18 @@ export class Servers {
     for (const s of this.servers) existing.set(s.listen, s);
 
     const merged: ServerImpl[] = [];
-    for (let hp of listens) {
-      hp = urlParseFn ? urlParseFn(hp) : hp;
+    for (const entry of listens) {
+      const hp = urlParseFn ? urlParseFn(entry) : entry;
       const { listen } = hostPort(hp);
       const surviving = existing.get(listen);
-      if (surviving) {
+      // over tcp an entry is host:port and tls comes from the options, so
+      // the same host:port is the same server. a websocket entry is a url:
+      // a bare host:port keeps the url the entry has (round-tripping
+      // listens doesn't lose a scheme or a path), and any other url must
+      // match it, or it's a different endpoint and starts over.
+      const same = surviving &&
+        (!urlParseFn || isBareHostPort(entry) || surviving.src === hp);
+      if (surviving && same) {
         // the list is configured, as the servers option is: not gossiped
         // (a later cluster update() can't remove it) and no tls name
         // inherited from the cluster. the connection state is kept
