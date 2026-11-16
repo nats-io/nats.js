@@ -86,11 +86,14 @@ export type ObjectInfo = ObjectStoreMeta & {
    */
   deleted: boolean;
   /**
-   * An UTC timestamp
+   * An UTC timestamp. For an entry read from the store, the time the server
+   * stored the entry's metadata; on the info returned by `put()`, the time
+   * the client finished the upload. It is not stored in the metadata.
    */
   mtime: string;
   /**
-   * The revision number for the entry
+   * The revision number for the entry: the stream sequence of the entry's
+   * metadata message. It is not stored in the metadata.
    */
   revision: number;
 };
@@ -241,13 +244,18 @@ export type ObjectStore = {
   info(name: string): Promise<ObjectInfo | null>;
 
   /**
-   * Returns a list of the entries in the ObjectStore
+   * Returns a list of the entries in the ObjectStore. If the list can't be
+   * read to the end (for example, the connection closes), it rejects with a
+   * "list incomplete" error rather than returning a partial list.
    */
   list(): Promise<ObjectInfo[]>;
 
   /**
    * Returns an object you can use for reading the data from the
-   * named stored object or null if the entry doesn't exist.
+   * named stored object or null if the entry doesn't exist. If the data can't
+   * be read to the end (for example, chunks are missing or the connection
+   * closes), the data stream errors and {@link ObjectResult.error} resolves to
+   * an "object read incomplete" error.
    * @param name
    */
   get(name: string): Promise<ObjectResult | null>;
@@ -261,6 +269,10 @@ export type ObjectStore = {
   /**
    * Adds an object to the store with the specified meta
    * and using the specified ReadableStream to stream the data.
+   * The stream is locked while it is read, and released when the put
+   * settles, whether it succeeds or fails. The stream is not cancelled:
+   * after a failure, cancelling it (for example, to close a file or an HTTP
+   * response) is up to the caller.
    * @param meta
    * @param rs
    * @param opts

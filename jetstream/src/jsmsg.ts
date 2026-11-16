@@ -138,6 +138,8 @@ export type JsMsg = {
   /**
    * Convenience method to parse the message payload as JSON. This method
    * will throw an exception if there's a parsing error;
+   * @param reviver an optional function, as for `JSON.parse()`, that can
+   * transform the parsed values
    */
   json<T>(reviver?: ReviverFn): T;
 

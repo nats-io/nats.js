@@ -31,7 +31,7 @@ const sub = nc.subscribe("calc.add");
         throw new Error("invalid input");
       }
       m.respond(JSON.stringify({result: a+b}))
-    } catch(err) {
+    } catch(_err) {
       m.respond("error: invalid input");
     }
   }

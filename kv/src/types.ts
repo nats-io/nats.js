@@ -35,6 +35,8 @@ export type KvEntry = {
   /**
    * Convenience method to parse the entry payload as JSON. This method
    * will throw an exception if there's a parsing error;
+   * @param reviver an optional function, as for `JSON.parse()`, that can
+   * transform the parsed values
    */
   json<T>(reviver?: ReviverFn): T;
 
@@ -357,6 +359,9 @@ export type RoKV = {
   /**
    * Returns an iterator of the specified key's history (or all keys).
    * Note you can specify multiple keys if running on server 2.10.x or better.
+   * If the history can't be read to the end (for example, the connection
+   * closes), the iterator stops with a "history incomplete" error rather
+   * than ending as if it were complete.
    * @param opts
    */
   history(
@@ -378,7 +383,9 @@ export type RoKV = {
 
   /**
    * Returns an iterator of all the keys optionally matching
-   * the specified filter.
+   * the specified filter. If the keys can't be read to the end (for example,
+   * the connection closes), the iterator stops with a "keys incomplete" error
+   * rather than ending as if it were complete.
    * @param filter - default is all keys
    */
   keys(filter?: string | string[]): Promise<QueuedIterator<string>>;
