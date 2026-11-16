@@ -774,6 +774,143 @@ describe(
       await nc.close();
       await srv.close();
     });
+
+    // the client passes node's tls options through, so node's `servername`
+    // and `checkServerIdentity` set what a server is verified against.
+    // this is how a user verifies servers reached by ip against a name.
+    it("ip server verifies against node's servername option", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: { ca, servername: "localhost" },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.socket.authorized);
+      assert.equal(nc.protocol.transport.socket.servername, "localhost");
+      await nc.close();
+      await srv.close();
+    });
+
+    it("ip server verifies with node's checkServerIdentity option", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      const hosts = [];
+      const nc = await connect({
+        servers: `127.0.0.1:${srv.port}`,
+        tls: {
+          ca,
+          checkServerIdentity: (host, cert) => {
+            hosts.push(host);
+            return tls.checkServerIdentity("localhost", cert);
+          },
+        },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.socket.authorized);
+      assert.deepEqual(hosts, ["127.0.0.1"]);
+      await nc.close();
+      await srv.close();
+    });
+
+    it("tls first ip server verifies against node's servername option", async () => {
+      const ns = await NatsServer.start({
+        host: "127.0.0.1",
+        tls: {
+          handshake_first: true,
+          cert_file: resolve(join(dir, "./tests/certs/server_noip.pem")),
+          key_file: resolve(join(dir, "./tests/certs/key_noip.pem")),
+          ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
+        },
+      });
+      const nc = await connect({
+        servers: `127.0.0.1:${ns.port}`,
+        tls: { handshakeFirst: true, ca, servername: "localhost" },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.socket.authorized);
+      await nc.close();
+      await ns.stop();
+    });
+
+    it("ip server rejects a servername the cert doesn't have", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.port}`,
+          tls: { ca, servername: "nats.example.com" },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.equal(err.code, "ERR_TLS_CERT_ALTNAME_INVALID");
+          assert.match(err.message, /nats\.example\.com/);
+          return true;
+        },
+      );
+      await srv.close();
+    });
+
+    it("ip server rejects when checkServerIdentity fails", async () => {
+      const srv = await upgradeServer({
+        tls: true,
+        cert: "server_noip.pem",
+        key: "key_noip.pem",
+      });
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${srv.port}`,
+          tls: {
+            ca,
+            checkServerIdentity: (_host, cert) =>
+              tls.checkServerIdentity("nats.example.com", cert),
+          },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.equal(err.code, "ERR_TLS_CERT_ALTNAME_INVALID");
+          assert.match(err.message, /nats\.example\.com/);
+          return true;
+        },
+      );
+      await srv.close();
+    });
+
+    it("tls first ip server rejects a servername the cert doesn't have", async () => {
+      const ns = await NatsServer.start({
+        host: "127.0.0.1",
+        tls: {
+          handshake_first: true,
+          cert_file: resolve(join(dir, "./tests/certs/server_noip.pem")),
+          key_file: resolve(join(dir, "./tests/certs/key_noip.pem")),
+          ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
+        },
+      });
+      await assert.rejects(
+        connect({
+          servers: `127.0.0.1:${ns.port}`,
+          tls: { handshakeFirst: true, ca, servername: "nats.example.com" },
+          reconnect: false,
+        }),
+        (err) => {
+          assert.match(err.message, /nats\.example\.com/);
+          return true;
+        },
+      );
+      await ns.stop();
+    });
   },
 );
 
