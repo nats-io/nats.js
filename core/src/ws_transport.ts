@@ -332,9 +332,15 @@ export function wsUrlParseFn(u: string, encrypted?: boolean): string {
   if (srcProto === "wss:") {
     encrypted = true;
   }
-  if (srcProto !== "https:" && srcProto !== "http") {
+  if (srcProto !== "https:" && srcProto !== "http:") {
+    // other schemes don't parse a host and port everywhere, so parse as
+    // http(s). match the scheme's security, as for a bare host above, so
+    // URL only drops a port that is the default of the scheme we dial:
+    // wss://h:80 keeps 80, and wss://h:443 falls back to 443 below
+    const secure = srcProto === "wss:" || srcProto === "tls:" ||
+      (srcProto !== "ws:" && srcProto !== "nats:" && encrypted === true);
     u = u.replace(/^(.*:\/\/)(.*)/gm, "$2");
-    url = new URL(`http://${u}`);
+    url = new URL(`${secure ? "https" : "http"}://${u}`);
   }
 
   let protocol;
@@ -357,7 +363,7 @@ export function wsUrlParseFn(u: string, encrypted?: boolean): string {
       protocol = "wss:";
       break;
     default:
-      port = url.port || encrypted === true ? "443" : "80";
+      port = url.port || (encrypted === true ? "443" : "80");
       protocol = encrypted === true ? "wss:" : "ws:";
       break;
   }
