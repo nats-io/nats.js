@@ -68,7 +68,7 @@ export class DenoTransport implements Transport {
     this.options = options;
 
     const { tls } = this.options;
-    const { handshakeFirst } = tls || {};
+    const handshakeFirst = tls?.handshakeFirst === true;
 
     try {
       if (handshakeFirst === true) {
@@ -89,7 +89,9 @@ export class DenoTransport implements Transport {
       }
       const info = await this.peekInfo();
       checkOptions(info, this.options);
-      const { tls_required: tlsRequired, tls_available: tlsAvailable } = info;
+      const { tls_required, tls_available: tlsAvailable } = info;
+      // tls option makes tls mandatory
+      const tlsRequired = !!tls_required || !!options.tls;
       const desired = tlsAvailable === true && options.tls !== null;
       if (!handshakeFirst && (tlsRequired || desired)) {
         const tlsn = hp.tlsName ? hp.tlsName : hp.hostname;
@@ -97,6 +99,12 @@ export class DenoTransport implements Transport {
       }
       if (this.done) {
         this.conn.close();
+      }
+      if (tlsRequired && !this.encrypted) {
+        throw errors.InvalidArgumentError.format(
+          "tls",
+          "is not available on this server",
+        );
       }
     } catch (err) {
       this.conn?.close();
