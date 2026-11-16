@@ -888,6 +888,28 @@ describe(
       await srv.close();
     });
 
+    it("a configured name with a trailing dot connects", async () => {
+      const ns = await NatsServer.start({
+        host: "127.0.0.1",
+        tls: {
+          cert_file: resolve(join(dir, "./tests/certs/server_noip.pem")),
+          key_file: resolve(join(dir, "./tests/certs/key_noip.pem")),
+          ca_file: resolve(join(dir, "./tests/certs/ca.pem")),
+        },
+      });
+      // sni can't carry the dot, nats-server refuses a handshake with it
+      const nc = await connect({
+        servers: `localhost.:${ns.port}`,
+        tls: { ca },
+        reconnect: false,
+      });
+      await nc.flush();
+      assert.ok(nc.protocol.transport.socket.authorized);
+      assert.equal(nc.protocol.transport.socket.servername, "localhost");
+      await nc.close();
+      await ns.stop();
+    });
+
     it("tls first ip server rejects a servername the cert doesn't have", async () => {
       const ns = await NatsServer.start({
         host: "127.0.0.1",

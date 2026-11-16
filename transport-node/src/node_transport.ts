@@ -25,6 +25,7 @@ import {
   INFO,
   protoLen,
   ServerInfo,
+  stripTrailingDot,
   tlsUpgradeError,
   Transport,
 } from "./nats-base-client.ts";
@@ -269,7 +270,7 @@ export class NodeTransport implements Transport {
       servername: string;
       socket?: Socket;
     } = {
-      servername: this.tlsName,
+      servername: stripTrailingDot(this.tlsName),
       rejectUnauthorized: true,
     };
     if (this.socket) {
@@ -322,7 +323,7 @@ export class NodeTransport implements Transport {
   async startTLS(): Promise<TLSSocket> {
     let tlsError: Error;
     // verify against the tls name or the dialed host
-    const host = this.tlsName || this.hostname;
+    const host = stripTrailingDot(this.tlsName || this.hostname);
     let tlsOpts: {
       socket: Socket;
       host: string;
