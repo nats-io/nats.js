@@ -358,14 +358,21 @@ export class RequestOne extends BaseRequest implements Request {
     } else {
       this.deferred.resolve(msg);
     }
-    this.cancel();
+    this.cleanup();
   }
 
-  cancel(err?: Error): void {
+  // stops the timer and drops the request from the mux. unlike cancel(), it
+  // doesn't reject the deferred, so no error is built when nothing could
+  // see it: after a reply, or after the request already timed out
+  cleanup(): void {
     if (this.timer) {
       this.timer.cancel();
     }
     this.mux.cancel(this);
+  }
+
+  cancel(err?: Error): void {
+    this.cleanup();
     this.deferred.reject(
       err ? err : new RequestError("cancelled"),
     );

@@ -34,6 +34,7 @@ import {
   headers,
   isIP,
   nuid,
+  RequestOne,
   syncIterator,
 } from "../src/internal_mod.ts";
 import type {
@@ -433,6 +434,46 @@ Deno.test("basics - request cancel rejects", async () => {
   });
 
   await check;
+  await cleanup(ns, nc);
+});
+
+Deno.test("basics - request settles without cancelling", async () => {
+  const { ns, nc } = await setup();
+  const nci = nc as NatsConnectionImpl;
+  // cancel() builds an error nobody can see on these paths, so they only
+  // clean up
+  const cancel = RequestOne.prototype.cancel;
+  let cancels = 0;
+  RequestOne.prototype.cancel = function (err?: Error) {
+    cancels++;
+    return cancel.call(this, err);
+  };
+  try {
+    const s = createInbox();
+    nc.subscribe(s, {
+      callback: (_err, m) => {
+        m.respond("foo");
+      },
+    });
+    const silent = createInbox();
+    nc.subscribe(silent, { callback: () => {} });
+
+    const m = await nc.request(s);
+    assertEquals(m.string(), "foo");
+    await assertRejects(
+      () => nc.request("q", Empty, { timeout: 100 }),
+      errors.RequestError,
+      "no responders: 'q'",
+    );
+    await assertRejects(
+      () => nc.request(silent, Empty, { timeout: 100 }),
+      errors.TimeoutError,
+    );
+    assertEquals(cancels, 0);
+    assertEquals(nci.protocol.muxSubscriptions.size(), 0);
+  } finally {
+    RequestOne.prototype.cancel = cancel;
+  }
   await cleanup(ns, nc);
 });
 
