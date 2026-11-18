@@ -21,10 +21,7 @@
     "@std/async": "jsr:@std/async@1.5.1",
     "@std/bytes": "jsr:@std/bytes@1.0.6",
     "@std/fmt": "jsr:@std/fmt@1.0.10",
-    "@std/jsonc": "jsr:@std/jsonc@1.0.3",
-    "@std/semver": "jsr:@std/semver@1.0.8",
-    "@nats-io/jwt": "jsr:@nats-io/jwt@0.1.0",
-    "nats-deno": "https://raw.githubusercontent.com/nats-io/nats.deno/main/src/mod.ts"
+    "@nats-io/jwt": "jsr:@nats-io/jwt@0.1.0"
   },
   "tasks": {
     "clean": "rm -Rf ./coverage core/lib core/build jetstream/lib jetstream/build services/lib services/build kv/lib kv/build obj/lib obj/build transport-node/lib transport-ws/lib",
