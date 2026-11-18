@@ -1,6 +1,6 @@
 {
   "minimumDependencyAge": {
-    "exclude": ["jsr:@nats-io/*", "npm:@nats-io/*", "jsr:@aricart/*"]
+    "exclude": ["jsr:@nats-io/*", "npm:@nats-io/*"]
   },
   "compilerOptions": {
     "strict": true
