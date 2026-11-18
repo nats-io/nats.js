@@ -68,12 +68,6 @@ for (const fn of files) {
     if (dep.includes("nats-io/jwt.js")) {
       dep = "https://github.com/nats-io/jwt.js";
     }
-    if (dep.includes("deno.land/x/cobra@")) {
-      dep = "https://deno.land/x/cobra/mod.ts";
-    }
-    if (dep.includes("deno.land/x/cobra/")) {
-      dep = "https://deno.land/x/cobra/mod.ts";
-    }
     if (dep.includes("deno.land/std@")) {
       dep = "https://github.com/denoland/deno_std";
     }
