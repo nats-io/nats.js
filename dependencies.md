@@ -4,6 +4,7 @@ This file lists the dependencies used in this repository.
 
 | Runtime Dependencies                                 | License     |
 | ---------------------------------------------------- | ----------- |
+| [npm:@aricart/mrvm](https://github.com/aricart/mrvm) | Apache-2.0  |
 | [@nats-io/jwt](http://github.com/nats-io/jwt.js)     | Apache-2.0  |
 | [@nats-io/nkeys](http://github.com/nats-io/nkeys.js) | Apache-2.0  |
 | [@nats-io/nuid](http://github.com/nats-io/nuid.js)   | Apache-2.0  |

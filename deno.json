@@ -1,6 +1,10 @@
 {
+  "mrvm": {
+    "mode": "lockstep",
+    "align": ["@nats-io/nuid", "@nats-io/nkeys"]
+  },
   "minimumDependencyAge": {
-    "exclude": ["jsr:@nats-io/*", "npm:@nats-io/*"]
+    "exclude": ["jsr:@nats-io/*", "npm:@nats-io/*", "npm:@aricart/*"]
   },
   "compilerOptions": {
     "strict": true
@@ -44,18 +48,9 @@
     "lint-obj": "cd obj && deno lint",
     "lint-services": "cd services && deno lint",
     "lint-nst": "cd nst && deno lint",
-    "check-versions": "bin/check-bundle-version.ts && deno fmt",
-    "check-versions-all": "deno task check-versions-core && deno task check-versions-jetstream && deno task check-versions-kv && deno task check-versions-obj && deno task check-versions-services && deno task check-versions-nst && deno task check-versions-transport-deno && deno task check-versions-transport-node && deno fmt",
-    "fix-versions": "deno task check-versions-core --fix && deno task check-versions-jetstream --fix && deno task check-versions-kv --fix && deno task check-versions-obj --fix && deno task check-versions-services --fix && deno task check-versions-nst --fix && deno task check-versions-transport-deno --fix && deno task check-versions-transport-node --fix && deno fmt",
-    "check-versions-core": "bin/check-bundle-version.ts --module core",
-    "check-versions-jetstream": "bin/check-bundle-version.ts --module jetstream",
-    "check-versions-kv": "bin/check-bundle-version.ts --module kv",
-    "check-versions-obj": "bin/check-bundle-version.ts --module obj",
-    "check-versions-services": "bin/check-bundle-version.ts --module services",
-    "check-versions-transport-node": "bin/check-bundle-version.ts --module transport-node",
-    "check-versions-transport-deno": "bin/check-bundle-version.ts --module transport-deno",
-    "check-versions-nst": "bin/check-bundle-version.ts --module nst",
-    "check-dependencies": "bin/check-dep-versions.ts",
+    "check-versions": "deno run -A npm:@aricart/mrvm@0.1.1 check",
+    "fix-versions": "deno run -A npm:@aricart/mrvm@0.1.1 fix",
+    "suggest-versions": "deno run -A npm:@aricart/mrvm@0.1.1 suggest",
     "disable-npm-workspace": "mv package.json _package.json",
     "enable-npm-workspace": "mv _package.json package.json"
   },

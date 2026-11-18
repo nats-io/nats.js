@@ -24,8 +24,7 @@ development/testing and npm workspace (`package.json`) for Node.js publishing.
 
 - `nst/` — Shared Deno test utilities (NatsServer launcher, Lock, setup/cleanup
   helpers)
-- `bin/` — Build/release tooling scripts (version checks, CJS import fixer,
-  bundler)
+- `bin/` — Release tooling scripts (npm publishing, dependency listings)
 - `docs/` — Generated JSDoc documentation
 
 ## Development Commands
@@ -51,7 +50,7 @@ deno fmt --check            # Check formatting without modifying
 
 deno task clean             # Remove build artifacts and coverage
 deno task cover             # Generate and open HTML coverage report
-deno task check-versions    # Verify version consistency across modules
+deno task check-versions    # Verify version consistency across modules (mrvm)
 ```
 
 ### Node.js (transport-node only)
@@ -173,8 +172,14 @@ the core internals for the Node transport. The Node transport source files omit
 
 - All modules share the same version number (currently synced)
 - `version.ts` in each module is auto-generated — do not edit
+- Versions are managed with [mrvm](https://github.com/aricart/mrvm), configured
+  by the `"mrvm"` section of the root `deno.json` (lockstep, with the
+  `@nats-io/nuid` and `@nats-io/nkeys` pins aligned)
 - Use `deno task check-versions` to verify version consistency
 - Use `deno task fix-versions` to auto-fix version mismatches
+- Use `deno task suggest-versions` to see the bump the commits since the last
+  release call for, and `deno run -A npm:@aricart/mrvm bump <type>` (or
+  `bump --suggest`) to bump every module and the pins on them
 - Versions in `deno.json`, `package.json`, and `version.ts` must all agree per
   module
 

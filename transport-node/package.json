@@ -62,7 +62,7 @@
     "setup": "curl -fsSL https://deno.land/x/install/install.sh | sh",
     "setup_win": "choco install deno",
     "cover:html": "genhtml -o ./coverage/html ./out.lcov && open ./coverage/html/index.html",
-    "check-package": "cd .. && deno run --allow-all bin/check-bundle-version.ts --module transport-node",
+    "check-package": "cd .. && npx -y @aricart/mrvm@0.1.1 check",
     "postversion": "git push && git push --tags",
     "bump-qualifier": "npm version prerelease --no-commit-hooks --no-git-tag-version",
     "bump-release": "npm version patch --no-commit-hooks --no-git-tag-version",

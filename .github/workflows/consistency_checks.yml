@@ -36,7 +36,20 @@ jobs:
           deno fmt --check ${{ matrix.module }}/
           deno lint ${{ matrix.module }}/
 
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Checkout Sources
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.x
+
+      # module versions agree across deno.json, package.json and version.ts,
+      # pins on our modules match, and the nuid/nkeys pins agree everywhere
       - name: Check Versions
-        run: |
-          deno run -A bin/check-bundle-version.ts --module ${{ matrix.module }}
-          deno task check-dependencies
+        run: deno task check-versions
