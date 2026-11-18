@@ -24,7 +24,6 @@
     "@std/jsonc": "jsr:@std/jsonc@1.0.3",
     "@std/semver": "jsr:@std/semver@1.0.8",
     "@nats-io/jwt": "jsr:@nats-io/jwt@0.1.0",
-    "@chiefbiiko/sha256": "https://denopkg.com/chiefbiiko/sha256@v1.0.0/mod.ts",
     "nats-deno": "https://raw.githubusercontent.com/nats-io/nats.deno/main/src/mod.ts"
   },
   "tasks": {

@@ -72,9 +72,6 @@ for (const fn of files) {
       dep = "https://github.com/denoland/deno_std";
     }
 
-    if (dep.includes("chiefbiiko/sha256")) {
-      dep = "https://github.com/chiefbiiko/sha256";
-    }
     let v = m.get(dep);
     if (!v) {
       v = [];
