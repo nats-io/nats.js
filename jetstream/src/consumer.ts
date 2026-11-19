@@ -134,6 +134,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
   pending: { msgs: number; bytes: number; requests: number };
+  // pulls handed to the iterator that it has not published yet
+  queued: { msgs: number; bytes: number; requests: number };
   isConsume: boolean;
   callback: ConsumerCallbackFn | null;
   listeners: QueuedIterator<ConsumerNotification>[];
@@ -194,6 +196,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.noIterator = typeof this.callback === "function";
     this.monitor = null;
     this.pending = { msgs: 0, bytes: 0, requests: 0 };
+    this.queued = { msgs: 0, bytes: 0, requests: 0 };
     this.listeners = [];
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
@@ -400,6 +403,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.monitor = new IdleHeartbeatMonitor(
         idle_heartbeat,
         (count): boolean => {
+          // while the loop body of a running iterator holds up a pull, the
+          // pull has not been sent, so no request is open and the server
+          // cannot send heartbeats: count missed ones from when it goes out
+          if (this.yielding && this.queued.requests > 0) {
+            this.monitor?.work();
+            return false;
+          }
           // for the pull consumer - missing heartbeats may be corrected
           // on the next pull etc - the only assumption here is we should
           // reset and check if the consumer was deleted from under us
@@ -516,6 +526,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     // the pulls on the previous consumer are gone with it
     this.pending.msgs = 0;
     this.pending.bytes = 0;
+    // the pulls still queued belong to the previous consumer and are skipped
+    this.queued = { msgs: 0, bytes: 0, requests: 0 };
     this.pending.requests = 0;
     // if they do a consumer info, they get the new one.
     this.consumer.name = config.name!;
@@ -638,10 +650,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   resetPendingNoInfo(): Promise<boolean> {
     // here we are blind - we won't do an info, so all we are doing
     // is invalidating the previous request results.
-    this.pending.msgs = 0;
-    this.pending.bytes = 0;
-    this.pending.requests = 0;
-    this.pull(this.pullOptions());
+    this.repull();
     return Promise.resolve(true);
   }
 
@@ -663,10 +672,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         notFound = 0;
         // we exist, so effectively any pending state is gone
         // so reset and re-pull
-        this.pending.msgs = 0;
-        this.pending.bytes = 0;
-        this.pending.requests = 0;
-        this.pull(this.pullOptions());
+        this.repull();
         return true;
       } catch (err) {
         if (err instanceof errors.ClosedConnectionError) {
@@ -715,6 +721,17 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
   }
 
+  // the pulls sent so far are gone, but one still waiting in the iterator
+  // will be sent: count only those, and pull again if none is waiting
+  repull() {
+    this.pending.msgs = this.queued.msgs;
+    this.pending.bytes = this.queued.bytes;
+    this.pending.requests = this.queued.requests;
+    if (this.queued.requests === 0) {
+      this.pull(this.pullOptions());
+    }
+  }
+
   pull(opts: Partial<PullOptions>) {
     if (this.consumer.isResetting()) {
       // the ordered consumer is being recreated, it will pull when done
@@ -731,13 +748,19 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer.name}`;
     const reply = this.inbox;
     const serial = this.consumer.serial;
+    this.queued.bytes += opts.max_bytes ?? 0;
+    this.queued.msgs += opts.batch ?? 0;
+    this.queued.requests++;
     this._push(() => {
       // the queued pull may run much later: skip it if the consumer was
-      // reset since, which zeroed the pending counts; the new consumer pulls
-      // when it is created
+      // reset since, which zeroed the pending and queued counts; the new
+      // consumer pulls when it is created
       if (serial !== this.consumer.serial) {
         return;
       }
+      this.queued.bytes -= opts.max_bytes ?? 0;
+      this.queued.msgs -= opts.batch ?? 0;
+      this.queued.requests--;
       nc.publish(subj, JSON.stringify(opts), { reply });
       this.notify({ type: "next", options: opts as PullOptions });
     });

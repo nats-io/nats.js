@@ -784,3 +784,115 @@ Deno.test("consume - max_bytes throttles", async () => {
   await done;
   await cleanup(ns, nc);
 });
+
+Deno.test("consume - slow iterator body does not queue extra pulls", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    ack_policy: AckPolicy.Explicit,
+    ack_wait: nanos(60_000),
+  });
+  const js = jetstream(nc);
+  for (let i = 0; i < 10; i++) {
+    await js.publish("a", `${i}`);
+  }
+
+  // count the pull requests on the wire
+  let pulls = 0;
+  nc.subscribe("$JS.API.CONSUMER.MSG.NEXT.A.a", {
+    callback: () => {
+      pulls++;
+    },
+  });
+
+  const c = await js.consumers.get("A", "a");
+  // expires 1s, so idle_heartbeat is 500ms
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+  let missed = 0;
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "heartbeats_missed") {
+        missed++;
+      }
+    }
+  })().then();
+
+  let handled = 0;
+  for await (const m of iter) {
+    handled++;
+    if (handled === 1) {
+      // a loop body much longer than two heartbeat intervals: while it runs,
+      // the next pull waits in the iterator, so no heartbeats can arrive
+      await delay(4_000);
+      m.ack();
+      continue;
+    }
+    await nc.flush();
+    const ci = await c.info();
+    assertEquals(ci.num_ack_pending, 1);
+    assertEquals(pulls, 2);
+    assertEquals(missed, 0);
+    m.ack();
+    break;
+  }
+
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - reconnect during a slow iterator body does not queue extra pulls", async () => {
+  let { ns, nc } = await setup(jetstreamServerConf());
+  const jsm = await jetstreamManager(nc);
+  await jsm.streams.add({ name: "A", subjects: ["a"] });
+  await jsm.consumers.add("A", {
+    durable_name: "a",
+    ack_policy: AckPolicy.Explicit,
+    ack_wait: nanos(60_000),
+  });
+  const js = jetstream(nc);
+  for (let i = 0; i < 10; i++) {
+    await js.publish("a", `${i}`);
+  }
+
+  let pulls = 0;
+  nc.subscribe("$JS.API.CONSUMER.MSG.NEXT.A.a", {
+    callback: () => {
+      pulls++;
+    },
+  });
+
+  const c = await js.consumers.get("A", "a");
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+
+  let handled = 0;
+  for await (const m of iter) {
+    handled++;
+    if (handled === 1) {
+      // the server restarts while the loop body runs, and the client
+      // reconnects while the next pull is still waiting in the iterator
+      const reconnected = deferred();
+      (async () => {
+        for await (const s of nc.status()) {
+          if (s.type === "reconnect") {
+            reconnected.resolve();
+            break;
+          }
+        }
+      })().then();
+      ns = await ns.restart();
+      await reconnected;
+      await delay(2_500);
+      m.ack();
+      continue;
+    }
+    await nc.flush();
+    const ci = await c.info();
+    assertEquals(ci.num_ack_pending, 1);
+    assertEquals(pulls, 2);
+    m.ack();
+    break;
+  }
+
+  await cleanup(ns, nc);
+});
