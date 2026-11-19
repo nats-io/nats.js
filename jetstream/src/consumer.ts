@@ -134,6 +134,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   sub!: Subscription;
   monitor: IdleHeartbeatMonitor | null;
   pending: { msgs: number; bytes: number; requests: number };
+  // the reader is processing a message the iterator yielded
+  busy: boolean;
+  // the pull waiting in the iterator to be sent - a reset clears it, and the
+  // stale pull is skipped when its turn comes
+  queuedPull: object | null;
   isConsume: boolean;
   callback: ConsumerCallbackFn | null;
   listeners: QueuedIterator<ConsumerNotification>[];
@@ -194,6 +199,8 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.noIterator = typeof this.callback === "function";
     this.monitor = null;
     this.pending = { msgs: 0, bytes: 0, requests: 0 };
+    this.busy = false;
+    this.queuedPull = null;
     this.listeners = [];
     this.abortOnMissingResource = copts.abort_on_missing_resource === true;
     this.bind = copts.bind === true;
@@ -209,9 +216,13 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     this.closeListener = {
       // we don't propagate the error here
       connectionClosedCallback: () => {
-        this._push(() => {
-          this.stop();
-        });
+        // nothing more can arrive, and a reader may never come back to run
+        // a queued stop: release everything and settle now
+        if (this.done) {
+          return;
+        }
+        this.release();
+        this.finish();
       },
     };
     this.consumer.api.nc.addCloseListener(this.closeListener);
@@ -271,8 +282,9 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
 
           const { msgsLeft, bytesLeft } = status.parseDiscard();
           if ((msgsLeft && msgsLeft > 0) || (bytesLeft && bytesLeft > 0)) {
-            this.pending.msgs -= msgsLeft;
-            this.pending.bytes -= bytesLeft;
+            // a reset may have counted the request out already
+            this.pending.msgs = Math.max(0, this.pending.msgs - msgsLeft);
+            this.pending.bytes = Math.max(0, this.pending.bytes - bytesLeft);
             this.pending.requests--;
             this.notify({
               type: "discard",
@@ -369,7 +381,11 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             this.pending.msgs--;
           }
           if (this.pending.bytes) {
-            this.pending.bytes -= (msg as MsgImpl).size();
+            // the client's size isn't the server's - don't go below 0
+            this.pending.bytes = Math.max(
+              0,
+              this.pending.bytes - (msg as MsgImpl).size(),
+            );
           }
         }
 
@@ -383,9 +399,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
             (max_messages && this.pending.msgs <= threshold_messages) ||
             (max_bytes && this.pending.bytes <= threshold_bytes)
           ) {
-            const batch = this.pullOptions();
-            // @ts-ignore: we are pushing the pull fn
-            this.pull(batch);
+            this.pull();
           }
         } else if (this.pending.requests === 0) {
           // @ts-ignore: we are pushing the pull fn
@@ -400,6 +414,12 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.monitor = new IdleHeartbeatMonitor(
         idle_heartbeat,
         (count): boolean => {
+          // while the reader processes a message, the pull it holds up isn't
+          // sent: like nats.go, the time doesn't count
+          if (this.busy) {
+            this.monitor?.work();
+            return false;
+          }
           // for the pull consumer - missing heartbeats may be corrected
           // on the next pull etc - the only assumption here is we should
           // reset and check if the consumer was deleted from under us
@@ -469,7 +489,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     });
 
     // this is the initial pull
-    this.pull(this.pullOptions());
+    this.pull();
   }
 
   /**
@@ -514,9 +534,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     // reset delivery seq
     ocs.cursor.deliver_seq = 0;
     // the pulls on the previous consumer are gone with it
-    this.pending.msgs = 0;
-    this.pending.bytes = 0;
-    this.pending.requests = 0;
+    this.clearPending();
     // if they do a consumer info, they get the new one.
     this.consumer.name = config.name!;
 
@@ -535,7 +553,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
       this.consumer._info = ci;
       this.notify({ type: "ordered_consumer_recreated", name: ci.name });
       this.monitor?.restart();
-      this.pull(this.pullOptions());
+      this.pull();
     }).catch((err) => {
       if (current !== this.consumer.name) {
         // a later reset superseded this one
@@ -638,10 +656,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
   resetPendingNoInfo(): Promise<boolean> {
     // here we are blind - we won't do an info, so all we are doing
     // is invalidating the previous request results.
-    this.pending.msgs = 0;
-    this.pending.bytes = 0;
-    this.pending.requests = 0;
-    this.pull(this.pullOptions());
+    this.repull();
     return Promise.resolve(true);
   }
 
@@ -663,10 +678,7 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
         notFound = 0;
         // we exist, so effectively any pending state is gone
         // so reset and re-pull
-        this.pending.msgs = 0;
-        this.pending.bytes = 0;
-        this.pending.requests = 0;
-        this.pull(this.pullOptions());
+        this.repull();
         return true;
       } catch (err) {
         if (err instanceof errors.ClosedConnectionError) {
@@ -715,14 +727,36 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
   }
 
-  pull(opts: Partial<PullOptions>) {
+  // the pulls asked for are gone: forget them, and the pull still waiting
+  // in the iterator
+  clearPending() {
+    this.pending.msgs = 0;
+    this.pending.bytes = 0;
+    this.pending.requests = 0;
+    this.queuedPull = null;
+  }
+
+  // the pulls asked for are gone: ask again
+  repull() {
+    this.clearPending();
+    this.pull();
+  }
+
+  pull() {
     if (this.consumer.isResetting()) {
       // the ordered consumer is being recreated, it will pull when done
       return;
     }
+    // one pull at a time waits in the iterator
+    if (this.queuedPull) {
+      return;
+    }
+    const opts = this.pullOptions();
     this.pending.bytes += opts.max_bytes ?? 0;
     this.pending.msgs += opts.batch ?? 0;
     this.pending.requests++;
+    const queued = {};
+    this.queuedPull = queued;
 
     const nc = this.consumer.api.nc;
     // the consumer's name and the inbox change together on a reset, so a
@@ -730,14 +764,14 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     const subj =
       `${this.consumer.api.prefix}.CONSUMER.MSG.NEXT.${this.consumer.stream}.${this.consumer.name}`;
     const reply = this.inbox;
-    const serial = this.consumer.serial;
     this._push(() => {
-      // the queued pull may run much later: skip it if the consumer was
-      // reset since, which zeroed the pending counts; the new consumer pulls
-      // when it is created
-      if (serial !== this.consumer.serial) {
+      // the queued pull may run much later: skip it if a reset (or ordered
+      // consumer reset) cleared it since - the reset zeroed the counts and
+      // pulls again (the new consumer pulls when it is created)
+      if (queued !== this.queuedPull) {
         return;
       }
+      this.queuedPull = null;
       nc.publish(subj, JSON.stringify(opts), { reply });
       this.notify({ type: "next", options: opts as PullOptions });
     });
@@ -781,6 +815,15 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     return this.iterClosed;
   }
 
+  protected override readerBusy(busy: boolean) {
+    this.busy = busy;
+    if (!busy) {
+      // the reader is asking for messages, and the pull it held up goes out:
+      // restart the clock - heartbeats are owed from now
+      this.monitor?.work();
+    }
+  }
+
   clearTimers() {
     this.monitor?.cancel();
     this.monitor = null;
@@ -790,17 +833,28 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     if (this.done) {
       return;
     }
-    this.consumer.api.nc.removeCloseListener(this.closeListener);
+    this.release();
+    // the reader gets what was queued before it, then the iterator ends
+    this._push(() => {
+      this.finish(err);
+    });
+  }
 
+  // stop receiving: the close listener, the subscription, the timers, and
+  // the pull waiting in the iterator, which is skipped when it comes up
+  release() {
+    this.queuedPull = null;
+    this.consumer.api.nc.removeCloseListener(this.closeListener);
     this.sub?.unsubscribe();
     this.clearTimers();
     this.statusIterator?.stop();
-    //@ts-ignore: fn
-    this._push(() => {
-      super.stop(err);
-      this.listeners.forEach((iter) => {
-        iter.stop();
-      });
+  }
+
+  // end the iterator and its status listeners
+  finish(err?: Error) {
+    super.stop(err);
+    this.listeners.forEach((iter) => {
+      iter.stop();
     });
   }
 
@@ -851,11 +905,16 @@ export class PullConsumerMessagesImpl extends QueuedIteratorImpl<JsMsg>
     }
 
     if (refilling) {
-      const minMsgs = Math.round(args.max_messages * .75) || 1;
-      args.threshold_messages = args.threshold_messages || minMsgs;
-
-      const minBytes = Math.round(args.max_bytes * .75) || 1;
-      args.threshold_bytes = args.threshold_bytes || minBytes;
+      // refill once a quarter came in - always below the maximum, so a
+      // refill asks for at least one message (or byte)
+      args.threshold_messages = Math.min(
+        args.threshold_messages || Math.round(args.max_messages * .75),
+        args.max_messages - 1,
+      );
+      args.threshold_bytes = Math.min(
+        args.threshold_bytes || Math.round(args.max_bytes * .75),
+        args.max_bytes - 1,
+      );
     }
 
     if (isOverflowOptions(opts)) {

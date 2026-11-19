@@ -14,6 +14,7 @@
  */
 import { initStream } from "./jstest_util.ts";
 import {
+  assert,
   assertEquals,
   assertExists,
   assertFalse,
@@ -30,7 +31,7 @@ import {
 import type { Consumer, PullOptions } from "../src/mod.ts";
 import { deferred, nanos } from "@nats-io/nats-core";
 import type { NatsConnectionImpl } from "@nats-io/nats-core/internal";
-import { cleanup, jetstreamServerConf, setup } from "nst";
+import { assertBetween, cleanup, jetstreamServerConf, setup } from "nst";
 import type { PullConsumerMessagesImpl } from "../src/consumer.ts";
 import type {
   ConsumerNotification,
@@ -365,12 +366,14 @@ Deno.test("consumers - threshold_messages", async () => {
   // stream has 1000 messages, initial pull is default of 100
   assertEquals(next[0].batch, 100);
   next = next.slice(1);
-  // we expect 900 messages retrieved in pulls of 24
-  // there will be 36 pulls that yield messages, and 4 that don't.
-  assertEquals(next.length, 40);
+  // refills ask for what is missing once 25 (100 - 75%) are: at least 25,
+  // more when refills come due while a pull waits in the iterator
+  assertBetween(next.length, 1, 40);
   next.forEach((po) => {
-    assertEquals(po.batch, 25);
+    assertBetween(po.batch, 25, 100);
   });
+  // 900 more messages were asked for
+  assert(next.reduce((sum, po) => sum + po.batch, 0) >= 900);
 
   await cleanup(ns, nc);
 });

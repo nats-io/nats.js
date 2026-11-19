@@ -94,6 +94,8 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
       throw new InvalidOperationError("iterator is already yielding");
     }
     this.yielding = true;
+    // the reader is here, asking for values
+    this.readerBusy(false);
     try {
       while (true) {
         if (this.yields.length === 0) {
@@ -126,7 +128,9 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
           this.processed++;
           this.inflight--;
           const start = this.profile ? Date.now() : 0;
+          this.readerBusy(true);
           yield yields[i] as T;
+          this.readerBusy(false);
           this.time = this.profile ? Date.now() - start : 0;
         }
         // yielding could have paused and microtask
@@ -142,10 +146,19 @@ export class QueuedIteratorImpl<T> implements QueuedIterator<T>, Dispatcher<T> {
       }
     } finally {
       // the iterator used break/return
+      this.readerBusy(false);
       this.didBreak = true;
       this.stop();
     }
   }
+
+  /**
+   * called when the reader gets a value (busy) and when it asks for the
+   * next one (not busy) - extenders override it to know when the reader's
+   * code is processing a value
+   * @param _busy
+   */
+  protected readerBusy(_busy: boolean): void {}
 
   stop(err?: Error): void {
     if (this.done) {

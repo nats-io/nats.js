@@ -14,7 +14,7 @@
  */
 
 import { cleanup, jetstreamServerConf, setup } from "nst";
-import { initStream } from "./jstest_util.ts";
+import { initStream, setupStreamAndConsumer } from "./jstest_util.ts";
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deadline,
@@ -439,4 +439,33 @@ Deno.test("fetch - consumer not found and no responders", async () => {
   await mP;
 
   await cleanup(ns, nc);
+});
+
+Deno.test("fetch - slow iterator body doesn't fail the fetch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 3);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  // expires 1s, so heartbeats every 500ms
+  const iter = await c.fetch({ max_messages: 3, expires: 1_000 });
+  let count = 0;
+  for await (const m of iter) {
+    count++;
+    if (count === 1) {
+      // the pull is done, so no heartbeats come while the body runs
+      await delay(2_000);
+    }
+    m.ack();
+  }
+  assertEquals(count, 3);
+  await cleanup(ns, nc);
+});
+
+Deno.test("fetch - closing the connection settles an unread fetch", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 1);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.fetch({ max_messages: 1, expires: 1_000 });
+  await nc.close();
+  await deadline(iter.closed(), 1_000);
+  await ns.stop();
 });
