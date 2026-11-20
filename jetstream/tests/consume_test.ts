@@ -13,7 +13,8 @@
  * limitations under the License.
  */
 
-import { cleanup, jetstreamServerConf, setup } from "nst";
+import { assertBetween, cleanup, jetstreamServerConf, setup } from "nst";
+import { connect } from "./connect.ts";
 import {
   assert,
   assertEquals,
@@ -41,7 +42,11 @@ import {
   jetstreamManager,
 } from "../src/mod.ts";
 import type { PushConsumerMessagesImpl } from "../src/pushconsumer.ts";
-import type { ConsumerNotification, HeartbeatsMissed } from "../src/types.ts";
+import type {
+  ConsumerMessages,
+  ConsumerNotification,
+  HeartbeatsMissed,
+} from "../src/types.ts";
 
 Deno.test("consumers - consume", async () => {
   const { ns, nc } = await setup(jetstreamServerConf());
@@ -783,4 +788,290 @@ Deno.test("consume - max_bytes throttles", async () => {
 
   await done;
   await cleanup(ns, nc);
+});
+
+// counts the pulls the consumer sends, and the heartbeats it thinks it missed
+function countPulls(iter: ConsumerMessages) {
+  const counts = { pulls: 0, missed: 0 };
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "next") {
+        counts.pulls++;
+      } else if (s.type === "heartbeats_missed") {
+        counts.missed++;
+      }
+    }
+  })().then();
+  return counts;
+}
+
+Deno.test("consume - slow iterator body doesn't add pulls", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  // expires 1s, so heartbeats every 500ms
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+  const counts = countPulls(iter);
+
+  let handled = 0;
+  for await (const m of iter) {
+    handled++;
+    if (handled === 1) {
+      // longer than two heartbeats - the next pull waits for the body
+      await delay(2_000);
+      m.ack();
+      continue;
+    }
+    await nc.flush();
+    const ci = await c.info();
+    assertEquals(ci.num_ack_pending, 1);
+    assertEquals(counts.pulls, 2);
+    assertEquals(counts.missed, 0);
+    m.ack();
+    break;
+  }
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - heartbeats are monitored after a slow iterator body", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.consume({
+    max_messages: 1,
+    expires: 1_000,
+  }) as PullConsumerMessagesImpl;
+  let missed = 0;
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "heartbeats_missed") {
+        missed = s.count;
+        iter.stop();
+        break;
+      }
+    }
+  })().then();
+
+  let handled = 0;
+  let resubbed = 0;
+  for await (const m of iter) {
+    handled++;
+    await delay(2_000);
+    m.ack();
+    // the server's responses no longer reach the consumer, the loop waits
+    (nc as NatsConnectionImpl)._resub(iter.sub, "foo");
+    resubbed = Date.now();
+  }
+  // no misses during the body, then two heartbeats (500ms) after it
+  assertEquals(handled, 1);
+  assertEquals(missed, 2);
+  const waited = Date.now() - resubbed;
+  assertBetween(waited, 900, 2_500);
+  await cleanup(ns, nc);
+});
+
+async function missedHeartbeatsKeepCounting(callback: boolean) {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 0);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  // expires 1s, so heartbeats every 500ms
+  const opts = { max_messages: 1, expires: 1_000 };
+  const iter =
+    await (callback
+      ? c.consume({ ...opts, callback: () => {} })
+      : c.consume(opts)) as PullConsumerMessagesImpl;
+
+  const counts: number[] = [];
+  const done = deferred();
+  (async () => {
+    for await (const s of iter.status()) {
+      if (s.type === "heartbeats_missed") {
+        counts.push(s.count);
+        if (s.count === 3) {
+          done.resolve();
+        }
+      }
+    }
+  })().then();
+  const loop = callback ? iter.closed() : (async () => {
+    for await (const _m of iter) {
+      // nothing
+    }
+  })();
+
+  // the consumer exists, but the responses to its pulls are lost: the
+  // pulls sent after heartbeats are missed must not reset the count
+  await nc.flush();
+  (nc as NatsConnectionImpl)._resub(iter.sub, "foo");
+  await deadline(done, 5_000);
+  assertEquals(counts.slice(0, 2), [2, 3]);
+  iter.stop();
+  await loop;
+  await cleanup(ns, nc);
+}
+
+Deno.test("consume - missed heartbeats keep counting while pulls go unanswered", async () => {
+  await missedHeartbeatsKeepCounting(false);
+});
+
+Deno.test("consume - missed heartbeats keep counting while pulls go unanswered (callback)", async () => {
+  await missedHeartbeatsKeepCounting(true);
+});
+
+Deno.test("consume - late iterator start doesn't add pulls", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  // expires 1s, so heartbeats every 500ms
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+  const counts = countPulls(iter);
+
+  // the loop starts well after two heartbeats
+  await delay(2_000);
+  for await (const m of iter) {
+    await nc.flush();
+    const ci = await c.info();
+    assertEquals(ci.num_ack_pending, 1);
+    m.ack();
+    break;
+  }
+  // the timer runs before the loop starts and may report misses, but
+  // the pull queued for the loop is the only one sent
+  assertEquals(counts.pulls, 1);
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - reconnect during a slow iterator body doesn't add pulls", async () => {
+  let { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+  const counts = countPulls(iter);
+
+  let handled = 0;
+  for await (const m of iter) {
+    handled++;
+    m.ack();
+    if (handled === 1) {
+      // the server restarts while the body runs: the reconnect resets the
+      // pending counts while the next pull waits in the iterator
+      const reconnected = deferred();
+      (async () => {
+        for await (const s of nc.status()) {
+          if (s.type === "reconnect") {
+            reconnected.resolve();
+            break;
+          }
+        }
+      })().then();
+      ns = await ns.restart();
+      await reconnected;
+      await delay(1_500);
+      continue;
+    }
+    await nc.flush();
+    const ci = await c.info();
+    assertEquals(ci.num_ack_pending, 1);
+    break;
+  }
+  // the reconnect replaced the queued pull rather than adding one
+  assertEquals(counts.pulls, 2);
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - consumer deleted during a slow iterator body", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 10);
+  const jsm = await jetstreamManager(nc);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.consume({
+    max_messages: 1,
+    expires: 1_000,
+    abort_on_missing_resource: true,
+  });
+  const counts = countPulls(iter);
+
+  const start = Date.now();
+  await assertRejects(
+    async () => {
+      for await (const m of iter) {
+        m.ack();
+        await jsm.consumers.delete(stream, consumer);
+        await delay(1_500);
+      }
+    },
+    Error,
+    "consumer not found",
+  );
+  // found out after the body, and without spinning on pulls
+  assert(Date.now() - start < 5_000);
+  assert(counts.pulls < 5, `${counts.pulls} pulls`);
+  await cleanup(ns, nc);
+});
+
+Deno.test("consume - closing the connection settles an unread consume", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 1);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.consume({
+    max_messages: 1,
+    expires: 1_000,
+  }) as PullConsumerMessagesImpl;
+
+  // nothing reads the iterator: a stop queued in it would never run
+  await nc.close();
+  assertEquals(iter.monitor, null);
+  assert(iter.sub.isClosed());
+  // user code waiting on closed() is released
+  await deadline(iter.closed(), 1_000);
+
+  // and a loop started afterwards ends at once, with nothing
+  let n = 0;
+  for await (const _m of iter) {
+    n++;
+  }
+  assertEquals(n, 0);
+  await ns.stop();
+});
+
+Deno.test("consume - closing the connection while the reader is busy", async () => {
+  const { ns, nc } = await setup(jetstreamServerConf());
+  const { stream, consumer } = await setupStreamAndConsumer(nc, 5);
+  const c = await jetstream(nc).consumers.get(stream, consumer);
+  const iter = await c.consume({ max_messages: 1, expires: 1_000 });
+
+  let handled = 0;
+  let ackError: unknown = undefined;
+  let closedDuringBody = false;
+  const loop = (async () => {
+    for await (const m of iter) {
+      handled++;
+      // the connection closes while user code holds the message
+      const closed = iter.closed().then(() => {
+        closedDuringBody = true;
+      });
+      await nc.close();
+      await Promise.race([closed, delay(1_000)]);
+      try {
+        m.ack();
+      } catch (err) {
+        ackError = err;
+      }
+    }
+  })();
+  await deadline(loop, 5_000);
+
+  // closed() settled while the body still ran, and the loop ended after it
+  assert(closedDuringBody);
+  assertEquals(handled, 1);
+  // the ack doesn't fail, it can't go out: the message stays pending and the
+  // server redelivers it after ack_wait
+  assertEquals(ackError, undefined);
+  const nc2 = await connect({ port: ns.port });
+  const ci = await (await jetstreamManager(nc2)).consumers.info(
+    stream,
+    consumer,
+  );
+  assertEquals(ci.num_ack_pending, 1);
+  await cleanup(ns, nc2);
 });
