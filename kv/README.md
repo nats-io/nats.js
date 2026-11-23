@@ -1,4 +1,4 @@
-[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/nats-io/nats.js/blob/main/kv/LICENSE)
 [![kv](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/kv/index.html)
 
@@ -20,7 +20,7 @@ familiar to many application developers.
 ## Installation
 
 For a quick overview of the libraries and how to install them, see
-[runtimes.md](../runtimes.md).
+[runtimes.md](https://github.com/nats-io/nats.js/blob/main/runtimes.md).
 
 Note that this library is distributed in two different registries:
 

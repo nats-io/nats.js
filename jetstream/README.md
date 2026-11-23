@@ -1,4 +1,4 @@
-[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/nats-io/nats.js/blob/main/jetstream/LICENSE)
 [![jetstream](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/jetstream/index.html)
 
@@ -24,7 +24,7 @@ resources.
 ## Installation
 
 For a quick overview of the libraries and how to install them, see
-[runtimes.md](../runtimes.md).
+[runtimes.md](https://github.com/nats-io/nats.js/blob/main/runtimes.md).
 
 Note that this library is distributed in two different registries:
 
@@ -109,12 +109,14 @@ library and replace your usages of `NatsConnection#jetstream()` or
 `await jetstreamManager(nc)` where you pass your actual connection to the above
 functions.
 
-Also note that if you are using [KV](../kv/README.md) or
-[ObjectStore](../obj/README.md), these APIs are now provided by a different
-libraries `@nats-io/kv` and `@nats-io/obj` respectively. If you are only using
-KV or ObjectStore, there's no need to reference this library directly unless you
-need to do some specific JetStreamManager API, as both `@nats-io/kv` and
-`@nats-io/obj` depend on this library already and use it under the hood.
+Also note that if you are using
+[KV](https://github.com/nats-io/nats.js/blob/main/kv/README.md) or
+[ObjectStore](https://github.com/nats-io/nats.js/blob/main/obj/README.md), these
+APIs are now provided by a different libraries `@nats-io/kv` and `@nats-io/obj`
+respectively. If you are only using KV or ObjectStore, there's no need to
+reference this library directly unless you need to do some specific
+JetStreamManager API, as both `@nats-io/kv` and `@nats-io/obj` depend on this
+library already and use it under the hood.
 
 ## JetStreamManager (JSM)
 
@@ -320,7 +322,7 @@ const c = await js.consumers.get(stream, consumer);
 const oc = await js.consumers.get(stream);
 ```
 
-[full example](examples/01_consumers.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/01_consumers.js)
 
 With the consumer in hand, the client can start reading messages using whatever
 API is appropriate for the application.
@@ -369,7 +371,7 @@ if (m) {
 }
 ```
 
-[full example](examples/02_next.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/02_next.js)
 
 The operation takes an optional argument. Currently, the only option is an
 `expires` option which specifies the maximum number of milliseconds to wait for
@@ -404,7 +406,7 @@ for (let i = 0; i < 3; i++) {
 }
 ```
 
-[full example](examples/03_batch.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/03_batch.js)
 
 Fetching batches is useful if you parallelize a number of requests to take
 advantage of the asynchronous processing of data with a number of workers for
@@ -433,7 +435,7 @@ for await (const m of messages) {
 }
 ```
 
-[full example](examples/04_consume.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/04_consume.js)
 
 Note that it is possible to do an automatic version of `next()` by simply
 setting the maximum number of messages to buffer to `1`:
@@ -562,7 +564,7 @@ for await (const m of messages) {
 }
 ```
 
-[full example](examples/07_consume_jobs.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/07_consume_jobs.js)
 
 #### Processing a Stream
 
@@ -603,7 +605,7 @@ keys.forEach((k) => {
 });
 ```
 
-[full example](examples/08_consume_process.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/08_consume_process.js)
 
 ### Heartbeats
 
@@ -647,7 +649,7 @@ while (true) {
 }
 ```
 
-[full example](examples/06_heartbeats.js)
+[full example](https://github.com/nats-io/nats.js/blob/main/jetstream/examples/06_heartbeats.js)
 
 Note that while the heartbeat interval is configurable, you shouldn't change it.
 
