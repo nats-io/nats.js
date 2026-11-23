@@ -1,4 +1,4 @@
-[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/nats-io/nats.js/blob/main/services/LICENSE)
 [![services](https://github.com/nats-io/nats.js/actions/workflows/test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js/services/index.html)
 
@@ -12,7 +12,7 @@
 # Services
 
 For a quick overview of the libraries and how to install them, see
-[runtimes.md](../runtimes.md).
+[runtimes.md](https://github.com/nats-io/nats.js/blob/main/runtimes.md).
 
 The Services module introduces a higher-level API for implementing services with
 NATS. NATS has always been a strong technology on which to build services, as
@@ -94,7 +94,7 @@ await m.stats("max", id);
 ```
 
 For a more elaborate first example see:
-[simple example here](examples/01_services.ts)
+[simple example here](https://github.com/nats-io/nats.js/blob/main/services/examples/01_services.ts)
 
 ## Multiple Endpoints
 
@@ -150,4 +150,4 @@ For those paying attention, you can specify a callback much like in the first
 example, if you don't, the return value of the add endpoint is an iterator.
 
 For a complete example see:
-[multiple endpoints](examples/02_multiple_endpoints.ts)
+[multiple endpoints](https://github.com/nats-io/nats.js/blob/main/services/examples/02_multiple_endpoints.ts)

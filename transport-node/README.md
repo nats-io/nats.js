@@ -2,7 +2,7 @@
 
 A Node.js transport for the [NATS messaging system](https://nats.io).
 
-[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://github.com/nats-io/nats.js/blob/main/transport-node/LICENSE)
 [![transport-node](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml/badge.svg)](https://github.com/nats-io/nats.js/actions/workflows/transport-node-test.yml)
 [![JSDoc](https://img.shields.io/badge/JSDoc-reference-blue)](https://nats-io.github.io/nats.js)
 
@@ -11,9 +11,10 @@ A Node.js transport for the [NATS messaging system](https://nats.io).
 [![NPM Downloads](https://img.shields.io/npm/dm/%40nats-io%2Ftransport-node)](https://www.npmjs.com/package/@nats-io/transport-node)
 
 This module implements a Node.js native TCP transport for NATS. This library
-re-exports [NATS core](../core/README.md) library which implements all basic
-NATS client functionality. This library is compatible with
-[Bun](https://bun.sh/).
+re-exports
+[NATS core](https://github.com/nats-io/nats.js/blob/main/core/README.md) library
+which implements all basic NATS client functionality. This library is compatible
+with [Bun](https://bun.sh/).
 
 # Installation
 
@@ -30,17 +31,22 @@ like this:
 import { connect } from "@nats-io/transport-node";
 ```
 
-To use [NATS JetStream](../jetstream/README.md), [NATS KV](../kv/README.md),
-[NATS Object Store](../obj/README.md), or the
-[NATS Services](../services/README.md) functionality you'll need to install the
-desired modules as described in each of the modules README files.
+To use
+[NATS JetStream](https://github.com/nats-io/nats.js/blob/main/jetstream/README.md),
+[NATS KV](https://github.com/nats-io/nats.js/blob/main/kv/README.md),
+[NATS Object Store](https://github.com/nats-io/nats.js/blob/main/obj/README.md),
+or the
+[NATS Services](https://github.com/nats-io/nats.js/blob/main/services/README.md)
+functionality you'll need to install the desired modules as described in each of
+the modules README files.
 
 This module simply exports a
-[`connect()` function](../core/README.md#connecting-to-a-nats-server) that
-returns a `NatsConnection` supported by a Nodejs TCP socket. This library
-re-exports all the public APIs for the [core](../core/README.md) module. Please
-visit the core module for examples on how to use a connection or refer to the
-[JSDoc documentation](https://nats-io.github.io/nats.deno).
+[`connect()` function](https://github.com/nats-io/nats.js/blob/main/core/README.md#connecting-to-a-nats-server)
+that returns a `NatsConnection` supported by a Nodejs TCP socket. This library
+re-exports all the public APIs for the
+[core](https://github.com/nats-io/nats.js/blob/main/core/README.md) module.
+Please visit the core module for examples on how to use a connection or refer to
+the [JSDoc documentation](https://nats-io.github.io/nats.deno).
 
 ## Supported Node Versions
 
